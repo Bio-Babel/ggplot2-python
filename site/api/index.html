@@ -1,0 +1,2459 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Python port of R's ggplot2 package">
+      
+      
+      
+      
+        <link rel="prev" href="..">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>API Reference - ggplot2_py</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="ggplot2_py" class="md-header__button md-logo" aria-label="ggplot2_py" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ggplot2_py
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              API Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="ggplot2_py" class="md-nav__button md-logo" aria-label="ggplot2_py" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ggplot2_py
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Functions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#geoms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geoms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stats
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#summary-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary helpers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scales
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Scales">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#position-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Position scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#colour-and-fill-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Colour and fill scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#alpha-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alpha scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#size-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Size scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shape-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shape scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linetype-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linetype scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linewidth-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linewidth scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scale-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scale infrastructure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#facets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Facets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#position-adjustments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Position Adjustments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#themes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Themes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Themes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#complete-themes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete themes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#theme-elements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Theme elements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#theme-utilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Theme utilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guides
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labels-and-annotations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels and Annotations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draw-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draw Keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plot-introspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plot Introspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#datasets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Datasets
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorials/ggplot2.ipynb" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Functions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#geoms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geoms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stats
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#summary-helpers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary helpers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scales
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Scales">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#position-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Position scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#colour-and-fill-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Colour and fill scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#alpha-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alpha scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#size-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Size scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shape-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shape scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linetype-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linetype scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linewidth-scales" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linewidth scales
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scale-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scale infrastructure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordinates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#facets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Facets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#position-adjustments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Position Adjustments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#themes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Themes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Themes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#complete-themes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete themes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#theme-elements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Theme elements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#theme-utilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Theme utilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guides
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labels-and-annotations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels and Annotations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#draw-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Draw Keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plot-introspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plot Introspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#datasets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Datasets
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="api-reference">API Reference</h1>
+<h2 id="core-functions">Core Functions</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ggplot(data, mapping)</code></td>
+<td>Create a new ggplot object</td>
+</tr>
+<tr>
+<td><code>aes(x, y, ...)</code></td>
+<td>Create aesthetic mappings</td>
+</tr>
+<tr>
+<td><code>after_stat(x)</code></td>
+<td>Reference computed stat variables in aesthetics</td>
+</tr>
+<tr>
+<td><code>after_scale(x)</code></td>
+<td>Reference scaled aesthetic values</td>
+</tr>
+<tr>
+<td><code>stage(start, after_stat, after_scale)</code></td>
+<td>Control aesthetic evaluation stages</td>
+</tr>
+<tr>
+<td><code>vars(...)</code></td>
+<td>Quote variables for faceting</td>
+</tr>
+<tr>
+<td><code>ggsave(filename, plot)</code></td>
+<td>Save a plot to file</td>
+</tr>
+<tr>
+<td><code>qplot(x, y, ...)</code></td>
+<td>Quick plot (convenience wrapper)</td>
+</tr>
+<tr>
+<td><code>last_plot()</code></td>
+<td>Retrieve the last plot created</td>
+</tr>
+<tr>
+<td><code>layer(...)</code></td>
+<td>Create a layer directly</td>
+</tr>
+</tbody>
+</table>
+<h2 id="geoms">Geoms</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>geom_point()</code></td>
+<td>Scatter plot</td>
+</tr>
+<tr>
+<td><code>geom_path()</code></td>
+<td>Connect observations in data order</td>
+</tr>
+<tr>
+<td><code>geom_line()</code></td>
+<td>Connect observations in x order</td>
+</tr>
+<tr>
+<td><code>geom_step()</code></td>
+<td>Step plot</td>
+</tr>
+<tr>
+<td><code>geom_bar()</code></td>
+<td>Bar chart (stat=count)</td>
+</tr>
+<tr>
+<td><code>geom_col()</code></td>
+<td>Bar chart (stat=identity)</td>
+</tr>
+<tr>
+<td><code>geom_rect()</code></td>
+<td>Rectangles</td>
+</tr>
+<tr>
+<td><code>geom_tile()</code></td>
+<td>Rectangles via center + dimensions</td>
+</tr>
+<tr>
+<td><code>geom_raster()</code></td>
+<td>High-performance rectangular tiling</td>
+</tr>
+<tr>
+<td><code>geom_text()</code></td>
+<td>Text labels</td>
+</tr>
+<tr>
+<td><code>geom_label()</code></td>
+<td>Text labels with background</td>
+</tr>
+<tr>
+<td><code>geom_boxplot()</code></td>
+<td>Box-and-whisker plot</td>
+</tr>
+<tr>
+<td><code>geom_violin()</code></td>
+<td>Violin plot</td>
+</tr>
+<tr>
+<td><code>geom_dotplot()</code></td>
+<td>Dot plot</td>
+</tr>
+<tr>
+<td><code>geom_ribbon()</code></td>
+<td>Ribbons (filled area between ymin and ymax)</td>
+</tr>
+<tr>
+<td><code>geom_area()</code></td>
+<td>Area plot (ribbon anchored to y=0)</td>
+</tr>
+<tr>
+<td><code>geom_smooth()</code></td>
+<td>Smoothed conditional means</td>
+</tr>
+<tr>
+<td><code>geom_polygon()</code></td>
+<td>Polygons</td>
+</tr>
+<tr>
+<td><code>geom_errorbar()</code></td>
+<td>Vertical error bars</td>
+</tr>
+<tr>
+<td><code>geom_errorbarh()</code></td>
+<td>Horizontal error bars</td>
+</tr>
+<tr>
+<td><code>geom_crossbar()</code></td>
+<td>Crossbar (box with middle line)</td>
+</tr>
+<tr>
+<td><code>geom_linerange()</code></td>
+<td>Vertical line range</td>
+</tr>
+<tr>
+<td><code>geom_pointrange()</code></td>
+<td>Point with vertical line range</td>
+</tr>
+<tr>
+<td><code>geom_segment()</code></td>
+<td>Line segments</td>
+</tr>
+<tr>
+<td><code>geom_curve()</code></td>
+<td>Curved line segments</td>
+</tr>
+<tr>
+<td><code>geom_spoke()</code></td>
+<td>Line segments defined by angle and radius</td>
+</tr>
+<tr>
+<td><code>geom_density()</code></td>
+<td>Kernel density estimate</td>
+</tr>
+<tr>
+<td><code>geom_density2d()</code></td>
+<td>2D density contour lines</td>
+</tr>
+<tr>
+<td><code>geom_density2d_filled()</code></td>
+<td>Filled 2D density contours</td>
+</tr>
+<tr>
+<td><code>geom_contour()</code></td>
+<td>Contour lines of 3D surface</td>
+</tr>
+<tr>
+<td><code>geom_contour_filled()</code></td>
+<td>Filled contours of 3D surface</td>
+</tr>
+<tr>
+<td><code>geom_hex()</code></td>
+<td>Hexagonal binning</td>
+</tr>
+<tr>
+<td><code>geom_bin2d()</code></td>
+<td>2D rectangular binning</td>
+</tr>
+<tr>
+<td><code>geom_abline()</code></td>
+<td>Reference lines (slope + intercept)</td>
+</tr>
+<tr>
+<td><code>geom_hline()</code></td>
+<td>Horizontal reference line</td>
+</tr>
+<tr>
+<td><code>geom_vline()</code></td>
+<td>Vertical reference line</td>
+</tr>
+<tr>
+<td><code>geom_rug()</code></td>
+<td>Marginal rug plot</td>
+</tr>
+<tr>
+<td><code>geom_blank()</code></td>
+<td>Empty geom (for expanding limits)</td>
+</tr>
+<tr>
+<td><code>geom_function()</code></td>
+<td>Draw a function as a line</td>
+</tr>
+<tr>
+<td><code>geom_histogram()</code></td>
+<td>Histogram</td>
+</tr>
+<tr>
+<td><code>geom_freqpoly()</code></td>
+<td>Frequency polygon</td>
+</tr>
+<tr>
+<td><code>geom_count()</code></td>
+<td>Count overlapping points</td>
+</tr>
+<tr>
+<td><code>geom_jitter()</code></td>
+<td>Jittered scatter plot</td>
+</tr>
+<tr>
+<td><code>geom_map()</code></td>
+<td>Polygons from a map data frame</td>
+</tr>
+<tr>
+<td><code>geom_quantile()</code></td>
+<td>Quantile regression lines</td>
+</tr>
+<tr>
+<td><code>geom_sf()</code></td>
+<td>Render simple features</td>
+</tr>
+<tr>
+<td><code>geom_sf_label()</code></td>
+<td>Label simple features</td>
+</tr>
+<tr>
+<td><code>geom_sf_text()</code></td>
+<td>Text labels for simple features</td>
+</tr>
+<tr>
+<td><code>geom_qq()</code></td>
+<td>Quantile-quantile points</td>
+</tr>
+<tr>
+<td><code>geom_qq_line()</code></td>
+<td>Quantile-quantile reference line</td>
+</tr>
+</tbody>
+</table>
+<h2 id="stats">Stats</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>stat_identity()</code></td>
+<td>Identity transformation (no computation)</td>
+</tr>
+<tr>
+<td><code>stat_bin()</code></td>
+<td>Binning for histograms</td>
+</tr>
+<tr>
+<td><code>stat_count()</code></td>
+<td>Count unique values</td>
+</tr>
+<tr>
+<td><code>stat_density()</code></td>
+<td>1D kernel density estimate</td>
+</tr>
+<tr>
+<td><code>stat_smooth()</code></td>
+<td>Smoothed conditional means</td>
+</tr>
+<tr>
+<td><code>stat_boxplot()</code></td>
+<td>Box plot statistics</td>
+</tr>
+<tr>
+<td><code>stat_summary()</code></td>
+<td>Summarise y at each x</td>
+</tr>
+<tr>
+<td><code>stat_summary_bin()</code></td>
+<td>Summarise y in bins of x</td>
+</tr>
+<tr>
+<td><code>stat_summary2d()</code> / <code>stat_summary_2d()</code></td>
+<td>2D summary</td>
+</tr>
+<tr>
+<td><code>stat_summary_hex()</code></td>
+<td>Hexagonal 2D summary</td>
+</tr>
+<tr>
+<td><code>stat_function()</code></td>
+<td>Compute function values</td>
+</tr>
+<tr>
+<td><code>stat_ecdf()</code></td>
+<td>Empirical cumulative distribution function</td>
+</tr>
+<tr>
+<td><code>stat_qq()</code></td>
+<td>Quantile-quantile calculation</td>
+</tr>
+<tr>
+<td><code>stat_qq_line()</code></td>
+<td>Quantile-quantile reference line calculation</td>
+</tr>
+<tr>
+<td><code>stat_bin2d()</code> / <code>stat_bin_2d()</code></td>
+<td>2D rectangular binning</td>
+</tr>
+<tr>
+<td><code>stat_bin_hex()</code> / <code>stat_binhex()</code></td>
+<td>Hexagonal binning</td>
+</tr>
+<tr>
+<td><code>stat_contour()</code></td>
+<td>Contour calculation</td>
+</tr>
+<tr>
+<td><code>stat_contour_filled()</code></td>
+<td>Filled contour calculation</td>
+</tr>
+<tr>
+<td><code>stat_density2d()</code> / <code>stat_density_2d()</code></td>
+<td>2D kernel density</td>
+</tr>
+<tr>
+<td><code>stat_density2d_filled()</code> / <code>stat_density_2d_filled()</code></td>
+<td>Filled 2D kernel density</td>
+</tr>
+<tr>
+<td><code>stat_ellipse()</code></td>
+<td>Confidence ellipse</td>
+</tr>
+<tr>
+<td><code>stat_unique()</code></td>
+<td>Remove duplicates</td>
+</tr>
+<tr>
+<td><code>stat_sum()</code></td>
+<td>Count overlapping points</td>
+</tr>
+<tr>
+<td><code>stat_ydensity()</code></td>
+<td>Violin density estimate</td>
+</tr>
+<tr>
+<td><code>stat_align()</code></td>
+<td>Align observations across groups</td>
+</tr>
+<tr>
+<td><code>stat_connect()</code></td>
+<td>Connect observations</td>
+</tr>
+<tr>
+<td><code>stat_manual()</code></td>
+<td>Manual stat (user-supplied computation)</td>
+</tr>
+<tr>
+<td><code>stat_quantile()</code></td>
+<td>Quantile regression</td>
+</tr>
+<tr>
+<td><code>stat_spoke()</code></td>
+<td>Convert angle/radius to segment endpoints</td>
+</tr>
+</tbody>
+</table>
+<h3 id="summary-helpers">Summary helpers</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mean_se()</code></td>
+<td>Mean and standard error</td>
+</tr>
+<tr>
+<td><code>mean_cl_boot()</code></td>
+<td>Mean with bootstrapped confidence limits</td>
+</tr>
+<tr>
+<td><code>mean_cl_normal()</code></td>
+<td>Mean with normal confidence limits</td>
+</tr>
+<tr>
+<td><code>mean_sdl()</code></td>
+<td>Mean +/- constant * standard deviation</td>
+</tr>
+<tr>
+<td><code>median_hilow()</code></td>
+<td>Median with high and low quantiles</td>
+</tr>
+</tbody>
+</table>
+<h2 id="scales">Scales</h2>
+<h3 id="position-scales">Position scales</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scale_x_continuous()</code> / <code>scale_y_continuous()</code></td>
+<td>Continuous position scale</td>
+</tr>
+<tr>
+<td><code>scale_x_discrete()</code> / <code>scale_y_discrete()</code></td>
+<td>Discrete position scale</td>
+</tr>
+<tr>
+<td><code>scale_x_log10()</code> / <code>scale_y_log10()</code></td>
+<td>Log10-transformed position</td>
+</tr>
+<tr>
+<td><code>scale_x_sqrt()</code> / <code>scale_y_sqrt()</code></td>
+<td>Square-root-transformed position</td>
+</tr>
+<tr>
+<td><code>scale_x_reverse()</code> / <code>scale_y_reverse()</code></td>
+<td>Reversed position</td>
+</tr>
+<tr>
+<td><code>scale_x_binned()</code> / <code>scale_y_binned()</code></td>
+<td>Binned position</td>
+</tr>
+<tr>
+<td><code>scale_x_date()</code> / <code>scale_y_date()</code></td>
+<td>Date position</td>
+</tr>
+<tr>
+<td><code>scale_x_datetime()</code> / <code>scale_y_datetime()</code></td>
+<td>Datetime position</td>
+</tr>
+<tr>
+<td><code>scale_x_time()</code> / <code>scale_y_time()</code></td>
+<td>Time position</td>
+</tr>
+</tbody>
+</table>
+<h3 id="colour-and-fill-scales">Colour and fill scales</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scale_colour_continuous()</code> / <code>scale_fill_continuous()</code></td>
+<td>Continuous colour mapping</td>
+</tr>
+<tr>
+<td><code>scale_colour_discrete()</code> / <code>scale_fill_discrete()</code></td>
+<td>Discrete colour mapping</td>
+</tr>
+<tr>
+<td><code>scale_colour_gradient()</code> / <code>scale_fill_gradient()</code></td>
+<td>Sequential two-colour gradient</td>
+</tr>
+<tr>
+<td><code>scale_colour_gradient2()</code> / <code>scale_fill_gradient2()</code></td>
+<td>Diverging three-colour gradient</td>
+</tr>
+<tr>
+<td><code>scale_colour_gradientn()</code> / <code>scale_fill_gradientn()</code></td>
+<td>N-colour gradient</td>
+</tr>
+<tr>
+<td><code>scale_colour_hue()</code> / <code>scale_fill_hue()</code></td>
+<td>Evenly-spaced hue colours</td>
+</tr>
+<tr>
+<td><code>scale_colour_brewer()</code> / <code>scale_fill_brewer()</code></td>
+<td>ColorBrewer palettes</td>
+</tr>
+<tr>
+<td><code>scale_colour_distiller()</code> / <code>scale_fill_distiller()</code></td>
+<td>Continuous ColorBrewer palettes</td>
+</tr>
+<tr>
+<td><code>scale_colour_fermenter()</code> / <code>scale_fill_fermenter()</code></td>
+<td>Binned ColorBrewer palettes</td>
+</tr>
+<tr>
+<td><code>scale_colour_viridis_c()</code> / <code>scale_fill_viridis_c()</code></td>
+<td>Continuous viridis palettes</td>
+</tr>
+<tr>
+<td><code>scale_colour_viridis_d()</code> / <code>scale_fill_viridis_d()</code></td>
+<td>Discrete viridis palettes</td>
+</tr>
+<tr>
+<td><code>scale_colour_viridis_b()</code> / <code>scale_fill_viridis_b()</code></td>
+<td>Binned viridis palettes</td>
+</tr>
+<tr>
+<td><code>scale_colour_grey()</code> / <code>scale_fill_grey()</code></td>
+<td>Grey palette</td>
+</tr>
+<tr>
+<td><code>scale_colour_identity()</code> / <code>scale_fill_identity()</code></td>
+<td>Use values as-is</td>
+</tr>
+<tr>
+<td><code>scale_colour_manual()</code> / <code>scale_fill_manual()</code></td>
+<td>Manual colour values</td>
+</tr>
+<tr>
+<td><code>scale_colour_binned()</code> / <code>scale_fill_binned()</code></td>
+<td>Binned colour mapping</td>
+</tr>
+<tr>
+<td><code>scale_colour_steps()</code> / <code>scale_fill_steps()</code></td>
+<td>Binned sequential gradient</td>
+</tr>
+<tr>
+<td><code>scale_colour_steps2()</code> / <code>scale_fill_steps2()</code></td>
+<td>Binned diverging gradient</td>
+</tr>
+<tr>
+<td><code>scale_colour_stepsn()</code> / <code>scale_fill_stepsn()</code></td>
+<td>Binned N-colour gradient</td>
+</tr>
+<tr>
+<td><code>scale_colour_date()</code> / <code>scale_fill_date()</code></td>
+<td>Date colour mapping</td>
+</tr>
+<tr>
+<td><code>scale_colour_datetime()</code> / <code>scale_fill_datetime()</code></td>
+<td>Datetime colour mapping</td>
+</tr>
+<tr>
+<td><code>scale_colour_ordinal()</code> / <code>scale_fill_ordinal()</code></td>
+<td>Ordinal colour mapping</td>
+</tr>
+</tbody>
+</table>
+<p>All <code>scale_colour_*</code> functions have <code>scale_color_*</code> aliases.</p>
+<h3 id="alpha-scales">Alpha scales</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scale_alpha()</code></td>
+<td>Continuous alpha (transparency)</td>
+</tr>
+<tr>
+<td><code>scale_alpha_continuous()</code></td>
+<td>Continuous alpha</td>
+</tr>
+<tr>
+<td><code>scale_alpha_discrete()</code></td>
+<td>Discrete alpha</td>
+</tr>
+<tr>
+<td><code>scale_alpha_binned()</code></td>
+<td>Binned alpha</td>
+</tr>
+<tr>
+<td><code>scale_alpha_identity()</code></td>
+<td>Use alpha values as-is</td>
+</tr>
+<tr>
+<td><code>scale_alpha_manual()</code></td>
+<td>Manual alpha values</td>
+</tr>
+<tr>
+<td><code>scale_alpha_ordinal()</code></td>
+<td>Ordinal alpha</td>
+</tr>
+<tr>
+<td><code>scale_alpha_date()</code></td>
+<td>Date-based alpha</td>
+</tr>
+<tr>
+<td><code>scale_alpha_datetime()</code></td>
+<td>Datetime-based alpha</td>
+</tr>
+</tbody>
+</table>
+<h3 id="size-scales">Size scales</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scale_size()</code></td>
+<td>Map variable to point size</td>
+</tr>
+<tr>
+<td><code>scale_size_continuous()</code></td>
+<td>Continuous size</td>
+</tr>
+<tr>
+<td><code>scale_size_discrete()</code></td>
+<td>Discrete size</td>
+</tr>
+<tr>
+<td><code>scale_size_binned()</code></td>
+<td>Binned size</td>
+</tr>
+<tr>
+<td><code>scale_size_area()</code></td>
+<td>Size by area (0 maps to 0)</td>
+</tr>
+<tr>
+<td><code>scale_size_binned_area()</code></td>
+<td>Binned area-proportional size</td>
+</tr>
+<tr>
+<td><code>scale_size_identity()</code></td>
+<td>Use size values as-is</td>
+</tr>
+<tr>
+<td><code>scale_size_manual()</code></td>
+<td>Manual size values</td>
+</tr>
+<tr>
+<td><code>scale_size_ordinal()</code></td>
+<td>Ordinal size</td>
+</tr>
+<tr>
+<td><code>scale_size_date()</code></td>
+<td>Date-based size</td>
+</tr>
+<tr>
+<td><code>scale_size_datetime()</code></td>
+<td>Datetime-based size</td>
+</tr>
+<tr>
+<td><code>scale_radius()</code></td>
+<td>Map variable to radius</td>
+</tr>
+</tbody>
+</table>
+<h3 id="shape-scales">Shape scales</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scale_shape()</code></td>
+<td>Map variable to point shape</td>
+</tr>
+<tr>
+<td><code>scale_shape_discrete()</code></td>
+<td>Discrete shapes</td>
+</tr>
+<tr>
+<td><code>scale_shape_binned()</code></td>
+<td>Binned shapes</td>
+</tr>
+<tr>
+<td><code>scale_shape_identity()</code></td>
+<td>Use shape values as-is</td>
+</tr>
+<tr>
+<td><code>scale_shape_manual()</code></td>
+<td>Manual shape values</td>
+</tr>
+<tr>
+<td><code>scale_shape_ordinal()</code></td>
+<td>Ordinal shapes</td>
+</tr>
+</tbody>
+</table>
+<h3 id="linetype-scales">Linetype scales</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scale_linetype()</code></td>
+<td>Map variable to line type</td>
+</tr>
+<tr>
+<td><code>scale_linetype_discrete()</code></td>
+<td>Discrete line types</td>
+</tr>
+<tr>
+<td><code>scale_linetype_binned()</code></td>
+<td>Binned line types</td>
+</tr>
+<tr>
+<td><code>scale_linetype_identity()</code></td>
+<td>Use linetype values as-is</td>
+</tr>
+<tr>
+<td><code>scale_linetype_manual()</code></td>
+<td>Manual line type values</td>
+</tr>
+</tbody>
+</table>
+<h3 id="linewidth-scales">Linewidth scales</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scale_linewidth()</code></td>
+<td>Map variable to line width</td>
+</tr>
+<tr>
+<td><code>scale_linewidth_continuous()</code></td>
+<td>Continuous linewidth</td>
+</tr>
+<tr>
+<td><code>scale_linewidth_discrete()</code></td>
+<td>Discrete linewidth</td>
+</tr>
+<tr>
+<td><code>scale_linewidth_binned()</code></td>
+<td>Binned linewidth</td>
+</tr>
+<tr>
+<td><code>scale_linewidth_identity()</code></td>
+<td>Use linewidth values as-is</td>
+</tr>
+<tr>
+<td><code>scale_linewidth_manual()</code></td>
+<td>Manual linewidth values</td>
+</tr>
+<tr>
+<td><code>scale_linewidth_ordinal()</code></td>
+<td>Ordinal linewidth</td>
+</tr>
+<tr>
+<td><code>scale_linewidth_date()</code></td>
+<td>Date-based linewidth</td>
+</tr>
+<tr>
+<td><code>scale_linewidth_datetime()</code></td>
+<td>Datetime-based linewidth</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scale-infrastructure">Scale infrastructure</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>continuous_scale()</code></td>
+<td>Create a continuous scale</td>
+</tr>
+<tr>
+<td><code>discrete_scale()</code></td>
+<td>Create a discrete scale</td>
+</tr>
+<tr>
+<td><code>binned_scale()</code></td>
+<td>Create a binned scale</td>
+</tr>
+<tr>
+<td><code>sec_axis()</code></td>
+<td>Specify a secondary axis</td>
+</tr>
+<tr>
+<td><code>dup_axis()</code></td>
+<td>Duplicate primary axis on secondary</td>
+</tr>
+<tr>
+<td><code>expansion()</code> / <code>expand_scale()</code></td>
+<td>Control scale expansion</td>
+</tr>
+<tr>
+<td><code>find_scale()</code></td>
+<td>Find appropriate scale for an aesthetic</td>
+</tr>
+<tr>
+<td><code>scale_type()</code></td>
+<td>Determine scale type for data</td>
+</tr>
+</tbody>
+</table>
+<h2 id="coordinates">Coordinates</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>coord_cartesian()</code></td>
+<td>Cartesian coordinates (default)</td>
+</tr>
+<tr>
+<td><code>coord_fixed()</code> / <code>coord_equal()</code></td>
+<td>Fixed aspect ratio</td>
+</tr>
+<tr>
+<td><code>coord_flip()</code></td>
+<td>Flip x and y axes</td>
+</tr>
+<tr>
+<td><code>coord_polar()</code></td>
+<td>Polar coordinates</td>
+</tr>
+<tr>
+<td><code>coord_radial()</code></td>
+<td>Radial coordinates</td>
+</tr>
+<tr>
+<td><code>coord_trans()</code> / <code>coord_transform()</code></td>
+<td>Transformed Cartesian coordinates</td>
+</tr>
+<tr>
+<td><code>coord_munch()</code></td>
+<td>Munch coordinates for curved geometries</td>
+</tr>
+</tbody>
+</table>
+<h2 id="facets">Facets</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>facet_grid()</code></td>
+<td>Lay out panels in a grid (rows ~ cols)</td>
+</tr>
+<tr>
+<td><code>facet_wrap()</code></td>
+<td>Wrap 1D ribbon of panels</td>
+</tr>
+<tr>
+<td><code>facet_null()</code></td>
+<td>No faceting (default)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="position-adjustments">Position Adjustments</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>position_identity()</code></td>
+<td>No adjustment</td>
+</tr>
+<tr>
+<td><code>position_dodge()</code></td>
+<td>Dodge overlapping objects side-to-side</td>
+</tr>
+<tr>
+<td><code>position_dodge2()</code></td>
+<td>Dodge preserving total width</td>
+</tr>
+<tr>
+<td><code>position_jitter()</code></td>
+<td>Randomly jitter points</td>
+</tr>
+<tr>
+<td><code>position_jitterdodge()</code></td>
+<td>Dodge and jitter</td>
+</tr>
+<tr>
+<td><code>position_nudge()</code></td>
+<td>Nudge points by fixed offset</td>
+</tr>
+<tr>
+<td><code>position_stack()</code></td>
+<td>Stack overlapping objects</td>
+</tr>
+<tr>
+<td><code>position_fill()</code></td>
+<td>Stack and normalise to fill</td>
+</tr>
+</tbody>
+</table>
+<h2 id="themes">Themes</h2>
+<h3 id="complete-themes">Complete themes</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>theme_grey()</code> / <code>theme_gray()</code></td>
+<td>Default grey theme</td>
+</tr>
+<tr>
+<td><code>theme_bw()</code></td>
+<td>Black-and-white theme</td>
+</tr>
+<tr>
+<td><code>theme_linedraw()</code></td>
+<td>Line drawing theme</td>
+</tr>
+<tr>
+<td><code>theme_light()</code></td>
+<td>Light theme</td>
+</tr>
+<tr>
+<td><code>theme_dark()</code></td>
+<td>Dark theme</td>
+</tr>
+<tr>
+<td><code>theme_minimal()</code></td>
+<td>Minimal theme</td>
+</tr>
+<tr>
+<td><code>theme_classic()</code></td>
+<td>Classic theme (axes only)</td>
+</tr>
+<tr>
+<td><code>theme_void()</code></td>
+<td>Empty theme</td>
+</tr>
+<tr>
+<td><code>theme_test()</code></td>
+<td>Theme for visual testing</td>
+</tr>
+</tbody>
+</table>
+<h3 id="theme-elements">Theme elements</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>element_blank()</code></td>
+<td>Remove element</td>
+</tr>
+<tr>
+<td><code>element_line()</code></td>
+<td>Style lines</td>
+</tr>
+<tr>
+<td><code>element_rect()</code></td>
+<td>Style rectangles</td>
+</tr>
+<tr>
+<td><code>element_text()</code></td>
+<td>Style text</td>
+</tr>
+<tr>
+<td><code>element_point()</code></td>
+<td>Style points</td>
+</tr>
+<tr>
+<td><code>element_polygon()</code></td>
+<td>Style polygons</td>
+</tr>
+<tr>
+<td><code>element_geom()</code></td>
+<td>Default geom styling</td>
+</tr>
+<tr>
+<td><code>element_grob()</code></td>
+<td>Custom grob element</td>
+</tr>
+</tbody>
+</table>
+<h3 id="theme-utilities">Theme utilities</h3>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>theme(...)</code></td>
+<td>Modify theme elements</td>
+</tr>
+<tr>
+<td><code>theme_get()</code> / <code>get_theme()</code></td>
+<td>Get current default theme</td>
+</tr>
+<tr>
+<td><code>theme_set()</code> / <code>set_theme()</code></td>
+<td>Set default theme</td>
+</tr>
+<tr>
+<td><code>theme_update()</code> / <code>update_theme()</code></td>
+<td>Update default theme</td>
+</tr>
+<tr>
+<td><code>theme_replace()</code> / <code>replace_theme()</code></td>
+<td>Replace default theme elements</td>
+</tr>
+<tr>
+<td><code>reset_theme_settings()</code></td>
+<td>Reset theme to default</td>
+</tr>
+<tr>
+<td><code>margin()</code></td>
+<td>Define margins (top, right, bottom, left)</td>
+</tr>
+<tr>
+<td><code>rel()</code></td>
+<td>Relative sizing</td>
+</tr>
+<tr>
+<td><code>calc_element()</code></td>
+<td>Calculate element from theme hierarchy</td>
+</tr>
+<tr>
+<td><code>merge_element()</code></td>
+<td>Merge two theme elements</td>
+</tr>
+</tbody>
+</table>
+<h2 id="guides">Guides</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>guide_axis()</code></td>
+<td>Axis guide</td>
+</tr>
+<tr>
+<td><code>guide_axis_logticks()</code></td>
+<td>Axis with log-scale tick marks</td>
+</tr>
+<tr>
+<td><code>guide_axis_stack()</code></td>
+<td>Stacked axis guides</td>
+</tr>
+<tr>
+<td><code>guide_axis_theta()</code></td>
+<td>Theta axis for polar coordinates</td>
+</tr>
+<tr>
+<td><code>guide_legend()</code></td>
+<td>Legend guide</td>
+</tr>
+<tr>
+<td><code>guide_colourbar()</code> / <code>guide_colorbar()</code></td>
+<td>Continuous colour bar</td>
+</tr>
+<tr>
+<td><code>guide_coloursteps()</code> / <code>guide_colorsteps()</code></td>
+<td>Binned colour steps</td>
+</tr>
+<tr>
+<td><code>guide_bins()</code></td>
+<td>Binned legend</td>
+</tr>
+<tr>
+<td><code>guide_custom()</code></td>
+<td>Custom guide grob</td>
+</tr>
+<tr>
+<td><code>guide_none()</code></td>
+<td>Suppress guide</td>
+</tr>
+<tr>
+<td><code>guides(...)</code></td>
+<td>Set guides for multiple aesthetics</td>
+</tr>
+</tbody>
+</table>
+<h2 id="labels-and-annotations">Labels and Annotations</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>labs(...)</code></td>
+<td>Set plot labels (title, subtitle, x, y, caption, etc.)</td>
+</tr>
+<tr>
+<td><code>xlab()</code></td>
+<td>Set x-axis label</td>
+</tr>
+<tr>
+<td><code>ylab()</code></td>
+<td>Set y-axis label</td>
+</tr>
+<tr>
+<td><code>ggtitle()</code></td>
+<td>Set plot title and subtitle</td>
+</tr>
+<tr>
+<td><code>lims(...)</code></td>
+<td>Set scale limits</td>
+</tr>
+<tr>
+<td><code>xlim()</code></td>
+<td>Set x-axis limits</td>
+</tr>
+<tr>
+<td><code>ylim()</code></td>
+<td>Set y-axis limits</td>
+</tr>
+<tr>
+<td><code>expand_limits()</code></td>
+<td>Expand limits to include values</td>
+</tr>
+<tr>
+<td><code>annotate()</code></td>
+<td>Add annotation layer</td>
+</tr>
+<tr>
+<td><code>annotation_custom()</code></td>
+<td>Fixed-position grob annotation</td>
+</tr>
+<tr>
+<td><code>annotation_raster()</code></td>
+<td>Fixed-position raster annotation</td>
+</tr>
+<tr>
+<td><code>annotation_logticks()</code></td>
+<td>Log-scale tick mark annotations</td>
+</tr>
+</tbody>
+</table>
+<h2 id="draw-keys">Draw Keys</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>draw_key_point()</code></td>
+<td>Legend key for points</td>
+</tr>
+<tr>
+<td><code>draw_key_path()</code></td>
+<td>Legend key for paths/lines</td>
+</tr>
+<tr>
+<td><code>draw_key_rect()</code></td>
+<td>Legend key for rectangles</td>
+</tr>
+<tr>
+<td><code>draw_key_polygon()</code></td>
+<td>Legend key for polygons</td>
+</tr>
+<tr>
+<td><code>draw_key_blank()</code></td>
+<td>Empty legend key</td>
+</tr>
+<tr>
+<td><code>draw_key_boxplot()</code></td>
+<td>Legend key for box plots</td>
+</tr>
+<tr>
+<td><code>draw_key_crossbar()</code></td>
+<td>Legend key for crossbars</td>
+</tr>
+<tr>
+<td><code>draw_key_dotplot()</code></td>
+<td>Legend key for dot plots</td>
+</tr>
+<tr>
+<td><code>draw_key_label()</code></td>
+<td>Legend key for labels</td>
+</tr>
+<tr>
+<td><code>draw_key_linerange()</code></td>
+<td>Legend key for line ranges</td>
+</tr>
+<tr>
+<td><code>draw_key_pointrange()</code></td>
+<td>Legend key for point ranges</td>
+</tr>
+<tr>
+<td><code>draw_key_smooth()</code></td>
+<td>Legend key for smoothed lines</td>
+</tr>
+<tr>
+<td><code>draw_key_text()</code></td>
+<td>Legend key for text</td>
+</tr>
+<tr>
+<td><code>draw_key_abline()</code></td>
+<td>Legend key for reference lines</td>
+</tr>
+<tr>
+<td><code>draw_key_vline()</code></td>
+<td>Legend key for vertical lines</td>
+</tr>
+<tr>
+<td><code>draw_key_timeseries()</code></td>
+<td>Legend key for time series</td>
+</tr>
+<tr>
+<td><code>draw_key_vpath()</code></td>
+<td>Legend key for vertical paths</td>
+</tr>
+</tbody>
+</table>
+<h2 id="plot-introspection">Plot Introspection</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ggplot_build(plot)</code></td>
+<td>Build a plot for rendering</td>
+</tr>
+<tr>
+<td><code>ggplot_gtable(data)</code></td>
+<td>Convert built plot data to gtable</td>
+</tr>
+<tr>
+<td><code>ggplotGrob(plot)</code></td>
+<td>Convert plot to grob</td>
+</tr>
+<tr>
+<td><code>get_layer_data(plot, i)</code></td>
+<td>Extract computed data from a layer</td>
+</tr>
+<tr>
+<td><code>get_layer_grob(plot, i)</code></td>
+<td>Extract grob from a layer</td>
+</tr>
+<tr>
+<td><code>get_panel_scales(plot)</code></td>
+<td>Extract panel scales</td>
+</tr>
+<tr>
+<td><code>get_guide_data(plot)</code></td>
+<td>Extract guide data</td>
+</tr>
+<tr>
+<td><code>get_strip_labels(plot)</code></td>
+<td>Extract facet strip labels</td>
+</tr>
+<tr>
+<td><code>get_labs(plot)</code></td>
+<td>Extract all labels</td>
+</tr>
+<tr>
+<td><code>summarise_plot(plot)</code></td>
+<td>Summary of plot structure</td>
+</tr>
+<tr>
+<td><code>summarise_coord(plot)</code></td>
+<td>Summary of coordinate system</td>
+</tr>
+<tr>
+<td><code>summarise_layers(plot)</code></td>
+<td>Summary of layers</td>
+</tr>
+<tr>
+<td><code>summarise_layout(plot)</code></td>
+<td>Summary of layout</td>
+</tr>
+</tbody>
+</table>
+<h2 id="datasets">Datasets</h2>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>datasets.diamonds</code></td>
+<td>Prices of 50,000+ round-cut diamonds</td>
+</tr>
+<tr>
+<td><code>datasets.economics</code></td>
+<td>US economic time series</td>
+</tr>
+<tr>
+<td><code>datasets.economics_long</code></td>
+<td>Economics data in long format</td>
+</tr>
+<tr>
+<td><code>datasets.faithfuld</code></td>
+<td>Old Faithful eruption data (2D density)</td>
+</tr>
+<tr>
+<td><code>datasets.luv_colours</code></td>
+<td>Colour data in Luv space</td>
+</tr>
+<tr>
+<td><code>datasets.midwest</code></td>
+<td>Midwest demographics</td>
+</tr>
+<tr>
+<td><code>datasets.mpg</code></td>
+<td>Fuel economy data (1999-2008)</td>
+</tr>
+<tr>
+<td><code>datasets.msleep</code></td>
+<td>Mammalian sleep data</td>
+</tr>
+<tr>
+<td><code>datasets.presidential</code></td>
+<td>US presidential terms</td>
+</tr>
+<tr>
+<td><code>datasets.seals</code></td>
+<td>Seal movement vectors</td>
+</tr>
+<tr>
+<td><code>datasets.txhousing</code></td>
+<td>Texas housing market data</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

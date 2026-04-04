@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ggplot2_py"
+version = "0.1.0"
+description = "Python port of the R ggplot2 package"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "grid_py>=0.1.0",
+    "gtable_py>=0.1.0",
+    "scales>=0.1.0",
+    "numpy>=1.24",
+    "matplotlib>=3.6",
+    "pandas>=1.5",
+    "scipy>=1.10",
+    "contourpy>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "ruff"]
+docs = ["mkdocs", "mkdocstrings[python]", "mkdocs-material", "mkdocs-jupyter"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["ggplot2_py"]
+
+[tool.hatch.build.targets.sdist]
+include = ["ggplot2_py/", "tutorials/", "LICENSE", "README.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
