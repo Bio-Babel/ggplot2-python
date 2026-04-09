@@ -2,7 +2,7 @@
 Save ggplot objects to files.
 
 Provides :func:`ggsave` for saving plots to PNG, PDF, SVG, JPG and other
-formats via matplotlib.
+formats via Cairo.
 """
 
 from __future__ import annotations
@@ -204,8 +204,8 @@ def ggsave(
         If the target directory does not exist and *create_dir* is
         ``False``.
     """
-    import matplotlib
-    import matplotlib.pyplot as plt
+    from grid_py import grid_draw, grid_newpage, get_state
+    from grid_py.renderer import CairoRenderer
 
     # Resolve DPI
     dpi_val = _parse_dpi(dpi)
@@ -262,38 +262,54 @@ def ggsave(
     if bg is None:
         bg = "white"
 
-    # Create figure and render
-    fig = plt.figure(figsize=(width_in, height_in), dpi=dpi_val)
-    fig.patch.set_facecolor(bg)
+    # Choose Cairo surface type based on output device
+    _VECTOR_DEVICES = {"pdf", "svg", "ps", "eps"}
+    if dev in _VECTOR_DEVICES:
+        surface_type = {"pdf": "pdf", "svg": "svg", "ps": "ps", "eps": "ps"}[dev]
+        renderer = CairoRenderer(
+            width=width_in, height=height_in, dpi=dpi_val,
+            surface_type=surface_type, filename=filename, bg=bg,
+        )
+    else:
+        # Raster output: render to ImageSurface, then write
+        renderer = CairoRenderer(
+            width=width_in, height=height_in, dpi=dpi_val,
+            surface_type="image", bg=bg,
+        )
 
-    # Try to render the gtable via grid_py
-    try:
-        from grid_py import grid_draw, grid_newpage
-        grid_draw(gtable)
-    except Exception:
-        # Fallback: if grid_draw fails, at least save the empty figure
-        pass
+    # Bind renderer and draw
+    state = get_state()
+    state.reset()
+    state.init_device(renderer)
 
-    # Save
-    savefig_kwargs: Dict[str, Any] = {
-        "dpi": dpi_val,
-        "facecolor": bg,
-        "bbox_inches": "tight",
-    }
-    savefig_kwargs.update(kwargs)
+    grid_draw(gtable)
 
-    # Map device to matplotlib format
-    fmt_map = {
-        "jpg": "jpeg",
-        "tif": "tiff",
-        "eps": "eps",
-        "ps": "ps",
-    }
-    fmt = fmt_map.get(dev, dev)
-    savefig_kwargs["format"] = fmt
+    # Write output
+    if dev in _VECTOR_DEVICES:
+        renderer.finish()
+    elif dev in ("png",):
+        renderer.write_to_png(filename)
+    elif dev in ("jpg", "jpeg", "tiff", "tif", "bmp", "webp"):
+        # Cairo natively writes PNG; convert via Pillow for other raster formats
+        from PIL import Image
+        import io
 
-    fig.savefig(filename, **savefig_kwargs)
-    plt.close(fig)
+        png_bytes = renderer.to_png_bytes()
+        img = Image.open(io.BytesIO(png_bytes))
+        fmt_map: Dict[str, str] = {
+            "jpg": "JPEG", "jpeg": "JPEG",
+            "tiff": "TIFF", "tif": "TIFF",
+            "bmp": "BMP", "webp": "WEBP",
+        }
+        pil_fmt = fmt_map.get(dev, dev.upper())
+        save_kwargs: Dict[str, Any] = {}
+        if pil_fmt == "JPEG":
+            save_kwargs["quality"] = 95
+            img = img.convert("RGB")
+        img.save(filename, format=pil_fmt, **save_kwargs)
+    else:
+        # Unknown raster format — try PNG
+        renderer.write_to_png(filename)
 
     cli_inform(f"Saving {width_in:.3g} x {height_in:.3g} {units} image to {filename}")
 

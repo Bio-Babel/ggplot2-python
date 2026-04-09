@@ -254,28 +254,23 @@ class GGPlot:
 
     def _repr_png_(self) -> Optional[bytes]:
         """Render the plot as PNG bytes for Jupyter notebook display."""
-        import io
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
         from grid_py import grid_draw, grid_newpage
 
         try:
-            grid_newpage()
-            fig = plt.gcf()
-            fig.set_size_inches(self.fig_width, self.fig_height)
+            grid_newpage(
+                width=self.fig_width,
+                height=self.fig_height,
+                dpi=float(self.fig_dpi),
+            )
             built = ggplot_build(self)
             gtable = ggplot_gtable(built)
             grid_draw(gtable)
-            ax = fig.axes[0] if fig.axes else None
-            # Add axes labels and title from plot labels
-            if ax is not None:
-                _mpl_add_labels(ax, self, built)
-            buf = io.BytesIO()
-            fig.savefig(buf, format="png", dpi=self.fig_dpi, bbox_inches="tight")
-            plt.close(fig)
-            buf.seek(0)
-            return buf.read()
+
+            from grid_py import get_state
+            renderer = get_state().get_renderer()
+            if renderer is not None:
+                return renderer.to_png_bytes()
+            return None
         except Exception:
             return None
 
@@ -1271,69 +1266,6 @@ def panel_cols(table: Any) -> Dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
-def _mpl_add_labels(ax: Any, plot: GGPlot, built: Any) -> None:
-    """Add axes ticks, labels, and title to a matplotlib Axes.
-
-    Uses the plot labels and panel_params from the build to annotate
-    the matplotlib axes produced by grid_draw.
-    """
-    import numpy as np
-    labels = plot.labels if hasattr(plot, "labels") else {}
-    layout = built.layout
-
-    # Axis labels
-    x_lab = labels.get("x", "")
-    y_lab = labels.get("y", "")
-    if x_lab:
-        ax.set_xlabel(str(x_lab), fontsize=11)
-    if y_lab:
-        ax.set_ylabel(str(y_lab), fontsize=11)
-
-    # Title / subtitle
-    title = labels.get("title", "")
-    subtitle = labels.get("subtitle", "")
-    if title:
-        t = str(title)
-        if subtitle:
-            t += "\n" + str(subtitle)
-        ax.set_title(t, fontsize=13, loc="left")
-
-    # Axis ticks from panel_params
-    if layout.panel_params:
-        pp = layout.panel_params[0]
-        x_range = pp.get("x_range") or pp.get("x.range")
-        y_range = pp.get("y_range") or pp.get("y.range")
-
-        if x_range is not None:
-            xmin, xmax = float(x_range[0]), float(x_range[1])
-            # Generate nice ticks
-            ticks = np.linspace(xmin, xmax, 6)
-            # Convert data ticks to NPC [0, 1]
-            span = xmax - xmin
-            if span > 0:
-                npc_ticks = (ticks - xmin) / span
-                ax.set_xticks(npc_ticks)
-                ax.set_xticklabels([f"{t:.4g}" for t in ticks], fontsize=9)
-            ax.tick_params(axis="x", direction="out", length=3)
-
-        if y_range is not None:
-            ymin, ymax = float(y_range[0]), float(y_range[1])
-            ticks = np.linspace(ymin, ymax, 6)
-            span = ymax - ymin
-            if span > 0:
-                npc_ticks = (ticks - ymin) / span
-                ax.set_yticks(npc_ticks)
-                ax.set_yticklabels([f"{t:.4g}" for t in ticks], fontsize=9)
-            ax.tick_params(axis="y", direction="out", length=3)
-
-    # Turn on axes frame
-    ax.set_frame_on(True)
-    for spine in ax.spines.values():
-        spine.set_visible(True)
-        spine.set_linewidth(0.5)
-        spine.set_color("grey")
-    ax.tick_params(bottom=True, left=True, top=False, right=False)
-
 
 # ---------------------------------------------------------------------------
 # print_plot
@@ -1377,12 +1309,5 @@ def print_plot(
         push_viewport(vp)
         grid_draw(gtable)
         up_viewport()
-
-    # Add axes labels and title using matplotlib
-    import matplotlib.pyplot as plt
-    fig = plt.gcf()
-    ax = fig.axes[0] if fig.axes else None
-    if ax is not None:
-        _mpl_add_labels(ax, plot, built)
 
     return plot
