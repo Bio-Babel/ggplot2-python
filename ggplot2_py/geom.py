@@ -2454,26 +2454,31 @@ class GeomHex(Geom):
                     for c in viridis(t)
                 ]
 
-        # R semantics: GeomHex uses resolution() on both x and y
-        # independently to compute hexagon vertex offsets.
-        #   dx = resolution(data$x, FALSE)
-        #   dy = resolution(data$y, FALSE) / sqrt(3) / 2
-        # We use median gap to avoid the offset-hex artefact.
+        # R semantics: GeomHex builds hex vertices in data coords using
+        # the stat's binwidth, then transforms everything to NPC.
+        # This avoids resolution() artefacts from offset hex grids.
         n = len(data)
 
-        def _median_res(vals):
-            u = np.sort(np.unique(vals))
-            if len(u) > 1:
-                d = np.diff(u)
-                return float(np.median(d[d > 0])) if len(d[d > 0]) > 0 else 0.5
-            return 0.5
+        # Recover binwidth from the stat's bin spacing in data coords.
+        xu = np.sort(np.unique(data["x"].values))
+        yu = np.sort(np.unique(data["y"].values))
+        if len(xu) > 2:
+            # Column spacing = most common large gap (skip tiny offsets)
+            xd = np.diff(xu)
+            bw_x = float(np.median(xd[xd > np.median(xd) * 0.5])) if len(xd) > 0 else 1.0
+        else:
+            bw_x = 1.0
+        if len(yu) > 2:
+            yd = np.diff(yu)
+            bw_y_row = float(np.median(yd[yd > np.median(yd) * 0.5])) if len(yd) > 0 else 1.0
+        else:
+            bw_y_row = 1.0
 
-        dx = _median_res(data["x"].values)
-        dy = _median_res(data["y"].values) / np.sqrt(3) / 2
-
-        angles = np.linspace(0, 2 * np.pi, 7)[:-1]
-        hex_x = dx * np.cos(angles)
-        hex_y = dy * np.sin(angles)
+        # R's hexcoords in data space: flat-top hex matching bin grid
+        hdx = bw_x / 2
+        hdy = bw_y_row / 2
+        hex_x = np.array([hdx, hdx, 0, -hdx, -hdx, 0])
+        hex_y = np.array([hdy/2, -hdy/2, -hdy, -hdy/2, hdy/2, hdy])
 
         all_x = np.repeat(data["x"].values, 6) + np.tile(hex_x, n)
         all_y = np.repeat(data["y"].values, 6) + np.tile(hex_y, n)
