@@ -46,6 +46,52 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
+def _scale_numeric_range(scale: Any, fallback: Optional[list] = None) -> list:
+    """Return the expanded numeric range for *scale*.
+
+    In R, ``CoordCartesian$setup_panel_params`` uses
+    ``view_scales_from_scale`` → ``scale$dimension()`` which applies
+    the scale's default expansion (``mult=0.05`` for continuous,
+    ``add=0.6`` for discrete).  This ensures data never sits exactly
+    on the axis boundary.
+
+    We always prefer ``dimension()`` over ``get_limits()`` because
+    ``dimension()`` returns the *expanded* range.
+    """
+    if scale is None:
+        return list(fallback or [0, 1])
+
+    # dimension() returns the expanded numeric range for both
+    # discrete (integers + add=0.6) and continuous (limits + mult=0.05).
+    if hasattr(scale, "dimension"):
+        try:
+            d = list(scale.dimension())
+            if len(d) >= 2:
+                float(d[0])
+                float(d[1])
+                return d
+        except (ValueError, TypeError):
+            pass
+
+    # Fallback to get_limits for scales without dimension()
+    if hasattr(scale, "get_limits"):
+        try:
+            lim = list(scale.get_limits())
+            float(lim[0])
+            float(lim[1])
+            return lim
+        except (ValueError, TypeError, IndexError):
+            pass
+
+    return list(fallback or [0, 1])
+
+
+def _is_discrete_scale(scale: Any) -> bool:
+    """Return True if *scale* is a discrete position scale."""
+    cls_name = type(scale).__name__ if scale is not None else ""
+    return "Discrete" in cls_name
+
+
 def _compute_mapped_breaks(
     scale: Any,
     range_: list,
@@ -54,10 +100,9 @@ def _compute_mapped_breaks(
     """Compute major breaks and rescale to [0, 1] NPC.
 
     If the scale provides ``get_breaks()``, use it; otherwise fall back
-    to ``numpy.linspace``.  For discrete scales (non-numeric ranges),
-    returns an empty array.
+    to ``numpy.linspace``.  For discrete position scales the breaks are
+    placed at the integer positions corresponding to each level.
     """
-    # Guard against non-numeric ranges (discrete scales)
     try:
         r0, r1 = float(range_[0]), float(range_[1])
     except (ValueError, TypeError):
@@ -66,7 +111,17 @@ def _compute_mapped_breaks(
     breaks = None
     if scale is not None and hasattr(scale, "get_breaks"):
         try:
-            breaks = scale.get_breaks(range_)
+            if _is_discrete_scale(scale):
+                # For discrete scales, call get_breaks() without numeric
+                # limits so it returns the category labels, then map to
+                # integer positions 1..N.
+                raw = scale.get_breaks()
+                if raw is not None and len(raw) > 0:
+                    breaks = np.arange(1, len(raw) + 1, dtype=float)
+            else:
+                raw = scale.get_breaks(range_)
+                if raw is not None and len(raw) > 0:
+                    breaks = np.asarray(raw, dtype=float)
         except Exception:
             pass
     if breaks is None or (hasattr(breaks, "__len__") and len(breaks) == 0):
@@ -81,6 +136,63 @@ def _compute_mapped_breaks(
     if rng == 0:
         return np.array([0.5] * len(breaks))
     return (breaks - r0) / rng
+
+
+def _compute_break_labels(scale: Any, range_: list) -> Tuple[np.ndarray, List[str]]:
+    """Return (break_positions_in_npc, labels) for axis rendering.
+
+    This supplements ``_compute_mapped_breaks`` by also returning the
+    text labels that should appear at each break.
+    """
+    try:
+        r0, r1 = float(range_[0]), float(range_[1])
+    except (ValueError, TypeError):
+        return np.array([]), []
+
+    if scale is None or not hasattr(scale, "get_breaks"):
+        return np.array([]), []
+
+    if _is_discrete_scale(scale):
+        raw_breaks = scale.get_breaks()  # string labels
+        if raw_breaks is None or len(raw_breaks) == 0:
+            return np.array([]), []
+        labels = [str(b) for b in raw_breaks]
+        positions = np.arange(1, len(raw_breaks) + 1, dtype=float)
+    else:
+        raw_breaks = scale.get_breaks(range_)
+        if raw_breaks is None or len(raw_breaks) == 0:
+            return np.array([]), []
+        try:
+            positions = np.asarray(raw_breaks, dtype=float)
+        except (ValueError, TypeError):
+            return np.array([]), []
+        # Get labels
+        if hasattr(scale, "get_labels"):
+            try:
+                labels = scale.get_labels(raw_breaks)
+            except Exception:
+                labels = [str(b) for b in raw_breaks]
+        else:
+            labels = [str(b) for b in raw_breaks]
+
+    # Filter out non-finite
+    finite = np.isfinite(positions)
+    positions = positions[finite]
+    labels = [l for l, f in zip(labels, finite) if f]
+
+    # Filter to range (keep only breaks within [r0, r1])
+    in_range = (positions >= r0) & (positions <= r1)
+    positions = positions[in_range]
+    labels = [l for l, f in zip(labels, in_range) if f]
+
+    # Rescale to [0, 1]
+    rng = r1 - r0
+    if rng == 0:
+        npc = np.full(len(positions), 0.5)
+    else:
+        npc = (positions - r0) / rng
+
+    return npc, labels
 
 
 def _compute_mapped_minor_breaks(
@@ -165,7 +277,6 @@ def guide_grid(
         if bg is not None:
             children.append(bg)
     except Exception:
-        # Fallback: white rectangle
         children.append(rect_grob(
             x=0.5, y=0.5, width=1.0, height=1.0,
             gp=Gpar(fill="white", col="transparent"),
@@ -177,8 +288,7 @@ def guide_grid(
     y_major = panel_params.get("y_major", np.array([]))
     y_minor = panel_params.get("y_minor", np.array([]))
 
-    # 2. Minor grid lines
-    # Minor Y (horizontal lines at y_minor positions)
+    # 2. Minor grid lines (all in [0,1] NPC — the panel viewport handles placement)
     if len(y_minor) > 0:
         try:
             grob = element_render(
@@ -190,16 +300,14 @@ def guide_grid(
             if grob is not None:
                 children.append(grob)
         except Exception:
-            xs = np.tile([0.0, 1.0], len(y_minor))
-            ys = np.repeat(y_minor, 2)
-            ids = np.repeat(np.arange(1, len(y_minor) + 1), 2)
             children.append(polyline_grob(
-                x=xs, y=ys, id=ids,
+                x=np.tile([0.0, 1.0], len(y_minor)),
+                y=np.repeat(y_minor, 2),
+                id=np.repeat(np.arange(1, len(y_minor) + 1), 2),
                 gp=Gpar(col="grey92", lwd=0.5),
                 name="grid.minor.y",
             ))
 
-    # Minor X (vertical lines at x_minor positions)
     if len(x_minor) > 0:
         try:
             grob = element_render(
@@ -211,17 +319,15 @@ def guide_grid(
             if grob is not None:
                 children.append(grob)
         except Exception:
-            xs = np.repeat(x_minor, 2)
-            ys = np.tile([0.0, 1.0], len(x_minor))
-            ids = np.repeat(np.arange(1, len(x_minor) + 1), 2)
             children.append(polyline_grob(
-                x=xs, y=ys, id=ids,
+                x=np.repeat(x_minor, 2),
+                y=np.tile([0.0, 1.0], len(x_minor)),
+                id=np.repeat(np.arange(1, len(x_minor) + 1), 2),
                 gp=Gpar(col="grey92", lwd=0.5),
                 name="grid.minor.x",
             ))
 
     # 3. Major grid lines
-    # Major Y (horizontal lines at y_major positions)
     if len(y_major) > 0:
         try:
             grob = element_render(
@@ -233,16 +339,14 @@ def guide_grid(
             if grob is not None:
                 children.append(grob)
         except Exception:
-            xs = np.tile([0.0, 1.0], len(y_major))
-            ys = np.repeat(y_major, 2)
-            ids = np.repeat(np.arange(1, len(y_major) + 1), 2)
             children.append(polyline_grob(
-                x=xs, y=ys, id=ids,
+                x=np.tile([0.0, 1.0], len(y_major)),
+                y=np.repeat(y_major, 2),
+                id=np.repeat(np.arange(1, len(y_major) + 1), 2),
                 gp=Gpar(col="white", lwd=1.0),
                 name="grid.major.y",
             ))
 
-    # Major X (vertical lines at x_major positions)
     if len(x_major) > 0:
         try:
             grob = element_render(
@@ -254,11 +358,10 @@ def guide_grid(
             if grob is not None:
                 children.append(grob)
         except Exception:
-            xs = np.repeat(x_major, 2)
-            ys = np.tile([0.0, 1.0], len(x_major))
-            ids = np.repeat(np.arange(1, len(x_major) + 1), 2)
             children.append(polyline_grob(
-                x=xs, y=ys, id=ids,
+                x=np.repeat(x_major, 2),
+                y=np.tile([0.0, 1.0], len(x_major)),
+                id=np.repeat(np.arange(1, len(x_major) + 1), 2),
                 gp=Gpar(col="white", lwd=1.0),
                 name="grid.major.x",
             ))
@@ -645,6 +748,10 @@ class Coord(GGProto):
         fg = self.render_fg(params, theme)
         bg = self.render_bg(params, theme)
         children = [bg] + (list(panel) if isinstance(panel, (list, tuple)) else [panel]) + [fg]
+
+        # The panel viewport maps NPC [0,1] to the panel sub-region,
+        # matching R's Coord$draw_panel which wraps content in a
+        # clipping viewport.
         return GTree(
             children=GList(*children),
             vp=Viewport(clip=self.clip),
@@ -885,15 +992,8 @@ class CoordCartesian(Coord):
         x_limits = self.limits.get("x")
         y_limits = self.limits.get("y")
 
-        if hasattr(scale_x, "get_limits"):
-            x_range = list(scale_x.get_limits())
-        else:
-            x_range = list(x_limits or [0, 1])
-
-        if hasattr(scale_y, "get_limits"):
-            y_range = list(scale_y.get_limits())
-        else:
-            y_range = list(y_limits or [0, 1])
+        x_range = _scale_numeric_range(scale_x, [0, 1])
+        y_range = _scale_numeric_range(scale_y, [0, 1])
 
         # Apply coord limits as zoom
         if x_limits is not None:
@@ -907,15 +1007,21 @@ class CoordCartesian(Coord):
         y_major = _compute_mapped_breaks(scale_y, y_range)
         y_minor = _compute_mapped_minor_breaks(scale_y, y_range, y_major)
 
+        # Break labels for axis rendering
+        x_major_pos, x_labels = _compute_break_labels(scale_x, x_range)
+        y_major_pos, y_labels = _compute_break_labels(scale_y, y_range)
+
         return {
             "x_range": x_range,
             "y_range": y_range,
             "x.range": x_range,
             "y.range": y_range,
-            "x_major": x_major,
+            "x_major": x_major_pos if len(x_major_pos) > 0 else x_major,
             "x_minor": x_minor,
-            "y_major": y_major,
+            "y_major": y_major_pos if len(y_major_pos) > 0 else y_major,
             "y_minor": y_minor,
+            "x_labels": x_labels,
+            "y_labels": y_labels,
             "reverse": getattr(self, "reverse", "none"),
         }
 
@@ -928,12 +1034,178 @@ class CoordCartesian(Coord):
         return guide_grid(theme, panel_params, self)
 
     def render_axis_h(self, panel_params: Dict[str, Any], theme: Any) -> Dict[str, Any]:
+        bottom = _render_axis(
+            panel_params, "x", "bottom", theme,
+        )
         from grid_py import null_grob
-        return {"top": null_grob(), "bottom": null_grob()}
+        return {"top": null_grob(), "bottom": bottom}
 
     def render_axis_v(self, panel_params: Dict[str, Any], theme: Any) -> Dict[str, Any]:
+        left = _render_axis(
+            panel_params, "y", "left", theme,
+        )
         from grid_py import null_grob
-        return {"left": null_grob(), "right": null_grob()}
+        return {"left": left, "right": null_grob()}
+
+
+def _render_axis(
+    panel_params: Dict[str, Any],
+    aesthetic: str,
+    position: str,
+    theme: Any,
+) -> Any:
+    """Build an axis grob with tick marks and labels.
+
+    Mirrors R's ``render_axis`` / ``guide_axis_base``.  Produces a
+    ``GTree`` with tick marks (short line segments) and tick labels (text).
+
+    Parameters
+    ----------
+    panel_params : dict
+        Must contain ``{aesthetic}_major`` (NPC positions) and
+        ``{aesthetic}_labels`` (text labels).
+    aesthetic : str
+        ``"x"`` or ``"y"``.
+    position : str
+        ``"bottom"``, ``"top"``, ``"left"``, or ``"right"``.
+    theme : Theme
+        The plot theme (currently used for colour defaults).
+
+    Returns
+    -------
+    grob
+        A GTree containing tick marks and labels.
+    """
+    from grid_py import (
+        GTree, GList, null_grob, Gpar,
+        segments_grob, text_grob, Unit,
+    )
+
+    breaks = panel_params.get(f"{aesthetic}_major", np.array([]))
+    labels = panel_params.get(f"{aesthetic}_labels", [])
+
+    if len(breaks) == 0:
+        return null_grob()
+
+    # Ensure labels match breaks length
+    if len(labels) != len(breaks):
+        labels = [str(round(b, 2)) for b in breaks]
+
+    children = []
+
+    # R's axis layout (GuideAxis$assemble_drawing):
+    #   panel-edge → axis-line → tick-marks → gap → tick-labels
+    # Positions are in [0, 1] NPC within the axis viewport cell.
+    # R uses unit(0.15, "cm") for ticks; we use viewport fractions.
+    TICK = 0.12     # tick mark length as fraction of axis cell
+    GAP = 0.08      # gap between tick end and label anchor
+
+    if aesthetic == "x":
+        is_bottom = position == "bottom"
+        edge = 1.0 if is_bottom else 0.0
+        sign = -1.0 if is_bottom else 1.0
+
+        # Axis line at panel boundary
+        children.append(segments_grob(
+            x0=[0.0], y0=[edge], x1=[1.0], y1=[edge],
+            gp=Gpar(col="grey20", lwd=0.5),
+            name="axis.line.x",
+        ))
+
+        # Tick marks
+        if len(breaks) > 0:
+            children.append(segments_grob(
+                x0=breaks.copy(),
+                y0=np.full(len(breaks), edge),
+                x1=breaks.copy(),
+                y1=np.full(len(breaks), edge + sign * TICK),
+                gp=Gpar(col="grey20", lwd=0.5),
+                name="axis.ticks.x",
+            ))
+
+        # Tick labels.
+        # Read rotation/hjust from theme(axis.text.x) if set,
+        # matching R's element_text(angle=, hjust=) semantics.
+        # If not set, auto-detect overlap and rotate.
+        axis_text_elem = None
+        if theme is not None and hasattr(theme, "get"):
+            axis_text_elem = theme.get("axis.text.x", None)
+
+        user_angle = getattr(axis_text_elem, "angle", None)
+        user_hjust = getattr(axis_text_elem, "hjust", None)
+        user_vjust = getattr(axis_text_elem, "vjust", None)
+        user_size = getattr(axis_text_elem, "size", None)
+        user_colour = getattr(axis_text_elem, "colour", None)
+
+        fontsize = user_size if user_size is not None else 7
+        col = user_colour if user_colour is not None else "grey30"
+
+        if user_angle is not None:
+            # User explicitly set rotation via theme
+            rot = float(user_angle)
+            hj = float(user_hjust) if user_hjust is not None else (1.0 if rot != 0 else 0.5)
+            vj = float(user_vjust) if user_vjust is not None else (1.0 if is_bottom else 0.0)
+            label_just = (hj, vj)
+        else:
+            # Auto-detect overlap: estimate max label width in NPC
+            max_chars = max((len(str(l)) for l in labels), default=3)
+            n = len(breaks)
+            spacing = (breaks[-1] - breaks[0]) / max(n - 1, 1) if n > 1 else 1.0
+            est_max_width = max_chars * 0.016
+            needs_rotate = n > 1 and est_max_width > spacing * 0.9
+
+            rot = 30.0 if needs_rotate else 0.0
+            if needs_rotate:
+                label_just = ("right", "top") if is_bottom else ("right", "bottom")
+            else:
+                label_just = ("centre", "top") if is_bottom else ("centre", "bottom")
+
+        label_y = edge + sign * (TICK + GAP)
+        for i, (bk, lbl) in enumerate(zip(breaks, labels)):
+            children.append(text_grob(
+                label=str(lbl), x=float(bk), y=label_y,
+                rot=rot, just=label_just,
+                gp=Gpar(fontsize=fontsize, col=col),
+                name=f"axis.text.x.{i}",
+            ))
+
+    else:
+        is_left = position == "left"
+        edge = 1.0 if is_left else 0.0
+        sign = -1.0 if is_left else 1.0
+
+        # Axis line at panel boundary
+        children.append(segments_grob(
+            x0=[edge], y0=[0.0], x1=[edge], y1=[1.0],
+            gp=Gpar(col="grey20", lwd=0.5),
+            name="axis.line.y",
+        ))
+
+        # Tick marks
+        if len(breaks) > 0:
+            children.append(segments_grob(
+                x0=np.full(len(breaks), edge),
+                y0=breaks.copy(),
+                x1=np.full(len(breaks), edge + sign * TICK),
+                y1=breaks.copy(),
+                gp=Gpar(col="grey20", lwd=0.5),
+                name="axis.ticks.y",
+            ))
+
+        # Tick labels
+        label_x = edge + sign * (TICK + GAP)
+        for i, (bk, lbl) in enumerate(zip(breaks, labels)):
+            children.append(text_grob(
+                label=str(lbl), x=label_x, y=float(bk),
+                just="right" if is_left else "left",
+                gp=Gpar(fontsize=7, col="grey30"),
+                name=f"axis.text.y.{i}",
+            ))
+
+    return GTree(
+        children=GList(*children),
+        name=f"axis-{position}",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1105,10 +1377,7 @@ class CoordPolar(Coord):
         result: Dict[str, Any] = {}
         for name, scale in [("x", scale_x), ("y", scale_y)]:
             limits = self.limits.get(name)
-            if hasattr(scale, "get_limits"):
-                rng = list(scale.get_limits())
-            else:
-                rng = list(limits or [0, 1])
+            rng = _scale_numeric_range(scale, [0, 1])
             if limits is not None:
                 rng = list(limits)
 
@@ -1288,18 +1557,12 @@ class CoordRadial(Coord):
             theta_scale, r_scale = scale_y, scale_x
 
         # Theta
-        if hasattr(theta_scale, "get_limits"):
-            theta_range = list(theta_scale.get_limits())
-        else:
-            theta_range = list(theta_limits or [0, 1])
+        theta_range = _scale_numeric_range(theta_scale, [0, 1])
         if theta_limits is not None:
             theta_range = list(theta_limits)
 
         # R
-        if hasattr(r_scale, "get_limits"):
-            r_range = list(r_scale.get_limits())
-        else:
-            r_range = list(r_limits or [0, 1])
+        r_range = _scale_numeric_range(r_scale, [0, 1])
         if r_limits is not None:
             r_range = list(r_limits)
 
@@ -1526,17 +1789,11 @@ class CoordTransform(Coord):
         x_limits = self.limits.get("x")
         y_limits = self.limits.get("y")
 
-        if hasattr(scale_x, "get_limits"):
-            x_range = list(scale_x.get_limits())
-        else:
-            x_range = list(x_limits or [0, 1])
+        x_range = _scale_numeric_range(scale_x, [0, 1])
         if x_limits is not None:
             x_range = list(x_limits)
 
-        if hasattr(scale_y, "get_limits"):
-            y_range = list(scale_y.get_limits())
-        else:
-            y_range = list(y_limits or [0, 1])
+        y_range = _scale_numeric_range(scale_y, [0, 1])
         if y_limits is not None:
             y_range = list(y_limits)
 
