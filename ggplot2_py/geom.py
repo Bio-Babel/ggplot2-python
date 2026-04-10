@@ -690,51 +690,51 @@ class GeomPath(Geom):
     ) -> Any:
         """Draw connected paths.
 
-        Parameters
-        ----------
-        data : DataFrame
-        panel_params : panel parameters
-        coord : Coord
-
-        Returns
-        -------
-        grob
+        R splits data by group and draws one polyline per group so
+        that each group can have its own colour/linetype/linewidth.
         """
-        data = data.copy()
-        if "group" in data.columns:
-            data = data.sort_values("group")
-
         coords = _coord_transform(coord, data, panel_params)
 
         if coords.empty or len(coords) < 2:
             return null_grob()
 
-        group_id = None
-        if "group" in coords.columns:
-            group_id = coords["group"].values
+        # R semantics: split by group, draw each separately
+        # so per-group colour/lwd/lty are respected.
+        if "group" not in coords.columns:
+            coords["group"] = 0
 
-        return polyline_grob(
-            x=coords["x"].values,
-            y=coords["y"].values,
-            id=group_id,
-            default_units="native",
-            gp=Gpar(
-                col=scales_alpha(
-                    coords["colour"].values if "colour" in coords.columns else "black",
-                    coords["alpha"].values if "alpha" in coords.columns else None,
+        children = []
+        for gid, gdata in coords.groupby("group", sort=True, observed=True):
+            if len(gdata) < 2:
+                continue
+            # Take first-row aesthetics for the whole group
+            row0 = gdata.iloc[0]
+            col_val = row0.get("colour", "black")
+            alpha_val = row0.get("alpha", None)
+            lwd_val = float(row0.get("linewidth", 0.5)) * PT
+            lty_val = row0.get("linetype", 1)
+
+            col_str = scales_alpha(col_val, alpha_val)
+
+            children.append(polyline_grob(
+                x=gdata["x"].values,
+                y=gdata["y"].values,
+                default_units="native",
+                gp=Gpar(
+                    col=col_str,
+                    lwd=lwd_val,
+                    lty=lty_val,
+                    lineend=lineend,
+                    linejoin=linejoin,
+                    linemitre=linemitre,
                 ),
-                lwd=(
-                    coords["linewidth"].values * PT
-                    if "linewidth" in coords.columns
-                    else 0.5 * PT
-                ),
-                lty=coords["linetype"].values if "linetype" in coords.columns else 1,
-                lineend=lineend,
-                linejoin=linejoin,
-                linemitre=linemitre,
-            ),
-            arrow=arrow,
-        )
+                arrow=arrow,
+                name=f"path.{gid}",
+            ))
+
+        if not children:
+            return null_grob()
+        return _ggname("geom_path", grob_tree(*children))
 
 
 class GeomLine(GeomPath):
@@ -1085,30 +1085,35 @@ class GeomText(Geom):
         elif size_unit == "pc":
             size_mul = 12
 
-        return text_grob(
-            label=coords["label"].values,
-            x=coords["x"].values,
-            y=coords["y"].values,
-            default_units="native",
-            hjust=coords["hjust"].values if "hjust" in coords.columns else 0.5,
-            vjust=coords["vjust"].values if "vjust" in coords.columns else 0.5,
-            rot=coords["angle"].values if "angle" in coords.columns else 0,
-            gp=Gpar(
-                col=scales_alpha(
-                    coords["colour"].values if "colour" in coords.columns else "black",
-                    coords["alpha"].values if "alpha" in coords.columns else None,
-                ),
-                fontsize=(
-                    coords["size"].values * size_mul
-                    if "size" in coords.columns
-                    else 3.88 * size_mul
-                ),
-                fontfamily=coords["family"].values if "family" in coords.columns else "",
-                fontface=coords["fontface"].values if "fontface" in coords.columns else 1,
-                lineheight=coords["lineheight"].values if "lineheight" in coords.columns else 1.2,
-            ),
-            check_overlap=check_overlap,
+        # R's textGrob handles vectorised parameters natively.
+        # Our text_grob expects scalars, so we create one per row.
+        children = []
+        colours = scales_alpha(
+            coords["colour"].values if "colour" in coords.columns else "black",
+            coords["alpha"].values if "alpha" in coords.columns else None,
         )
+        if isinstance(colours, str):
+            colours = [colours] * len(coords)
+
+        for i in range(len(coords)):
+            row = coords.iloc[i]
+            col_i = colours[i] if i < len(colours) else "black"
+            children.append(text_grob(
+                label=str(row.get("label", "")),
+                x=float(row["x"]),
+                y=float(row["y"]),
+                default_units="native",
+                hjust=float(row.get("hjust", 0.5)),
+                vjust=float(row.get("vjust", 0.5)),
+                rot=float(row.get("angle", 0)),
+                gp=Gpar(
+                    col=col_i,
+                    fontsize=float(row.get("size", 3.88)) * size_mul,
+                ),
+                name=f"text.{i}",
+            ))
+
+        return _ggname("geom_text", grob_tree(*children))
 
 
 class GeomLabel(Geom):
