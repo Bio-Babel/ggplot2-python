@@ -689,7 +689,9 @@ def ggplot_gtable(data: BuiltGGPlot) -> Any:
     plot_table = layout.render(geom_grobs, layer_data, theme, labels)
 
     # Legends — build directly from trained non-position scales.
-    plot_table = _table_add_legends(plot_table, plot.scales, labels, theme)
+    plot_table = _table_add_legends(
+        plot_table, plot.scales, labels, theme, layers=plot.layers,
+    )
 
     # Title / subtitle / caption / tag annotations
     plot_table = _table_add_titles(plot_table, labels, theme)
@@ -720,12 +722,15 @@ def _safe_colour(colour: Any) -> str:
 
 def _table_add_legends(
     table: Any, scales_list: Any, labels: Dict[str, Any], theme: Any,
+    layers: Any = None,
 ) -> Any:
     """Build legends from trained non-position scales and add to the gtable.
 
-    Mirrors R's ``table_add_legends`` in ``plot-render.R``.  For each
-    non-position scale that has breaks, a simple legend grob (key squares
-    + labels) is built and placed in a new column on the right.
+    Mirrors R's ``table_add_legends`` in ``plot-render.R``.  Scales that
+    share the same title and breaks are **merged** into a single legend
+    (matching R's guide-merge semantics).  Legend keys are drawn using the
+    geom's ``draw_key`` function so that shape, colour, size, etc. are all
+    rendered faithfully.
 
     Parameters
     ----------
@@ -733,6 +738,9 @@ def _table_add_legends(
     scales_list : ScalesList
     labels : dict
     theme : Theme
+    layers : list of Layer, optional
+        Plot layers — used to determine the ``draw_key`` function for each
+        aesthetic.
 
     Returns
     -------
@@ -743,33 +751,38 @@ def _table_add_legends(
 
     from gtable_py import gtable_add_grob, gtable_add_cols
     from grid_py import (
-        Unit as unit, text_grob, rect_grob, Gpar,
+        Unit as unit, text_grob, rect_grob, points_grob, Gpar,
     )
     from grid_py._grob import grob_tree, GList, GTree
 
-    # Collect legend entries from non-position scales
-    entries: List[Dict[str, Any]] = []
-    np_scales = scales_list.non_position_scales() if hasattr(scales_list, "non_position_scales") else None
+    # ------------------------------------------------------------------
+    # 1. Collect raw legend entries from non-position scales
+    # ------------------------------------------------------------------
+    raw_entries: List[Dict[str, Any]] = []
+    np_scales = (
+        scales_list.non_position_scales()
+        if hasattr(scales_list, "non_position_scales")
+        else None
+    )
     if np_scales is None or np_scales.n() == 0:
         return table
 
     for sc in np_scales.scales:
         aes_name = sc.aesthetics[0] if sc.aesthetics else "unknown"
 
-        # Get breaks — skip scale if it has no breaks
         breaks = getattr(sc, "get_breaks", lambda: None)()
         if breaks is None or (hasattr(breaks, "__len__") and len(breaks) == 0):
             continue
 
-        # Map breaks to aesthetic values (colours, sizes, etc.)
-        mapped = breaks  # default: use raw breaks
+        # Map breaks to aesthetic values (colours, shape ints, sizes, …)
+        mapped = breaks
         if hasattr(sc, "map"):
             try:
                 mapped = sc.map(breaks)
             except (TypeError, ValueError):
-                pass  # palette not ready; keep raw breaks
+                pass
 
-        # Get labels
+        # Labels
         if hasattr(sc, "get_labels"):
             try:
                 labs = sc.get_labels(breaks)
@@ -778,12 +791,27 @@ def _table_add_legends(
         else:
             labs = [str(b) for b in breaks]
 
-        # Title from plot labels or scale name
+        # Drop NA/NaN-mapped entries
+        keep: List[int] = []
+        mapped_arr = np.asarray(mapped) if not isinstance(mapped, np.ndarray) else mapped
+        for j in range(len(breaks)):
+            val = mapped_arr[j] if j < len(mapped_arr) else None
+            try:
+                if val is not None and not (isinstance(val, float) and np.isnan(val)):
+                    keep.append(j)
+            except (TypeError, ValueError):
+                keep.append(j)
+        if not keep:
+            continue
+        breaks = [breaks[j] for j in keep]
+        mapped = [mapped_arr[j] for j in keep]
+        labs = [labs[j] for j in keep if j < len(labs)]
+
         title = labels.get(aes_name, aes_name)
         if hasattr(title, "__class__") and title.__class__.__name__ == "Waiver":
             title = aes_name
 
-        entries.append({
+        raw_entries.append({
             "aesthetic": aes_name,
             "breaks": breaks,
             "mapped": mapped,
@@ -791,77 +819,215 @@ def _table_add_legends(
             "title": str(title),
         })
 
-    if not entries:
+    if not raw_entries:
         return table
 
-    # Build legend grob: for each entry, create key + label pairs.
-    # R places legends in a dedicated column on the right.
-    legend_children = []
-    y_pos = 0.95  # start near top
-    spacing = 0.0  # accumulated vertical offset
+    # ------------------------------------------------------------------
+    # 2. Merge entries that share the same title + number of breaks
+    #    (R merges guides whose hash — based on title and breaks — match)
+    # ------------------------------------------------------------------
+    merged: Dict[str, Dict[str, Any]] = {}  # keyed by title
+    for entry in raw_entries:
+        key = entry["title"]
+        if key in merged and len(merged[key]["breaks"]) == len(entry["breaks"]):
+            # Merge: add this aesthetic's mapped values
+            merged[key]["aes_mapped"][entry["aesthetic"]] = entry["mapped"]
+        else:
+            merged[key] = {
+                "title": entry["title"],
+                "breaks": entry["breaks"],
+                "labels": entry["labels"],
+                "aes_mapped": {entry["aesthetic"]: entry["mapped"]},
+            }
+    entries = list(merged.values())
+
+    # ------------------------------------------------------------------
+    # 3. Determine draw_key function from layers
+    # ------------------------------------------------------------------
+    from ggplot2_py.draw_key import draw_key_point as _draw_key_point
+    draw_key_fn = _draw_key_point  # default fallback
+    if layers:
+        for layer in layers:
+            geom = getattr(layer, "geom", None)
+            if geom is not None and hasattr(geom, "draw_key"):
+                draw_key_fn = geom.draw_key
+                break  # use first layer's geom draw_key
+
+    # ------------------------------------------------------------------
+    # 4. Compute legend layout dimensions
+    # ------------------------------------------------------------------
+    from ggplot2_py.coord import _resolve_element
+
+    ltitle_el = _resolve_element("legend.title", theme,
+        {"colour": "grey10", "size": 7})
+    ltext_el = _resolve_element("legend.text", theme,
+        {"colour": "grey20", "size": 6})
+
+    title_size = float(ltitle_el["size"])
+    label_size = float(ltext_el["size"])
+
+    KEY_W_CM = 0.4
+    GAP_CM = 0.15
+    CHAR_W_CM = 0.18
+    TITLE_PAD_CM = 0.15
+    max_label_chars = 0
+    total_entries = 0
+    for entry in entries:
+        for lbl in entry["labels"]:
+            max_label_chars = max(max_label_chars, len(str(lbl)))
+        max_label_chars = max(max_label_chars, len(entry["title"]))
+        total_entries += min(len(entry["breaks"]), 20) + 1
+
+    legend_w_cm = TITLE_PAD_CM + KEY_W_CM + GAP_CM + max_label_chars * CHAR_W_CM + 0.1
+    legend_w_cm = max(legend_w_cm, 1.5)
+
+    ENTRY_H_CM = 0.32
+    BLOCK_GAP_CM = 0.15
+
+    # ------------------------------------------------------------------
+    # 5. Build legend grobs
+    # ------------------------------------------------------------------
+    legend_children: List[Any] = []
+    fig_h_cm = getattr(table, "_fig_h_cm", 12.7)
+    try:
+        nrow_t = len(table._heights)
+        fig_h_cm = 5.0 * 2.54
+    except Exception:
+        pass
+    step_npc = ENTRY_H_CM / fig_h_cm
+    gap_npc = BLOCK_GAP_CM / fig_h_cm
+    y_npc = 1.0 - step_npc * 0.5
 
     for entry in entries:
-        aes = entry["aesthetic"]
+        aes_mapped = entry["aes_mapped"]
         n = len(entry["breaks"])
-        mapped = entry["mapped"]
+        aes_names = list(aes_mapped.keys())
 
-        # Title — resolve from theme
-        from ggplot2_py.coord import _resolve_element
-        ltitle_el = _resolve_element("legend.title", theme,
-            {"colour": "grey10", "size": 7})
+        # Title
         legend_children.append(text_grob(
-            label=entry["title"], x=0.1, y=y_pos - spacing,
+            label=entry["title"], x=0.05, y=y_npc,
             just=("left", "top"),
-            gp=Gpar(fontsize=float(ltitle_el["size"]),
+            gp=Gpar(fontsize=title_size,
                      col=ltitle_el["colour"], fontface="bold"),
-            name=f"legend.title.{aes}",
+            name=f"legend.title.{entry['title']}",
         ))
-        spacing += 0.04
+        y_npc -= step_npc
 
-        # Legend label style from theme
-        ltext_el = _resolve_element("legend.text", theme,
-            {"colour": "grey20", "size": 6})
+        # Determine which aesthetics are present in this merged entry
+        has_colour = any(
+            a in ("colour", "color") for a in aes_names
+        )
+        has_fill = "fill" in aes_names
+        has_shape = "shape" in aes_names
+        has_size = "size" in aes_names
 
-        # Key entries
-        for i in range(min(n, 20)):  # cap at 20 entries
-            ky = y_pos - spacing
-            colour = None
-            if isinstance(mapped, (list, np.ndarray)):
-                colour = mapped[i] if i < len(mapped) else "grey50"
-            elif hasattr(mapped, "iloc"):
-                colour = mapped.iloc[i]
+        # Decide rendering approach:
+        #   - If shape is present, use points_grob for the key
+        #   - Else if colour/fill, use rect
+        #   - Else if size, use circle
+        use_point_key = has_shape
 
-            # Determine if this is a colour/fill or shape/size guide
-            if aes in ("colour", "color", "fill"):
-                # Colour key: small filled square
-                col_str = _safe_colour(colour)
+        for i in range(min(n, 20)):
+            ky = y_npc
+            key_h_npc = step_npc * 0.7
+
+            # Gather per-key aesthetic values for this break index
+            colour_val = None
+            for a in ("colour", "color"):
+                if a in aes_mapped:
+                    colour_val = aes_mapped[a][i] if i < len(aes_mapped[a]) else None
+                    break
+            fill_val = None
+            if "fill" in aes_mapped:
+                fill_val = aes_mapped["fill"][i] if i < len(aes_mapped["fill"]) else None
+            shape_val = None
+            if "shape" in aes_mapped:
+                shape_val = aes_mapped["shape"][i] if i < len(aes_mapped["shape"]) else None
+            size_val = None
+            if "size" in aes_mapped:
+                size_val = aes_mapped["size"][i] if i < len(aes_mapped["size"]) else None
+
+            if use_point_key:
+                # Build a data dict matching draw_key_point expectations
+                key_data = {
+                    "colour": _safe_colour(colour_val) if colour_val is not None else "black",
+                    "fill": _safe_colour(fill_val) if fill_val is not None else "black",
+                    "shape": int(shape_val) if shape_val is not None else 19,
+                    "size": float(size_val) if size_val is not None else 1.5,
+                    "alpha": None,
+                    "stroke": 0.5,
+                }
+                # Use points_grob directly at the legend key position.
+                # draw_key_point draws at (0.5, 0.5) in its own viewport;
+                # we place inline at the correct legend NPC position.
+                from ggplot2_py.geom import translate_shape_string
+                pch = translate_shape_string(key_data["shape"])
+                _PT = 72.27 / 25.4
+                _STROKE = 96 / 25.4
+                pt_size = (key_data["size"] * _PT) + (key_data["stroke"] * _STROKE)
+                legend_children.append(points_grob(
+                    x=0.12,
+                    y=ky - key_h_npc * 0.4,
+                    pch=pch,
+                    gp=Gpar(
+                        col=key_data["colour"],
+                        fill=key_data["fill"],
+                        fontsize=pt_size,
+                        lwd=key_data["stroke"] * _STROKE,
+                    ),
+                    name=f"legend.key.point.{entry['title']}.{i}",
+                ))
+
+            elif has_fill and not has_shape:
+                # Pure fill legend: coloured rectangle
+                col_str = _safe_colour(fill_val)
                 legend_children.append(rect_grob(
-                    x=0.15, y=ky, width=0.06, height=0.025,
+                    x=0.05, y=ky, width=0.15, height=key_h_npc,
                     just=("left", "top"),
                     gp=Gpar(fill=col_str, col="grey60", lwd=0.5),
-                    name=f"legend.key.{aes}.{i}",
-                ))
-            else:
-                # Other aesthetics: small grey square placeholder
-                legend_children.append(rect_grob(
-                    x=0.15, y=ky, width=0.06, height=0.025,
-                    just=("left", "top"),
-                    gp=Gpar(fill="grey70", col="grey60", lwd=0.5),
-                    name=f"legend.key.{aes}.{i}",
+                    name=f"legend.key.fill.{entry['title']}.{i}",
                 ))
 
-            # Label text
+            elif has_size and not has_shape:
+                # Size legend: circle with mapped radius
+                from grid_py import circle_grob
+                mapped_size = float(size_val) if size_val is not None else 1.5
+                try:
+                    if np.isnan(mapped_size):
+                        mapped_size = 1.5
+                except (TypeError, ValueError):
+                    pass
+                r_npc = max(0.005, min(0.02, mapped_size * 0.003))
+                legend_children.append(circle_grob(
+                    x=0.10, y=ky - key_h_npc * 0.4,
+                    r=r_npc,
+                    gp=Gpar(fill="grey30", col=None),
+                    name=f"legend.key.size.{entry['title']}.{i}",
+                ))
+
+            else:
+                # Fallback: colour key (filled rect)
+                col_str = _safe_colour(colour_val if colour_val is not None else fill_val)
+                legend_children.append(rect_grob(
+                    x=0.05, y=ky, width=0.15, height=key_h_npc,
+                    just=("left", "top"),
+                    gp=Gpar(fill=col_str, col="grey60", lwd=0.5),
+                    name=f"legend.key.rect.{entry['title']}.{i}",
+                ))
+
+            # Label
             lbl = entry["labels"][i] if i < len(entry["labels"]) else ""
             legend_children.append(text_grob(
-                label=str(lbl), x=0.45, y=ky - 0.012,
+                label=str(lbl),
+                x=0.25,
+                y=ky - key_h_npc * 0.5,
                 just=("left", "centre"),
-                gp=Gpar(fontsize=float(ltext_el["size"]),
-                         col=ltext_el["colour"]),
-                name=f"legend.label.{aes}.{i}",
+                gp=Gpar(fontsize=label_size, col=ltext_el["colour"]),
+                name=f"legend.label.{entry['title']}.{i}",
             ))
-            spacing += 0.035
+            y_npc -= step_npc
 
-        spacing += 0.03  # gap between legend blocks
+        y_npc -= gap_npc
 
     if not legend_children:
         return table
@@ -871,8 +1037,10 @@ def _table_add_legends(
         name="guide-box",
     )
 
-    # Add a column on the right for the legend
-    table = gtable_add_cols(table, unit([1.8], "cm"), pos=-1)
+    SPACING_CM = 0.2
+    from grid_py._units import unit_c
+    table = gtable_add_cols(table, unit([SPACING_CM], "cm"), pos=-1)
+    table = gtable_add_cols(table, unit([legend_w_cm], "cm"), pos=-1)
     ncol = len(table._widths)
     nrow = len(table._heights)
     table = gtable_add_grob(
