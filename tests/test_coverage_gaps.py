@@ -1614,3 +1614,190 @@ class TestGeomDrawMethods:
         built = ggplot_build(p)
         table = ggplot_gtable(built)
         assert table is not None
+
+
+# ===================================================================
+# Additional coverage tests for unstaged code (theme wiring,
+# secondary axes, element grob rendering, theme validation)
+# ===================================================================
+
+class TestResolveElement:
+    """Test _resolve_element helper in coord.py."""
+
+    def test_resolve_with_theme(self):
+        from ggplot2_py.coord import _resolve_element
+        from ggplot2_py import theme, element_text
+        t = theme(axis_text_x=element_text(colour="red", size=14))
+        el = _resolve_element("axis.text.x", t, {"colour": "grey", "size": 8})
+        assert el["colour"] == "red"
+        assert el["size"] == 14
+
+    def test_resolve_fallback(self):
+        from ggplot2_py.coord import _resolve_element
+        el = _resolve_element("nonexistent.element", None, {"colour": "blue", "size": 5})
+        assert el["colour"] == "blue"
+        assert el["size"] == 5
+
+    def test_resolve_blank_element(self):
+        from ggplot2_py.coord import _resolve_element
+        from ggplot2_py import theme, element_blank
+        t = theme(axis_text_x=element_blank())
+        el = _resolve_element("axis.text.x", t, {"colour": "grey", "size": 8})
+        assert el["colour"] == "grey"  # fallback used
+
+
+class TestSecondaryAxis:
+    """Test secondary axis computation in setup_panel_params."""
+
+    def test_dup_axis_panel_params(self):
+        import sys
+        sys.path.insert(0, ".")
+        from ggplot2_py import ggplot, aes, geom_point, scale_y_continuous, dup_axis
+        from ggplot2_py.datasets import mpg
+        p = ggplot(mpg, aes("cty", "hwy")) + geom_point() + scale_y_continuous(sec_axis=dup_axis())
+        built = ggplot_build(p)
+        pp = built.layout.panel_params[0]
+        assert "y_sec_major" in pp
+        assert "y_sec_labels" in pp
+        assert len(pp["y_sec_major"]) > 0
+
+    def test_sec_axis_with_transform(self):
+        from ggplot2_py import ggplot, aes, geom_point, scale_x_continuous, sec_axis
+        from ggplot2_py.datasets import mpg
+        p = (ggplot(mpg, aes("cty", "hwy")) + geom_point()
+             + scale_x_continuous(sec_axis=sec_axis(transform=lambda x: x * 1.6)))
+        built = ggplot_build(p)
+        pp = built.layout.panel_params[0]
+        assert "x_sec_major" in pp
+
+    def test_no_sec_axis(self):
+        from ggplot2_py import ggplot, aes, geom_point
+        from ggplot2_py.datasets import mpg
+        p = ggplot(mpg, aes("cty", "hwy")) + geom_point()
+        built = ggplot_build(p)
+        pp = built.layout.panel_params[0]
+        assert "y_sec_major" not in pp
+
+    def test_dup_axis_renders(self):
+        from ggplot2_py import ggplot, aes, geom_point, scale_y_continuous, dup_axis
+        from ggplot2_py.datasets import mpg
+        from ggplot2_py.plot import GGPlot
+        GGPlot.fig_width = 5; GGPlot.fig_height = 4; GGPlot.fig_dpi = 72
+        p = ggplot(mpg, aes("cty", "hwy")) + geom_point() + scale_y_continuous(sec_axis=dup_axis())
+        png = p._repr_png_()
+        assert png is not None and len(png) > 0
+
+
+class TestElementGrobNew:
+    """Test new element_grob dispatches."""
+
+    def test_element_polygon_grob(self):
+        from ggplot2_py.theme_elements import element_grob, ElementPolygon
+        g = element_grob(ElementPolygon(fill="blue", colour="black"))
+        assert getattr(g, "_grid_class", "") == "polygon"
+
+    def test_element_polygon_custom_xy(self):
+        from ggplot2_py.theme_elements import element_grob, ElementPolygon
+        g = element_grob(ElementPolygon(fill="red"), x=[0, 1, 1, 0], y=[0, 0, 1, 1])
+        assert g is not None
+
+    def test_element_geom_returns_null(self):
+        from ggplot2_py.theme_elements import element_grob, ElementGeom
+        g = element_grob(ElementGeom())
+        assert getattr(g, "_grid_class", "") == "null"
+
+    def test_element_point_grob(self):
+        from ggplot2_py.theme_elements import element_grob, ElementPoint
+        g = element_grob(ElementPoint(colour="red", shape=19, size=3))
+        # Should be a points grob or null (if points_grob unavailable)
+        assert g is not None
+
+    def test_unknown_element_returns_null(self):
+        from ggplot2_py.theme_elements import element_grob
+        class FakeElement:
+            pass
+        g = element_grob(FakeElement())
+        assert getattr(g, "_grid_class", "") == "null"
+
+
+class TestThemeValidation:
+    """Test theme element type validation in calc_element."""
+
+    def test_wrong_type_warns(self):
+        import warnings
+        from ggplot2_py.theme_elements import calc_element
+        from ggplot2_py import theme, element_line
+        t = theme(axis_text_x=element_line(colour="red"))
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            calc_element("axis.text.x", t)
+            type_warns = [x for x in w if "must be a" in str(x.message)]
+            assert len(type_warns) > 0
+
+    def test_correct_type_no_warn(self):
+        import warnings
+        from ggplot2_py.theme_elements import calc_element
+        from ggplot2_py import theme, element_text
+        t = theme(axis_text_x=element_text(colour="red"))
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            calc_element("axis.text.x", t)
+            type_warns = [x for x in w if "must be a" in str(x.message)]
+            assert len(type_warns) == 0
+
+    def test_blank_element_no_warn(self):
+        import warnings
+        from ggplot2_py.theme_elements import calc_element
+        from ggplot2_py import theme, element_blank
+        t = theme(axis_text_x=element_blank())
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = calc_element("axis.text.x", t)
+            type_warns = [x for x in w if "must be a" in str(x.message)]
+            assert len(type_warns) == 0
+
+
+class TestThemeInheritanceRendering:
+    """Test that theme changes propagate to rendered output."""
+
+    def test_text_colour_inherits_to_axis(self):
+        from ggplot2_py.coord import _resolve_element
+        from ggplot2_py import theme, element_text
+        from ggplot2_py.theme import complete_theme
+        t = complete_theme(theme(text=element_text(colour="red")))
+        el = _resolve_element("axis.text.x", t, {"colour": "grey", "size": 8})
+        assert el["colour"] == "red"
+
+    def test_strip_text_inherits_from_text(self):
+        from ggplot2_py.coord import _resolve_element
+        from ggplot2_py import theme, element_text
+        from ggplot2_py.theme import complete_theme
+        t = complete_theme(theme(text=element_text(colour="blue")))
+        el = _resolve_element("strip.text.x", t, {"colour": "grey", "size": 8})
+        assert el["colour"] == "blue"
+
+    def test_plot_title_inherits(self):
+        from ggplot2_py.coord import _resolve_element
+        from ggplot2_py import theme, element_text
+        from ggplot2_py.theme import complete_theme
+        t = complete_theme(theme(text=element_text(colour="green")))
+        el = _resolve_element("plot.title", t, {"colour": "black", "size": 11})
+        assert el["colour"] == "green"
+
+
+class TestIsWaiverLike:
+    """Test _is_waiver_like helper."""
+
+    def test_none(self):
+        from ggplot2_py.coord import _is_waiver_like
+        assert _is_waiver_like(None) is True
+
+    def test_waiver(self):
+        from ggplot2_py.coord import _is_waiver_like
+        from ggplot2_py._compat import waiver
+        assert _is_waiver_like(waiver()) is True
+
+    def test_normal_value(self):
+        from ggplot2_py.coord import _is_waiver_like
+        assert _is_waiver_like("hello") is False
+        assert _is_waiver_like(42) is False
