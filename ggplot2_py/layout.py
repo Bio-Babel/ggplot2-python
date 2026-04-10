@@ -677,15 +677,20 @@ class Layout(GGProto):
                 if val is None or is_waiver(val):
                     grobs.append(null_grob())
                 else:
-                    # Create axis title text grob directly.
-                    # R uses element_render(theme, "axis.title.x") but
-                    # our theme element system may not resolve all elements,
-                    # so we build the grob with sensible defaults.
-                    rot = 90.0 if axis == "y" else 0.0
+                    # Resolve via calc_element for full theme inheritance
+                    from ggplot2_py.coord import _resolve_element
+                    pos = ".bottom" if axis == "x" else ".left"
+                    if i == 1:
+                        pos = ".top" if axis == "x" else ".right"
+                    el = _resolve_element(
+                        f"axis.title.{axis}{pos}", theme,
+                        {"colour": "grey30", "size": 9, "angle": 90.0 if axis == "y" else 0.0},
+                    )
                     g = text_grob(
-                        label=str(val), x=0.5, y=0.5, rot=rot,
+                        label=str(val), x=0.5, y=0.5,
+                        rot=float(el["angle"]),
                         just="centre",
-                        gp=Gpar(fontsize=9, col="grey30"),
+                        gp=Gpar(fontsize=float(el["size"]), col=el["colour"]),
                         name=f"axis.title.{axis}",
                     )
                     grobs.append(g)
