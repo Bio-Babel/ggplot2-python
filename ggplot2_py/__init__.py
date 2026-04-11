@@ -827,4 +827,15 @@ __all__ = [
     "resolution", "remove_missing",
     "unit", "arrow", "alpha",
     "PT", "STROKE",
+    # Plugin discovery
+    "discover_extensions", "list_extensions",
 ]
+
+# ---------------------------------------------------------------------------
+# Entry-point plugin discovery — scan installed packages for extensions.
+# This runs once at import time. Extensions that fail to load emit a
+# warning but do not block import.
+# ---------------------------------------------------------------------------
+from ggplot2_py._plugins import discover_extensions, list_extensions
+
+discover_extensions()
