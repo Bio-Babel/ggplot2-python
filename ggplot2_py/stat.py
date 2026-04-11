@@ -1429,6 +1429,9 @@ class Stat(GGProto):
         Whether computed values should be retransformed.
     """
 
+    # --- Auto-registration registry (Python-exclusive) -------------------
+    _registry: Dict[str, Any] = {}
+
     required_aes: List[str] = []
     non_missing_aes: List[str] = []
     optional_aes: List[str] = []
@@ -1436,6 +1439,14 @@ class Stat(GGProto):
     dropped_aes: List[str] = []
     extra_params: List[str] = ["na_rm"]
     retransform: bool = True
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        name = cls.__name__
+        if name.startswith("Stat") and len(name) > 4:
+            key = name[4:]
+            Stat._registry[key] = cls
+            Stat._registry[key.lower()] = cls
 
     # -- Methods ---------------------------------------------------------------
 

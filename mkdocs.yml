@@ -17,6 +17,10 @@ nav:
     - Labels & Facets: tutorials/labels_and_facets.ipynb
     - Aesthetic Specs: tutorials/aesthetic_specs.ipynb
     - Extending ggplot2: tutorials/extending_ggplot2.ipynb
+    - Callable aes Expressions: tutorials/aes_expressions.ipynb
+    - Extensible Pipeline: tutorials/pipeline_dispatch.ipynb
+    - Build Hooks: tutorials/build_hooks.ipynb
+    - "Developer Guide: Extending ggplot2_py": tutorials/developer_guide.ipynb
 
 plugins:
   - search

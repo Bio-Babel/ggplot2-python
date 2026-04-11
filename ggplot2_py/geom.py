@@ -38,7 +38,10 @@ from ggplot2_py._utils import (
     data_frame,
     empty,
 )
-from ggplot2_py.aes import aes, Mapping, standardise_aes_names
+from ggplot2_py.aes import (
+    aes, Mapping, standardise_aes_names,
+    AfterScale, AfterStat, Stage, eval_aes_value,
+)
 
 # Import draw_key functions
 from ggplot2_py.draw_key import (
@@ -309,6 +312,9 @@ class Geom(GGProto):
         Whether to rename ``size`` to ``linewidth``.
     """
 
+    # --- Auto-registration registry (Python-exclusive) -------------------
+    _registry: Dict[str, Any] = {}
+
     required_aes: Tuple[str, ...] = ()
     non_missing_aes: Tuple[str, ...] = ()
     optional_aes: Tuple[str, ...] = ()
@@ -316,6 +322,16 @@ class Geom(GGProto):
     extra_params: Tuple[str, ...] = ("na_rm",)
     draw_key = draw_key_point
     rename_size: bool = False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Auto-register: GeomPoint -> "point", GeomBar -> "bar", etc.
+        name = cls.__name__
+        if name.startswith("Geom") and len(name) > 4:
+            key = name[4:]  # strip "Geom" prefix
+            # Store both CamelCase and lower-case keys
+            Geom._registry[key] = cls
+            Geom._registry[key.lower()] = cls
 
     # -----------------------------------------------------------------------
     # Setup hooks (run before position adjustments)
@@ -426,6 +442,32 @@ class Geom(GGProto):
         if data is not None and not data.empty:
             for ap in aes_params:
                 data[ap] = params[ap]
+
+        # Evaluate after_scale modifiers (R ref: geom-.R:243-265).
+        # R calls eval_aesthetics(substitute_aes(modifiers), data,
+        #         mask=list(stage=stage_scaled)).
+        # In Python, modifiers is a dict of AfterScale/Stage objects whose
+        # after_scale slot should be evaluated against the now-complete data.
+        if modifiers and data is not None and not data.empty:
+            for aes_name, mod_val in modifiers.items():
+                target = None
+                if isinstance(mod_val, AfterScale):
+                    target = mod_val.x
+                elif isinstance(mod_val, Stage) and mod_val.after_scale is not None:
+                    as_obj = mod_val.after_scale
+                    target = as_obj.x if isinstance(as_obj, AfterScale) else as_obj
+                if target is not None:
+                    try:
+                        result = eval_aes_value(target, data)
+                        if result is not None:
+                            data[aes_name] = result
+                    except Exception:
+                        # R: cli::cli_warn("Unable to apply staged modifications.")
+                        import warnings
+                        warnings.warn(
+                            f"Unable to apply after_scale modifier for '{aes_name}'.",
+                            stacklevel=2,
+                        )
 
         return data
 

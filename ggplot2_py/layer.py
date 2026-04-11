@@ -32,6 +32,7 @@ from ggplot2_py.aes import (
     Stage,
     is_mapping,
     rename_aes,
+    eval_aes_value,
 )
 from ggplot2_py._utils import (
     remove_missing,
@@ -131,24 +132,35 @@ def _camelize(x: str, first: bool = False) -> str:
 def _resolve_class(name: str, prefix: str) -> Any:
     """Resolve a string like ``"identity"`` to a ggproto class.
 
-    Looks up ``{prefix}{Name}`` (e.g. ``StatIdentity``) in the appropriate
-    module (``ggplot2_py.stat``, ``ggplot2_py.geom``, ``ggplot2_py.position``).
+    Resolution order:
 
-    Uses R-compatible ``camelize()`` so that names with digits are handled
-    correctly (e.g. ``"bin2d"`` → ``StatBin2d``, not ``StatBin2D``).
+    1. **Registry lookup** — check the auto-registration registry
+       populated by ``__init_subclass__`` on :class:`Geom`, :class:`Stat`,
+       and :class:`Position`.  This allows external extension packages to
+       register their classes simply by subclassing.
+    2. **Module lookup** — ``{prefix}{CamelName}`` (e.g. ``StatIdentity``)
+       in the corresponding module.
+    3. **Fallback** — exact attribute name in the module.
     """
     import importlib
 
+    # 1. Registry lookup (includes external extensions)
     module_map = {"Stat": "ggplot2_py.stat", "Geom": "ggplot2_py.geom", "Position": "ggplot2_py.position"}
     mod = importlib.import_module(module_map[prefix])
+    base_cls = getattr(mod, prefix)  # Stat, Geom, or Position
+    registry = getattr(base_cls, "_registry", {})
+    camel_name = _camelize(name, first=True)
+    for key in (camel_name, name, name.lower()):
+        if key in registry:
+            return registry[key]
 
-    # Try e.g. StatIdentity, GeomPoint, PositionDodge
-    class_name = prefix + _camelize(name, first=True)
+    # 2. Module attribute lookup (e.g. StatIdentity, GeomPoint)
+    class_name = prefix + camel_name
     cls = getattr(mod, class_name, None)
     if cls is not None:
         return cls
 
-    # Fallback: try exact attribute name
+    # 3. Fallback: exact attribute name
     cls = getattr(mod, name, None)
     if cls is not None:
         return cls
@@ -380,18 +392,28 @@ class Layer(GGProto):
         set_aes = set(self.aes_params.keys()) if self.aes_params else set()
         aesthetics = {k: v for k, v in aesthetics.items() if k not in set_aes}
 
-        # Remove computed / staged aesthetics (after_stat, after_scale)
+        # Evaluate aesthetics: skip deferred (AfterStat/AfterScale),
+        # evaluate Stage.start at this stage, evaluate callables & strings.
         evaluated: Dict[str, Any] = {}
         for aes_name, aes_val in aesthetics.items():
-            if isinstance(aes_val, (AfterStat, AfterScale, Stage)):
+            if isinstance(aes_val, (AfterStat, AfterScale)):
+                # Deferred to later pipeline stages
                 continue
-            if isinstance(aes_val, str) and aes_val in data.columns:
-                evaluated[aes_name] = data[aes_val].values
-            elif isinstance(aes_val, str):
-                # May be a computed column not yet available; skip
+            if isinstance(aes_val, Stage):
+                # Stage: evaluate .start at Stage 1, but skip if .start
+                # is itself a deferred type (AfterStat/AfterScale).
+                start_val = aes_val.start
+                if start_val is not None and not isinstance(
+                    start_val, (AfterStat, AfterScale)
+                ):
+                    result = eval_aes_value(start_val, data)
+                    if result is not None:
+                        evaluated[aes_name] = result
                 continue
-            else:
-                evaluated[aes_name] = aes_val
+            # str column ref, callable, or scalar
+            result = eval_aes_value(aes_val, data)
+            if result is not None:
+                evaluated[aes_name] = result
 
         n = len(data)
         if n == 0 and evaluated:
@@ -485,17 +507,28 @@ class Layer(GGProto):
                 aesthetics[k] = v
         aesthetics = compact(aesthetics)
 
-        # Evaluate AfterStat mappings
+        # Evaluate AfterStat mappings (R ref: layer.R:632-668,
+        # uses eval_aesthetics with mask=list(stage=stage_calculated)).
+        # In R, stage() calls are substituted with stage_calculated() at
+        # this phase, which returns the after_stat slot.
         new_cols: Dict[str, Any] = {}
         for aes_name, aes_val in aesthetics.items():
             if isinstance(aes_val, AfterStat):
-                col = aes_val.x
-                if col in data.columns:
-                    new_cols[aes_name] = data[col].values
+                # str or callable inside AfterStat
+                result = eval_aes_value(aes_val.x, data)
+                if result is not None:
+                    new_cols[aes_name] = result
             elif isinstance(aes_val, Stage):
-                col = getattr(aes_val, "start", None)
-                if isinstance(col, AfterStat) and col.x in data.columns:
-                    new_cols[aes_name] = data[col.x].values
+                # Stage: prefer .after_stat, then fall back to .start
+                # if .start is itself an AfterStat.
+                target_obj = aes_val.after_stat
+                if target_obj is None and isinstance(aes_val.start, AfterStat):
+                    target_obj = aes_val.start
+                if target_obj is not None:
+                    target = target_obj.x if isinstance(target_obj, AfterStat) else target_obj
+                    result = eval_aes_value(target, data)
+                    if result is not None:
+                        new_cols[aes_name] = result
 
         for k, v in new_cols.items():
             data[k] = v

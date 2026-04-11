@@ -45,6 +45,7 @@ __all__ = [
     "AfterScale",
     "Stage",
     "AESTHETIC_ALIASES",
+    "eval_aes_value",
 ]
 
 # ---------------------------------------------------------------------------
@@ -71,25 +72,34 @@ class AfterStat:
 
     Parameters
     ----------
-    x : str
-        Name of the computed-stat variable (e.g. ``"count"``, ``"density"``).
+    x : str or callable
+        Name of the computed-stat variable (e.g. ``"count"``, ``"density"``),
+        or a callable ``f(data: DataFrame) -> array`` evaluated after stat
+        computation.
 
     Examples
     --------
     >>> AfterStat("count")
     AfterStat('count')
+    >>> AfterStat(lambda d: d["count"] / d["count"].max())
+    AfterStat(<lambda>)
     """
 
     __slots__ = ("x",)
 
-    def __init__(self, x: str) -> None:
-        if not isinstance(x, str):
-            raise TypeError(f"AfterStat expects a str, got {type(x).__name__}")
-        self.x: str = x
+    def __init__(self, x: Union[str, Callable[..., Any]]) -> None:
+        if not isinstance(x, str) and not callable(x):
+            raise TypeError(
+                f"AfterStat expects a str or callable, got {type(x).__name__}"
+            )
+        self.x = x
 
     # -- repr / eq / hash ---------------------------------------------------
 
     def __repr__(self) -> str:
+        if callable(self.x) and not isinstance(self.x, str):
+            name = getattr(self.x, "__name__", "<callable>")
+            return f"AfterStat({name})"
         return f"AfterStat({self.x!r})"
 
     def __eq__(self, other: object) -> bool:
@@ -98,6 +108,8 @@ class AfterStat:
         return NotImplemented
 
     def __hash__(self) -> int:
+        if callable(self.x) and not isinstance(self.x, str):
+            return hash(("AfterStat", id(self.x)))
         return hash(("AfterStat", self.x))
 
 
@@ -106,23 +118,31 @@ class AfterScale:
 
     Parameters
     ----------
-    x : str
-        Name of the post-scale variable (e.g. ``"fill"``).
+    x : str or callable
+        Name of the post-scale variable (e.g. ``"fill"``), or a callable
+        ``f(data: DataFrame) -> array`` evaluated after scale mapping.
 
     Examples
     --------
     >>> AfterScale("fill")
     AfterScale('fill')
+    >>> AfterScale(lambda d: alpha(d["colour"], 0.3))
+    AfterScale(<lambda>)
     """
 
     __slots__ = ("x",)
 
-    def __init__(self, x: str) -> None:
-        if not isinstance(x, str):
-            raise TypeError(f"AfterScale expects a str, got {type(x).__name__}")
-        self.x: str = x
+    def __init__(self, x: Union[str, Callable[..., Any]]) -> None:
+        if not isinstance(x, str) and not callable(x):
+            raise TypeError(
+                f"AfterScale expects a str or callable, got {type(x).__name__}"
+            )
+        self.x = x
 
     def __repr__(self) -> str:
+        if callable(self.x) and not isinstance(self.x, str):
+            name = getattr(self.x, "__name__", "<callable>")
+            return f"AfterScale({name})"
         return f"AfterScale({self.x!r})"
 
     def __eq__(self, other: object) -> bool:
@@ -131,6 +151,8 @@ class AfterScale:
         return NotImplemented
 
     def __hash__(self) -> int:
+        if callable(self.x) and not isinstance(self.x, str):
+            return hash(("AfterScale", id(self.x)))
         return hash(("AfterScale", self.x))
 
 
@@ -140,37 +162,46 @@ class Stage:
     At most one of *start*, *after_stat*, or *after_scale* should be the
     "primary" mapping; the others provide overrides for later stages.
 
+    Each slot accepts a column-name string, a callable
+    ``f(data: DataFrame) -> array``, or a wrapper object.
+
     Parameters
     ----------
-    start : str or None, optional
-        Column name used at the initial data stage.
-    after_stat : str or AfterStat or None, optional
+    start : str, callable, or None, optional
+        Column name or callable used at the initial data stage.
+    after_stat : str, callable, AfterStat, or None, optional
         Reference used after the stat computation.
-    after_scale : str or AfterScale or None, optional
+    after_scale : str, callable, AfterScale, or None, optional
         Reference used after scale transformation.
 
     Examples
     --------
     >>> Stage(start="class", after_scale="fill")
     Stage(start='class', after_stat=None, after_scale='fill')
+    >>> Stage(after_stat=lambda d: d["count"] / d["count"].max())
+    Stage(start=None, after_stat=AfterStat(<lambda>), after_scale=None)
     """
 
     __slots__ = ("start", "after_stat", "after_scale")
 
     def __init__(
         self,
-        start: Optional[str] = None,
-        after_stat: Optional[Union[str, AfterStat]] = None,
-        after_scale: Optional[Union[str, AfterScale]] = None,
+        start: Optional[Union[str, Callable[..., Any]]] = None,
+        after_stat: Optional[Union[str, Callable[..., Any], AfterStat]] = None,
+        after_scale: Optional[Union[str, Callable[..., Any], AfterScale]] = None,
     ) -> None:
         self.start = start
 
-        # Normalise bare strings to wrapper objects for convenience.
-        if isinstance(after_stat, str):
+        # Normalise bare strings and callables to wrapper objects.
+        if isinstance(after_stat, str) or (
+            callable(after_stat) and not isinstance(after_stat, AfterStat)
+        ):
             after_stat = AfterStat(after_stat)
         self.after_stat: Optional[AfterStat] = after_stat  # type: ignore[assignment]
 
-        if isinstance(after_scale, str):
+        if isinstance(after_scale, str) or (
+            callable(after_scale) and not isinstance(after_scale, AfterScale)
+        ):
             after_scale = AfterScale(after_scale)
         self.after_scale: Optional[AfterScale] = after_scale  # type: ignore[assignment]
 
@@ -239,72 +270,124 @@ class Mapping(dict):
 
 
 # ---------------------------------------------------------------------------
+# Centralised aesthetic-value evaluator
+# ---------------------------------------------------------------------------
+
+import numpy as np
+import pandas as pd
+
+
+def eval_aes_value(
+    val: Any,
+    data: "pd.DataFrame",
+) -> Any:
+    """Evaluate a single aesthetic value against a DataFrame.
+
+    This is the Python equivalent of R's ``eval_tidy(quo, data)`` pattern.
+    It handles the three kinds of aesthetic values that appear in
+    :class:`Mapping` objects:
+
+    * **str** — looked up as a column name in *data*.
+    * **callable** — called with *data* as the single argument.
+    * **scalar / other** — returned unchanged (will be broadcast by the
+      caller).
+
+    Parameters
+    ----------
+    val : str, callable, or scalar
+        The aesthetic value to evaluate.
+    data : DataFrame
+        The layer data to evaluate against.
+
+    Returns
+    -------
+    numpy array, scalar, or ``None``
+        ``None`` is returned when *val* is a string that does not match any
+        column in *data* (the column may appear in a later pipeline stage).
+    """
+    if callable(val) and not isinstance(val, (str, type)):
+        result = val(data)
+        if isinstance(result, pd.Series):
+            return result.values
+        return result
+    elif isinstance(val, str):
+        if val in data.columns:
+            return data[val].values
+        return None  # column not yet available
+    else:
+        return val  # scalar — broadcast by caller
+
+
+# ---------------------------------------------------------------------------
 # Public convenience constructors
 # ---------------------------------------------------------------------------
 
 
-def after_stat(x: str) -> AfterStat:
+def after_stat(x: Union[str, Callable[..., Any]]) -> AfterStat:
     """Create an :class:`AfterStat` reference.
 
     Parameters
     ----------
-    x : str
-        Name of a stat-computed variable (e.g. ``"count"``).
+    x : str or callable
+        Name of a stat-computed variable (e.g. ``"count"``), or a callable
+        ``f(data) -> array`` to be evaluated after stat computation.
 
     Returns
     -------
     AfterStat
-        A deferred reference resolved after stat computation.
 
     Examples
     --------
     >>> after_stat("density")
     AfterStat('density')
+    >>> after_stat(lambda d: d["count"] / d["count"].max())
+    AfterStat(<lambda>)
     """
     return AfterStat(x)
 
 
-def after_scale(x: str) -> AfterScale:
+def after_scale(x: Union[str, Callable[..., Any]]) -> AfterScale:
     """Create an :class:`AfterScale` reference.
 
     Parameters
     ----------
-    x : str
-        Name of a post-scale variable (e.g. ``"fill"``).
+    x : str or callable
+        Name of a post-scale variable (e.g. ``"fill"``), or a callable
+        ``f(data) -> array`` to be evaluated after scale mapping.
 
     Returns
     -------
     AfterScale
-        A deferred reference resolved after scale transformation.
 
     Examples
     --------
     >>> after_scale("fill")
     AfterScale('fill')
+    >>> after_scale(lambda d: d["colour"].str.replace("FF", "80"))
+    AfterScale(<lambda>)
     """
     return AfterScale(x)
 
 
 def stage(
-    start: Optional[str] = None,
-    after_stat: Optional[Union[str, AfterStat]] = None,
-    after_scale: Optional[Union[str, AfterScale]] = None,
+    start: Optional[Union[str, Callable[..., Any]]] = None,
+    after_stat: Optional[Union[str, Callable[..., Any], AfterStat]] = None,
+    after_scale: Optional[Union[str, Callable[..., Any], AfterScale]] = None,
 ) -> Stage:
     """Create a :class:`Stage` aesthetic with per-stage overrides.
 
     Parameters
     ----------
-    start : str or None, optional
-        Column name used at the initial data stage.
-    after_stat : str, AfterStat, or None, optional
+    start : str, callable, or None, optional
+        Column name or callable used at the initial data stage.
+    after_stat : str, callable, AfterStat, or None, optional
         Reference used after the stat computation.
-    after_scale : str, AfterScale, or None, optional
+    after_scale : str, callable, AfterScale, or None, optional
         Reference used after scale transformation.
 
     Returns
     -------
     Stage
-        A staged aesthetic mapping.
 
     Examples
     --------

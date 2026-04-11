@@ -234,6 +234,14 @@ def make_labels(mapping: Any) -> Dict[str, str]:
     if not isinstance(mapping, Mapping):
         return {}
 
+    def _label_for(val: Any) -> str:
+        """Generate a human-readable label for an aesthetic value."""
+        if val is None:
+            return ""
+        if callable(val) and not isinstance(val, str):
+            return getattr(val, "__name__", "<expr>")
+        return str(val)
+
     result: Dict[str, str] = {}
     for aes_name, val in mapping.items():
         if val is None:
@@ -241,19 +249,21 @@ def make_labels(mapping: Any) -> Dict[str, str]:
         elif isinstance(val, str):
             result[aes_name] = val
         elif isinstance(val, AfterStat):
-            result[aes_name] = str(val.x)
+            result[aes_name] = _label_for(val.x)
         elif isinstance(val, AfterScale):
-            result[aes_name] = str(val.x)
+            result[aes_name] = _label_for(val.x)
         elif isinstance(val, Stage):
-            # Use the start mapping if available
+            # Use the start mapping if available, then after_stat, then after_scale
             if val.start is not None:
-                result[aes_name] = str(val.start)
+                result[aes_name] = _label_for(val.start)
             elif val.after_stat is not None:
-                result[aes_name] = str(val.after_stat)
+                result[aes_name] = _label_for(val.after_stat)
             elif val.after_scale is not None:
-                result[aes_name] = str(val.after_scale)
+                result[aes_name] = _label_for(val.after_scale)
             else:
                 result[aes_name] = aes_name
+        elif callable(val):
+            result[aes_name] = _label_for(val)
         else:
             result[aes_name] = str(val)
     return result

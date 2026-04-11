@@ -14,8 +14,11 @@ separation of ``plot-build.R`` / ``plot-render.R``.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import copy
 import warnings
+from functools import singledispatch
 from typing import (
     Any,
     Callable,
@@ -60,6 +63,9 @@ __all__ = [
     "get_alt_text",
     "update_ggplot",
     "update_labels",
+    "by_layer",
+    "BuildStage",
+    "ggplot_defaults",
     "get_layer_data",
     "get_layer_grob",
     "get_panel_scales",
@@ -110,6 +116,72 @@ def set_last_plot(plot: "GGPlot") -> None:
 
 
 last_plot = get_last_plot
+
+
+# ---------------------------------------------------------------------------
+# Scoped defaults — ggplot_defaults context manager (Python-exclusive)
+# ---------------------------------------------------------------------------
+
+_ggplot_context: contextvars.ContextVar[Dict[str, Any]] = contextvars.ContextVar(
+    "_ggplot_context", default={}
+)
+
+
+@contextlib.contextmanager
+def ggplot_defaults(
+    *,
+    theme: Any = None,
+    coord: Any = None,
+    facet: Any = None,
+    mapping: Any = None,
+):
+    """Context manager for scoped plot defaults.
+
+    **Python-exclusive feature** — R has ``theme_set()`` for global state,
+    but no scoped equivalent.  This context manager lets you set defaults
+    that apply to all :func:`ggplot` calls within the ``with`` block,
+    without affecting code outside.
+
+    Parameters
+    ----------
+    theme : Theme or dict, optional
+        Default theme applied to all plots in scope.
+    coord : Coord, optional
+        Default coordinate system.
+    facet : Facet, optional
+        Default faceting specification.
+    mapping : Mapping, optional
+        Default aesthetic mapping.
+
+    Examples
+    --------
+    ::
+
+        with ggplot_defaults(theme=theme_minimal(), coord=coord_fixed()):
+            p1 = ggplot(df, aes("x", "y")) + geom_point()   # gets theme_minimal + coord_fixed
+            p2 = ggplot(df, aes("x", "y")) + geom_bar()     # same defaults
+        # Outside: no defaults applied
+    """
+    ctx: Dict[str, Any] = {}
+    if theme is not None:
+        ctx["theme"] = theme
+    if coord is not None:
+        ctx["coord"] = coord
+    if facet is not None:
+        ctx["facet"] = facet
+    if mapping is not None:
+        ctx["mapping"] = mapping
+
+    token = _ggplot_context.set(ctx)
+    try:
+        yield
+    finally:
+        _ggplot_context.reset(token)
+
+
+def _get_context_defaults() -> Dict[str, Any]:
+    """Return the current scoped defaults (empty dict if none)."""
+    return _ggplot_context.get()
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +243,21 @@ class GGPlot:
         self.plot_env: Any = plot_env
         self.layout: Any = None  # Layout class reference
         self._meta: Dict[str, Any] = {}
+        self._build_hooks: Dict[Tuple[str, str], List[Callable]] = {}
+
+        # Apply scoped context defaults (Python-exclusive feature).
+        ctx = _get_context_defaults()
+        if ctx:
+            if "theme" in ctx and not self.theme:
+                self.theme = ctx["theme"]
+            if "coord" in ctx and self.coordinates is None:
+                self.coordinates = ctx["coord"]
+            if "facet" in ctx and self.facet is None:
+                self.facet = ctx["facet"]
+            if "mapping" in ctx:
+                # Merge: context defaults as base, explicit mapping overrides
+                merged = aes(**{**ctx["mapping"], **self.mapping})
+                self.mapping = merged
 
     # ------------------------------------------------------------------
     # Clone
@@ -188,6 +275,44 @@ class GGPlot:
         p.layers = list(self.layers)  # shallow copy of list
         p.labels = Labels(self.labels)
         return p
+
+    # ------------------------------------------------------------------
+    # Build hooks (Python-exclusive — no R equivalent)
+    # ------------------------------------------------------------------
+
+    def add_build_hook(
+        self,
+        timing: str,
+        stage: str,
+        fn: Callable,
+    ) -> "GGPlot":
+        """Register a callback on a named pipeline stage.
+
+        **Python-exclusive feature** — R's ggplot2 does not support
+        build-stage hooks.
+
+        Parameters
+        ----------
+        timing : ``"before"`` or ``"after"``
+            Whether to run before or after the named stage.
+        stage : str
+            A :class:`BuildStage` constant (e.g.
+            ``BuildStage.COMPUTE_STAT``).
+        fn : callable
+            ``fn(data, **ctx) -> data_or_None``.  Receives the current
+            per-layer data list.  Return a new list to replace it, or
+            ``None`` to leave it unchanged.
+
+        Returns
+        -------
+        GGPlot
+            ``self`` (for chaining).
+        """
+        if timing not in ("before", "after"):
+            raise ValueError(f"timing must be 'before' or 'after', got {timing!r}")
+        key = (timing, stage)
+        self._build_hooks.setdefault(key, []).append(fn)
+        return self
 
     # ------------------------------------------------------------------
     # + operator
@@ -228,7 +353,7 @@ class GGPlot:
         if name in (
             "data", "mapping", "layers", "scales", "theme",
             "coordinates", "facet", "labels", "guides", "plot_env",
-            "layout", "_meta",
+            "layout", "_meta", "_build_hooks",
         ):
             object.__setattr__(self, name, value)
         else:
@@ -428,32 +553,171 @@ class BuiltGGPlot:
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# BuildStage — named pipeline stage constants (Python-exclusive feature).
+#
+# R's pipeline is fixed-sequence with no hook points.  This enum-like class
+# gives each stage a stable name so that the hook system (below) can target
+# specific stages.
+# ---------------------------------------------------------------------------
+
+
+class BuildStage:
+    """Named constants for the ``ggplot_build`` pipeline stages.
+
+    These are used with :meth:`GGPlot.add_build_hook` to register
+    before/after callbacks on specific pipeline stages.  This is a
+    **Python-exclusive** extension point — R's ggplot2 does not expose
+    hooks on individual build stages.
+
+    Example
+    -------
+    ::
+
+        p = ggplot(df, aes("x", "y"))
+        p.add_build_hook("after", BuildStage.COMPUTE_STAT, my_callback)
+    """
+
+    LAYER_DATA = "layer_data"
+    SETUP_LAYER = "setup_layer"
+    SETUP_LAYOUT = "setup_layout"
+    COMPUTE_AESTHETICS = "compute_aesthetics"
+    TRANSFORM_SCALES = "transform_scales"
+    TRAIN_POSITION = "train_position"
+    COMPUTE_STAT = "compute_stat"
+    MAP_STAT = "map_stat"
+    COMPUTE_GEOM_1 = "compute_geom_1"
+    COMPUTE_POSITION = "compute_position"
+    RETRAIN_POSITION = "retrain_position"
+    SETUP_GUIDES = "setup_guides"
+    TRAIN_NONPOSITION = "train_nonposition"
+    COMPUTE_GEOM_2 = "compute_geom_2"
+    FINISH_STAT = "finish_stat"
+    FINISH_DATA = "finish_data"
+
+
+def _run_hooks(
+    plot: GGPlot,
+    timing: str,
+    stage: str,
+    data: List[Any],
+    **ctx: Any,
+) -> List[Any]:
+    """Execute registered build hooks for (*timing*, *stage*).
+
+    Parameters
+    ----------
+    plot : GGPlot
+        The plot whose hooks to run.
+    timing : ``"before"`` or ``"after"``
+        When relative to the stage.
+    stage : str
+        One of the :class:`BuildStage` constants.
+    data : list
+        Current per-layer data list.
+    **ctx
+        Additional context (e.g. ``layout``, ``scales``) passed to hooks.
+
+    Returns
+    -------
+    list
+        Possibly modified per-layer data.
+    """
+    hooks = getattr(plot, "_build_hooks", None)
+    if not hooks:
+        return data
+    for hook in hooks.get((timing, stage), []):
+        result = hook(data, **ctx)
+        if result is not None:
+            data = result
+    return data
+
+
+# ---------------------------------------------------------------------------
+# by_layer — apply a function per-layer with error context
+# (R ref: plot-build.R:194-211)
+# ---------------------------------------------------------------------------
+
+
+def by_layer(
+    fn: Callable,
+    layers: List[Any],
+    data: List[Any],
+    step: str = "",
+) -> List[Any]:
+    """Apply *fn(layer, data_i)* for each layer.
+
+    Mirrors R's ``by_layer()`` helper in *plot-build.R:194-211*.  Wraps
+    each call in a try/except so that errors include the layer index.
+
+    Parameters
+    ----------
+    fn : callable
+        ``fn(layer, data_i) -> data_i`` to apply.
+    layers : list
+        Layer objects.
+    data : list
+        Parallel list of per-layer DataFrames.
+    step : str
+        Human-readable description of the current pipeline stage
+        (used in error messages).
+
+    Returns
+    -------
+    list
+        Updated per-layer DataFrames.
+    """
+    out: List[Any] = [None] * len(data)
+    for i in range(len(data)):
+        try:
+            out[i] = fn(layers[i], data[i])
+        except Exception as e:
+            raise RuntimeError(
+                f"Problem while {step}: error in layer {i + 1}."
+            ) from e
+    return out
+
+
+# ---------------------------------------------------------------------------
 # ggplot_build
 # ---------------------------------------------------------------------------
 
+@singledispatch
 def ggplot_build(plot: Any) -> BuiltGGPlot:
     """Build a ggplot for rendering.
 
-    Transforms the plot object through the full data pipeline:
-    prepare layer data, setup facets, compute aesthetics, transform
-    scales, train positions, compute statistics, apply positions,
-    map aesthetics, and compute geom parameters.
+    This is a :func:`functools.singledispatch` generic (R ref:
+    ``plot-build.R:28``, ``UseMethod("ggplot_build")``).  Extension
+    packages can register custom plot types::
+
+        @ggplot_build.register(MyPlotClass)
+        def _build_my_plot(plot):
+            ...
 
     Parameters
     ----------
     plot : GGPlot or BuiltGGPlot
-        The plot to build.  If already a ``BuiltGGPlot``, returns it
-        unchanged.
+        The plot to build.
 
     Returns
     -------
     BuiltGGPlot
-        Containing computed data, trained layout, and the plot reference.
     """
-    # No-op for already-built plots
-    if isinstance(plot, BuiltGGPlot):
-        return plot
+    raise TypeError(
+        f"Cannot build object of type {type(plot).__name__}. "
+        "Expected a GGPlot or BuiltGGPlot instance."
+    )
 
+
+@ggplot_build.register(BuiltGGPlot)
+def _build_noop(plot):
+    """Already-built plots are returned unchanged (R: no-op method)."""
+    return plot
+
+
+@ggplot_build.register(GGPlot)
+def _build_ggplot(plot):
+    """Build a GGPlot through the full data pipeline."""
     from ggplot2_py.layout import Layout, create_layout
     from ggplot2_py.theme import complete_theme
 
@@ -473,45 +737,34 @@ def ggplot_build(plot: Any) -> BuiltGGPlot:
     data: List[Optional[pd.DataFrame]] = [None] * len(layers)
     scales = plot.scales
 
+    _h = _run_hooks  # local alias for brevity
+    S = BuildStage
+
     # --- Layer data ---
-    for i, layer in enumerate(layers):
-        if hasattr(layer, "layer_data"):
-            data[i] = layer.layer_data(plot.data)
-        elif hasattr(layer, "data") and layer.data is not None:
-            d = layer.data
-            if callable(d) and not isinstance(d, pd.DataFrame):
-                d = d(plot.data)
-            if isinstance(d, pd.DataFrame):
-                data[i] = d
-            else:
-                data[i] = plot.data if isinstance(plot.data, pd.DataFrame) else pd.DataFrame()
-        else:
-            data[i] = plot.data if isinstance(plot.data, pd.DataFrame) else pd.DataFrame()
+    data = _h(plot, "before", S.LAYER_DATA, data)
+    data = by_layer(lambda l, d: l.layer_data(plot.data), layers, data, "computing layer data")
+    data = _h(plot, "after", S.LAYER_DATA, data)
 
     # --- Setup layers ---
-    for i, layer in enumerate(layers):
-        if hasattr(layer, "setup_layer"):
-            data[i] = layer.setup_layer(data[i], plot)
+    data = _h(plot, "before", S.SETUP_LAYER, data)
+    data = by_layer(lambda l, d: l.setup_layer(d, plot), layers, data, "setting up layer")
+    data = _h(plot, "after", S.SETUP_LAYER, data)
 
     # --- Setup layout ---
-    layout = create_layout(
-        plot.facet,
-        plot.coordinates,
-        getattr(plot, "layout", None),
-    )
+    layout = create_layout(plot.facet, plot.coordinates, getattr(plot, "layout", None))
     data = layout.setup(data, plot.data if isinstance(plot.data, pd.DataFrame) else pd.DataFrame(), plot.plot_env)
 
     # --- Compute aesthetics ---
-    for i, layer in enumerate(layers):
-        if hasattr(layer, "compute_aesthetics"):
-            data[i] = layer.compute_aesthetics(data[i], plot)
+    data = _h(plot, "before", S.COMPUTE_AESTHETICS, data)
+    data = by_layer(lambda l, d: l.compute_aesthetics(d, plot), layers, data, "computing aesthetics")
+    data = _h(plot, "after", S.COMPUTE_AESTHETICS, data)
 
-    # --- Add default scales for all aesthetics present in the data ---
+    # --- Add default scales ---
     for i in range(len(data)):
         if data[i] is not None and not data[i].empty:
             scales.add_defaults(data[i], plot.plot_env)
 
-    # --- Setup plot labels (from layer mappings) ---
+    # --- Setup plot labels ---
     _setup_plot_labels(plot, layers, data)
 
     # --- Transform scales ---
@@ -526,31 +779,29 @@ def ggplot_build(plot: Any) -> BuiltGGPlot:
     data = layout.map_position(data)
 
     # --- Compute statistics ---
-    for i, layer in enumerate(layers):
-        if hasattr(layer, "compute_statistic"):
-            data[i] = layer.compute_statistic(data[i], layout)
+    data = _h(plot, "before", S.COMPUTE_STAT, data)
+    data = by_layer(lambda l, d: l.compute_statistic(d, layout), layers, data, "computing stat")
+    data = _h(plot, "after", S.COMPUTE_STAT, data)
 
     # --- Map statistics ---
-    for i, layer in enumerate(layers):
-        if hasattr(layer, "map_statistic"):
-            data[i] = layer.map_statistic(data[i], plot)
+    data = _h(plot, "before", S.MAP_STAT, data)
+    data = by_layer(lambda l, d: l.map_statistic(d, plot), layers, data, "mapping stat to aesthetics")
+    data = _h(plot, "after", S.MAP_STAT, data)
 
     # --- Add missing scales ---
     scales.add_missing(["x", "y"], plot.plot_env)
 
-    # --- Compute geom 1 (reparameterize) ---
-    for i, layer in enumerate(layers):
-        if hasattr(layer, "compute_geom_1"):
-            data[i] = layer.compute_geom_1(data[i])
+    # --- Compute geom 1 ---
+    data = _h(plot, "before", S.COMPUTE_GEOM_1, data)
+    data = by_layer(lambda l, d: l.compute_geom_1(d), layers, data, "setting up geom")
+    data = _h(plot, "after", S.COMPUTE_GEOM_1, data)
 
-    # --- Compute position adjustments ---
-    for i, layer in enumerate(layers):
-        if hasattr(layer, "compute_position"):
-            data[i] = layer.compute_position(data[i], layout)
+    # --- Compute position ---
+    data = _h(plot, "before", S.COMPUTE_POSITION, data)
+    data = by_layer(lambda l, d: l.compute_position(d, layout), layers, data, "computing position")
+    data = _h(plot, "after", S.COMPUTE_POSITION, data)
 
     # --- Reset and retrain position scales ---
-    # Re-fetch scales: stat computations and add_missing may have created
-    # new position scales (e.g. y scale for geom_bar via stat_count).
     scale_x = scales.get_scales("x")
     scale_y = scales.get_scales("y")
     layout.reset_scales()
@@ -576,12 +827,8 @@ def ggplot_build(plot: Any) -> BuiltGGPlot:
         for d in data:
             if d is not None:
                 npscales.train_df(d)
-        # Build guides for non-position scales
         if plot.guides is not None and hasattr(plot.guides, "build"):
-            plot.guides = plot.guides.build(
-                npscales, plot.layers, plot.labels, data, plot.theme,
-            )
-        # Map non-position scales
+            plot.guides = plot.guides.build(npscales, plot.layers, plot.labels, data, plot.theme)
         for i in range(len(data)):
             if data[i] is not None:
                 data[i] = npscales.map_df(data[i])
@@ -589,18 +836,20 @@ def ggplot_build(plot: Any) -> BuiltGGPlot:
         if plot.guides is not None and hasattr(plot.guides, "get_custom"):
             plot.guides = plot.guides.get_custom()
 
-    # --- Compute geom 2 (fill defaults) ---
-    for i, layer in enumerate(layers):
-        if hasattr(layer, "compute_geom_2"):
-            data[i] = layer.compute_geom_2(data[i], theme=plot.theme)
+    # --- Compute geom 2 ---
+    data = _h(plot, "before", S.COMPUTE_GEOM_2, data)
+    data = by_layer(lambda l, d: l.compute_geom_2(d, theme=plot.theme), layers, data, "setting up geom aesthetics")
+    data = _h(plot, "after", S.COMPUTE_GEOM_2, data)
 
     # --- Finish statistics ---
-    for i, layer in enumerate(layers):
-        if hasattr(layer, "finish_statistics"):
-            data[i] = layer.finish_statistics(data[i])
+    data = _h(plot, "before", S.FINISH_STAT, data)
+    data = by_layer(lambda l, d: l.finish_statistics(d), layers, data, "finishing layer stat")
+    data = _h(plot, "after", S.FINISH_STAT, data)
 
     # --- Finish data ---
+    data = _h(plot, "before", S.FINISH_DATA, data)
     data = layout.finish_data(data)
+    data = _h(plot, "after", S.FINISH_DATA, data)
 
     # --- Consolidate alt-text ---
     plot.labels["alt"] = get_alt_text(plot)
@@ -672,7 +921,7 @@ def ggplot_add(obj: Any, plot: GGPlot, object_name: str = "") -> GGPlot:
     """Add an object to a ggplot (generic dispatch).
 
     This is the Python equivalent of R's ``ggplot_add()`` S3 generic.
-    It dispatches based on the type of *obj*.
+    It dispatches based on the type of *obj* via :func:`update_ggplot`.
 
     Parameters
     ----------
@@ -691,69 +940,112 @@ def ggplot_add(obj: Any, plot: GGPlot, object_name: str = "") -> GGPlot:
     return update_ggplot(obj, plot, object_name)
 
 
+# ---------------------------------------------------------------------------
+# update_ggplot — singledispatch generic (R ref: plot-construction.R:133,
+# ``update_ggplot <- S7::new_generic("update_ggplot", c("object","plot"))``).
+#
+# Extension packages can register new types via:
+#
+#     from ggplot2_py.plot import update_ggplot
+#     @update_ggplot.register(MyType)
+#     def _add_my_type(obj, plot, object_name=""):
+#         ...
+#         return plot
+# ---------------------------------------------------------------------------
+
+
+@singledispatch
 def update_ggplot(obj: Any, plot: GGPlot, object_name: str = "") -> GGPlot:
-    """Core dispatch for adding components to a ggplot.
-
-    Parameters
-    ----------
-    obj : object
-        Component to add.
-    plot : GGPlot
-        Target plot.
-    object_name : str
-        Name for error messages.
-
-    Returns
-    -------
-    GGPlot
-    """
-    from ggplot2_py.layer import Layer, is_layer
-    from ggplot2_py.scale import Scale, ScalesList
-    from ggplot2_py.coord import Coord, is_coord
-    from ggplot2_py.facet import Facet, is_facet
-    from ggplot2_py.theme import Theme, is_theme, add_theme
-
-    # None -> no-op
-    if obj is None:
+    """Add *obj* to *plot*.  Open generic — register new types with
+    ``@update_ggplot.register(YourType)``."""
+    # Fallback: try some duck-typed checks for types that can't easily be
+    # registered at import time due to circular imports.
+    # --- Guides (duck-type: has _is_guides flag) ---
+    if getattr(obj, "_is_guides", False):
+        if plot.guides is not None and hasattr(plot.guides, "add"):
+            plot.guides.add(obj)
+        else:
+            plot.guides = obj
         return plot
+    # --- GGProto (error) ---
+    if is_ggproto(obj):
+        cli_abort(
+            "Cannot add ggproto objects together. "
+            "Did you forget to add this object to a ggplot object?"
+        )
+    # --- Callable (error with hint) ---
+    if callable(obj):
+        name = object_name or getattr(obj, "__name__", "object")
+        cli_abort(
+            f"Cannot add `{name}` to a ggplot object. "
+            f"Did you forget to add parentheses, as in `{name}()`?"
+        )
+    cli_abort(
+        f"Cannot add `{object_name or type(obj).__name__}` to a ggplot object."
+    )
 
-    # Layer
-    if is_layer(obj):
+
+@update_ggplot.register(type(None))
+def _update_none(obj, plot, object_name=""):
+    return plot
+
+
+@update_ggplot.register(list)
+def _update_list(obj, plot, object_name=""):
+    for item in obj:
+        plot = ggplot_add(item, plot, object_name)
+    return plot
+
+
+@update_ggplot.register(pd.DataFrame)
+def _update_dataframe(obj, plot, object_name=""):
+    plot.data = obj
+    return plot
+
+
+@update_ggplot.register(Mapping)
+def _update_mapping(obj, plot, object_name=""):
+    merged_mapping = aes(**{**plot.mapping, **obj})
+    plot.mapping = merged_mapping
+    return plot
+
+
+@update_ggplot.register(Labels)
+def _update_labels(obj, plot, object_name=""):
+    merged = Labels(plot.labels)
+    merged.update(obj)
+    plot.labels = merged
+    return plot
+
+
+# Registrations for types from other modules are deferred to avoid
+# circular imports.  They are registered via _register_update_ggplot_types()
+# called at the bottom of this module (after the lazy imports block).
+
+def _register_update_ggplot_types():
+    """Register update_ggplot handlers for types that require lazy imports."""
+    from ggplot2_py.layer import Layer
+    from ggplot2_py.scale import Scale
+    from ggplot2_py.coord import Coord
+    from ggplot2_py.facet import Facet
+    from ggplot2_py.theme import Theme, add_theme
+
+    @update_ggplot.register(Layer)
+    def _update_layer(obj, plot, object_name=""):
         plot.layers.append(obj)
         return plot
 
-    # List of items
-    if isinstance(obj, list):
-        for item in obj:
-            plot = ggplot_add(item, plot, object_name)
-        return plot
-
-    # Scale
-    if isinstance(obj, Scale):
+    @update_ggplot.register(Scale)
+    def _update_scale(obj, plot, object_name=""):
         plot.scales.add(obj)
         return plot
 
-    # Labels
-    if is_labels(obj):
-        merged = Labels(plot.labels)
-        merged.update(obj)
-        plot.labels = merged
-        return plot
-
-    # Mapping (aes)
-    if is_mapping(obj):
-        # Merge new mapping with existing (new overrides)
-        merged_mapping = aes(**{**plot.mapping, **obj})
-        plot.mapping = merged_mapping
-        return plot
-
-    # Coord
-    if is_coord(obj):
+    @update_ggplot.register(Coord)
+    def _update_coord(obj, plot, object_name=""):
         if (
             not getattr(plot.coordinates, "default", True)
             and getattr(obj, "default", False)
         ):
-            # Don't let a default coord override a non-default one
             return plot
         if not getattr(plot.coordinates, "default", True):
             cli_inform(
@@ -763,47 +1055,19 @@ def update_ggplot(obj: Any, plot: GGPlot, object_name: str = "") -> GGPlot:
         plot.coordinates = obj
         return plot
 
-    # Facet
-    if is_facet(obj):
+    @update_ggplot.register(Facet)
+    def _update_facet(obj, plot, object_name=""):
         plot.facet = obj
         return plot
 
-    # Theme
-    if is_theme(obj):
+    @update_ggplot.register(Theme)
+    def _update_theme(obj, plot, object_name=""):
         plot.theme = add_theme(plot.theme, obj)
         return plot
 
-    # Guides
-    if hasattr(obj, "_is_guides") and obj._is_guides:
-        if plot.guides is not None and hasattr(plot.guides, "add"):
-            plot.guides.add(obj)
-        else:
-            plot.guides = obj
-        return plot
 
-    # DataFrame -> replace default data
-    if isinstance(obj, pd.DataFrame):
-        plot.data = obj
-        return plot
-
-    # GGProto (shouldn't be added directly)
-    if is_ggproto(obj):
-        cli_abort(
-            "Cannot add ggproto objects together. "
-            "Did you forget to add this object to a ggplot object?"
-        )
-
-    # Callable -> error with hint
-    if callable(obj):
-        name = object_name or getattr(obj, "__name__", "object")
-        cli_abort(
-            f"Cannot add `{name}` to a ggplot object. "
-            f"Did you forget to add parentheses, as in `{name}()`?"
-        )
-
-    cli_abort(
-        f"Cannot add `{object_name or type(obj).__name__}` to a ggplot object."
-    )
+# Perform deferred registrations.
+_register_update_ggplot_types()
 
 
 def add_gg(e1: Any, e2: Any) -> Any:

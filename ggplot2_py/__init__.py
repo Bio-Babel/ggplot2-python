@@ -36,6 +36,7 @@ from ggplot2_py.aes import (
     is_mapping,
     standardise_aes_names,
     Mapping,
+    eval_aes_value,
 )
 
 # ---------------------------------------------------------------------------
@@ -66,6 +67,9 @@ from ggplot2_py.plot import (
     get_alt_text,
     update_ggplot,
     update_labels,
+    by_layer,
+    BuildStage,
+    ggplot_defaults,
     get_layer_data,
     get_layer_grob,
     get_panel_scales,
@@ -83,6 +87,18 @@ from ggplot2_py.plot import (
     panel_rows,
     panel_cols,
     print_plot,
+)
+
+# ---------------------------------------------------------------------------
+# Protocols (structural typing contracts — Python-exclusive)
+# ---------------------------------------------------------------------------
+from ggplot2_py.protocols import (
+    GeomProtocol,
+    StatProtocol,
+    ScaleProtocol,
+    CoordProtocol,
+    FacetProtocol,
+    PositionProtocol,
 )
 
 # ---------------------------------------------------------------------------

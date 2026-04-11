@@ -208,8 +208,19 @@ class Position(GGProto):
         Default aesthetic values.
     """
 
+    # --- Auto-registration registry (Python-exclusive) -------------------
+    _registry: Dict[str, Any] = {}
+
     required_aes: Tuple[str, ...] = ()
     default_aes: Dict[str, Any] = {}
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        name = cls.__name__
+        if name.startswith("Position") and len(name) > 8:
+            key = name[8:]
+            Position._registry[key] = cls
+            Position._registry[key.lower()] = cls
 
     def use_defaults(
         self, data: pd.DataFrame, params: Optional[Dict[str, Any]] = None

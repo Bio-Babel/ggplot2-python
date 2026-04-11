@@ -19,6 +19,7 @@ R references
 
 from __future__ import annotations
 
+from functools import singledispatch
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -39,8 +40,17 @@ __all__ = [
 ]
 
 
-def ggplot_gtable(data: "BuiltGGPlot") -> Any:
+@singledispatch
+def ggplot_gtable(data: Any) -> Any:
     """Convert a built ggplot to a gtable for rendering.
+
+    This is a :func:`functools.singledispatch` generic (R ref:
+    ``plot-render.R:22``, ``UseMethod("ggplot_gtable")``).  Extension
+    packages can register custom built-plot types::
+
+        @ggplot_gtable.register(MyBuiltPlot)
+        def _gtable_my_plot(data):
+            ...
 
     Parameters
     ----------
@@ -52,6 +62,14 @@ def ggplot_gtable(data: "BuiltGGPlot") -> Any:
     gtable
         A gtable suitable for drawing with ``grid_draw()``.
     """
+    raise TypeError(
+        f"Cannot render object of type {type(data).__name__}. "
+        "Expected a BuiltGGPlot instance."
+    )
+
+
+def _ggplot_gtable_impl(data):
+    """Core ggplot_gtable implementation for BuiltGGPlot objects."""
     from gtable_py import (
         Gtable,
         gtable_add_grob,
@@ -749,3 +767,19 @@ def print_plot(
         up_viewport()
 
     return plot
+
+
+# ---------------------------------------------------------------------------
+# Deferred singledispatch registration for ggplot_gtable
+# ---------------------------------------------------------------------------
+
+def _register_ggplot_gtable_types():
+    """Register BuiltGGPlot for ggplot_gtable dispatch.
+
+    Called from plot.py after BuiltGGPlot is defined.
+    """
+    from ggplot2_py.plot import BuiltGGPlot
+    ggplot_gtable.register(BuiltGGPlot)(_ggplot_gtable_impl)
+
+
+_register_ggplot_gtable_types()
