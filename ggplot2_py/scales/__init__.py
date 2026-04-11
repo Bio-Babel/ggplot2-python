@@ -233,6 +233,13 @@ __all__: List[str] = [
     "scale_linewidth_ordinal",
     "scale_linewidth_date",
     "scale_linewidth_datetime",
+    "scale_stroke",
+    "scale_stroke_continuous",
+    "scale_stroke_discrete",
+    "scale_stroke_binned",
+    "scale_stroke_identity",
+    "scale_stroke_manual",
+    "scale_stroke_ordinal",
     # Generic identity / manual
     "scale_continuous_identity",
     "scale_discrete_identity",
@@ -4080,6 +4087,139 @@ def scale_linewidth_datetime(
         name=name,
         transform=transform_time(),
         fallback_palette=pal_rescale((1, 6)),
+        **kwargs,
+    )
+
+
+# =========================================================================
+# Stroke scales  (mirrors scale_linewidth_* with aesthetics="stroke")
+# R: stroke has no dedicated scale_stroke() — it falls back to
+# continuous_scale("stroke", palette=pal_rescale(c(1,6))).
+# We provide explicit functions for user control and legend generation.
+# =========================================================================
+
+
+def scale_stroke_continuous(
+    name: Any = None,
+    *,
+    breaks: Any = None,
+    labels: Any = None,
+    limits: Optional[Any] = None,
+    range: Optional[Sequence[float]] = None,
+    transform: Union[str, Any] = "identity",
+    trans: Optional[Any] = None,
+    guide: str = "legend",
+    aesthetics: Union[str, List[str]] = "stroke",
+) -> ScaleContinuous:
+    """Continuous stroke scale (point border width)."""
+    palette = pal_rescale(range) if range is not None else None
+    return continuous_scale(
+        aesthetics,
+        palette=palette,
+        name=name,
+        breaks=breaks,
+        labels=labels,
+        limits=limits,
+        transform=transform,
+        trans=trans,
+        guide=guide,
+        fallback_palette=pal_rescale((0, 6)),
+    )
+
+
+scale_stroke = scale_stroke_continuous
+
+
+def scale_stroke_binned(
+    name: Any = None,
+    *,
+    breaks: Any = None,
+    labels: Any = None,
+    limits: Optional[Any] = None,
+    range: Optional[Sequence[float]] = None,
+    n_breaks: Optional[int] = None,
+    nice_breaks: bool = True,
+    transform: Union[str, Any] = "identity",
+    trans: Optional[Any] = None,
+    guide: str = "bins",
+    aesthetics: Union[str, List[str]] = "stroke",
+) -> ScaleBinned:
+    """Binned stroke scale."""
+    palette = pal_rescale(range) if range is not None else None
+    return binned_scale(
+        aesthetics,
+        palette=palette,
+        name=name,
+        breaks=breaks,
+        labels=labels,
+        limits=limits,
+        transform=transform,
+        trans=trans,
+        n_breaks=n_breaks,
+        nice_breaks=nice_breaks,
+        guide=guide,
+        fallback_palette=pal_rescale((0, 6)),
+    )
+
+
+def scale_stroke_discrete(
+    name: Any = None,
+    *,
+    aesthetics: Union[str, List[str]] = "stroke",
+    **kwargs: Any,
+) -> Any:
+    """Discrete stroke scale (delegates to ordinal)."""
+    return scale_stroke_ordinal(name=name, **kwargs)
+
+
+def scale_stroke_ordinal(
+    name: Any = None,
+    *,
+    range: Optional[Sequence[float]] = None,
+    aesthetics: Union[str, List[str]] = "stroke",
+    **kwargs: Any,
+) -> ScaleContinuous:
+    """Ordinal stroke scale."""
+    palette = pal_rescale(range) if range is not None else None
+    return continuous_scale(
+        aesthetics,
+        palette=palette,
+        name=name,
+        fallback_palette=pal_rescale((0, 6)),
+        **kwargs,
+    )
+
+
+def scale_stroke_identity(
+    name: Any = None,
+    *,
+    guide: str = "none",
+    aesthetics: Union[str, List[str]] = "stroke",
+    **kwargs: Any,
+) -> ScaleContinuous:
+    """Identity stroke scale (values used as-is)."""
+    return continuous_scale(
+        aesthetics,
+        palette=identity_pal(),
+        name=name,
+        guide=guide,
+        **kwargs,
+    )
+
+
+def scale_stroke_manual(
+    name: Any = None,
+    *,
+    values: Any = None,
+    aesthetics: Union[str, List[str]] = "stroke",
+    **kwargs: Any,
+) -> ScaleContinuous:
+    """Manual stroke scale."""
+    from scales import manual_pal
+    return continuous_scale(
+        aesthetics,
+        palette=manual_pal(values) if values is not None else None,
+        name=name,
         **kwargs,
     )
 
