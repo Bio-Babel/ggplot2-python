@@ -1,4 +1,4 @@
-# ggplot2_py
+# ggplot2_py <a href="https://github.com/R2pyBioinformatics/ggplot2_py"><img src="assets/ggplot2_py_logo.png" align="right" height="138" alt="ggplot2_py logo" /></a>
 
 AI-assisted Python port of the R **ggplot2** package — Create Elegant Data Visualisations Using the Grammar of Graphics.
 
