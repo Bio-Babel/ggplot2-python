@@ -179,17 +179,51 @@ def build_legend_decor(
             fn = getattr(draw_key_fn, "__func__", draw_key_fn)
             glyph = fn(data, layer_params, key_size)
 
+        # --- set_key_size (R: guide-legend.R:626-641) ---
+        # Compute glyph physical size from aesthetics: (size + linewidth) / 10
+        # This converts mm to cm, matching R's set_key_size().
+        glyph_w = getattr(glyph, "_width", None)
+        glyph_h = getattr(glyph, "_height", None)
+        if glyph_w is None or glyph_h is None:
+            _size = data.get("size", 0) or 0
+            _lwd = data.get("linewidth", 0) or 0
+            _stroke = data.get("stroke", 0) or 0
+            try:
+                _size = float(_size) if not (isinstance(_size, float) and np.isnan(_size)) else 0
+            except (TypeError, ValueError):
+                _size = 0
+            try:
+                _lwd = float(_lwd) if not (isinstance(_lwd, float) and np.isnan(_lwd)) else 0
+            except (TypeError, ValueError):
+                _lwd = 0
+            try:
+                _stroke = float(_stroke) if not (isinstance(_stroke, float) and np.isnan(_stroke)) else 0
+            except (TypeError, ValueError):
+                _stroke = 0
+            measured_cm = (_size + _lwd + _stroke) / 10.0
+            if glyph_w is None:
+                glyph_w = measured_cm
+            if glyph_h is None:
+                glyph_h = measured_cm
+
+        # Effective key size = max(default, measured glyph size)
+        eff_w = max(key_width_cm, glyph_w, 0)
+        eff_h = max(key_height_cm, glyph_h, 0)
+
         # Wrap in a GTree with a justified viewport (R: build_decor lines 417-428)
         vp = Viewport(
             x=0.5, y=0.5, just="centre",
-            width=Unit(key_width_cm, "cm"),
-            height=Unit(key_height_cm, "cm"),
+            width=Unit(eff_w, "cm"),
+            height=Unit(eff_h, "cm"),
         )
         key_grob = GTree(
             children=GList(key_bg, glyph),
             vp=vp,
             name=f"key-{i}",
         )
+        # Store measured size on grob (R: attr(grob, "width") <- width)
+        key_grob._width = eff_w
+        key_grob._height = eff_h
         key_glyphs.append(key_grob)
 
     return key_glyphs
@@ -292,10 +326,33 @@ def measure_legend_grobs(
     # Pad to fill the nrow x ncol matrix
     pad = nrow * ncol - n_breaks
 
-    # Key sizes: each column gets the max key width, each row the max height
-    # For simplicity we use the default key size (R measures from attrs)
-    key_widths = [key_width_cm] * ncol
-    key_heights = [key_height_cm] * nrow
+    # Key sizes: read dynamic _width/_height from decor grobs (set by set_key_size
+    # in build_legend_decor), then take column-max / row-max.
+    # Mirrors R's measure_legend_keys / get_key_size (guide-legend.R:595-624).
+    key_w_per_entry = []
+    key_h_per_entry = []
+    for i in range(n_breaks):
+        if i < len(decor):
+            kw = getattr(decor[i], "_width", key_width_cm) or key_width_cm
+            kh = getattr(decor[i], "_height", key_height_cm) or key_height_cm
+        else:
+            kw, kh = key_width_cm, key_height_cm
+        key_w_per_entry.append(max(kw, key_width_cm))
+        key_h_per_entry.append(max(kh, key_height_cm))
+    # Pad with zeros
+    key_w_per_entry.extend([0.0] * pad)
+    key_h_per_entry.extend([0.0] * pad)
+
+    # Arrange into matrix and take column-max / row-max
+    if byrow:
+        kw_matrix = _fill_matrix(key_w_per_entry, nrow, ncol, byrow=True)
+        kh_matrix = _fill_matrix(key_h_per_entry, nrow, ncol, byrow=True)
+    else:
+        kw_matrix = _fill_matrix(key_w_per_entry, nrow, ncol, byrow=False)
+        kh_matrix = _fill_matrix(key_h_per_entry, nrow, ncol, byrow=False)
+
+    key_widths = [max(kw_matrix[r][c] for r in range(nrow)) for c in range(ncol)]
+    key_heights = [max(kh_matrix[r][c] for c in range(ncol)) for r in range(nrow)]
 
     # Label sizes: estimate from text length
     label_w_per_entry = []
