@@ -2665,8 +2665,23 @@ def scale_type(x: Any) -> List[str]:
     return ["continuous"]
 
 
+#: Aesthetics that R does **not** auto-create a default scale for.
+#:
+#: R ships no ``scale_stroke_*`` family — ``stroke`` data flows through
+#: as raw aesthetic values and is not trained by a scale nor given a
+#: legend.  Python has ``scale_stroke_*()`` available for explicit user
+#: control, but ``find_scale`` must not auto-instantiate one or a
+#: spurious "stroke" guide would appear that R never produces.
+_NO_DEFAULT_SCALE_AES: frozenset = frozenset({"stroke"})
+
+
 def find_scale(aes: str, x: Any, env: Optional[Any] = None) -> Optional[Scale]:
     """Auto-detect an appropriate scale for aesthetic *aes* and data *x*.
+
+    Mirrors R's ``find_scale()`` (ggplot2/R/scales-.R) which only looks
+    up scales for aesthetics that R has registered scale constructors
+    for.  ``stroke`` is intentionally excluded — see
+    :data:`_NO_DEFAULT_SCALE_AES`.
 
     Parameters
     ----------
@@ -2682,6 +2697,8 @@ def find_scale(aes: str, x: Any, env: Optional[Any] = None) -> Optional[Scale]:
     Scale or None
     """
     if x is None:
+        return None
+    if aes in _NO_DEFAULT_SCALE_AES:
         return None
 
     types = scale_type(x)

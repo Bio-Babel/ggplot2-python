@@ -387,6 +387,57 @@ def _table_add_legends(
         assemble_colourbar,
     )
 
+    # Helper: build a legend title grob with position_margin injection
+    # (R guide-legend.R:326-334).  Applies equally to discrete-legend
+    # titles and colourbar / coloursteps titles so that all three guide
+    # flavours have the same visible gap between title and body.
+    from ggplot2_py.theme_elements import (
+        element_render as _el_render_t,
+        calc_element as _calc_el_t,
+        Margin as _Margin_t,
+    )
+
+    def _build_legend_title_grob(title_text: str, title_position: str = "top") -> Any:
+        _title_el = _calc_el_t("legend.title", theme)
+        _gap_pt = 0.0
+        try:
+            _sp = _calc_el_t("legend.key.spacing.x", theme) or _calc_el_t(
+                "legend.key.spacing", theme
+            )
+            if _sp is not None:
+                _gap_pt = float(np.sum(convert_width(_sp, "pt", valueOnly=True)))
+        except Exception:
+            _gap_pt = 5.5
+
+        _bm = getattr(_title_el, "margin", None)
+        if isinstance(_bm, _Margin_t):
+            _mt, _mr, _mb, _ml = float(_bm.t), float(_bm.r), float(_bm.b), float(_bm.l)
+            _mu = _bm.unit_str
+            if _mu != "pt":
+                _gap_val = float(np.sum(convert_width(_Unit(_gap_pt, "pt"), _mu, valueOnly=True)))
+            else:
+                _gap_val = _gap_pt
+        else:
+            _mt = _mr = _mb = _ml = 0.0
+            _mu = "pt"
+            _gap_val = _gap_pt
+
+        if title_position == "top":
+            _mb += _gap_val
+        elif title_position == "bottom":
+            _mt += _gap_val
+        elif title_position == "left":
+            _mr += _gap_val
+        elif title_position == "right":
+            _ml += _gap_val
+
+        return _el_render_t(
+            theme, "legend.title",
+            label=str(title_text),
+            margin=_Margin_t(t=_mt, r=_mr, b=_mb, l=_ml, unit=_mu),
+            margin_x=True, margin_y=True,
+        )
+
     legend_gtables = []
 
     for entry in entries:
@@ -402,17 +453,7 @@ def _table_add_legends(
 
         # --- Coloursteps path: binned colour/fill scale ---
         if is_colour_fill and is_binned and sc is not None:
-            title_grob = text_grob(
-                label=entry["title"],
-                x=0.0, y=0.5,
-                just=("left", "centre"),
-                gp=Gpar(
-                    fontsize=title_size,
-                    col=_ltitle_colour,
-                    fontface="bold",
-                ),
-                name=f"coloursteps.title.{entry['title']}",
-            )
+            title_grob = _build_legend_title_grob(entry["title"])
 
             # Extract stepped colour bins
             decor = extract_coloursteps_decor(
@@ -453,18 +494,7 @@ def _table_add_legends(
 
         # --- Colourbar path: continuous colour/fill scale ---
         if is_colour_fill and is_continuous and sc is not None:
-            # Title grob
-            title_grob = text_grob(
-                label=entry["title"],
-                x=0.0, y=0.5,
-                just=("left", "centre"),
-                gp=Gpar(
-                    fontsize=title_size,
-                    col=_ltitle_colour,
-                    fontface="bold",
-                ),
-                name=f"colourbar.title.{entry['title']}",
-            )
+            title_grob = _build_legend_title_grob(entry["title"])
 
             # Extract dense colour sequence
             decor = extract_colourbar_decor(sc, nbin=300)
@@ -515,8 +545,14 @@ def _table_add_legends(
             key_width_cm=KEY_W_CM, key_height_cm=KEY_H_CM,
         )
 
+        # R (guide-legend.R:433-450): labels are ``titleGrob``s with
+        # the ``legend.text`` element's margin baked in, so
+        # ``width_cm(label)`` includes the left/right margins — this is
+        # what creates the visible gap between each key and its label.
+        # Threading the theme through here gives us that behaviour.
         label_grobs = build_legend_labels(
             entry, label_size=label_size, label_colour=_ltext_colour,
+            theme=theme, text_position="right",
         )
 
         sizes = measure_legend_grobs(
@@ -533,21 +569,14 @@ def _table_add_legends(
             text_position="right",
         )
 
-        # R (guide-legend.R): title is rendered via element_render so
-        # grobHeight(title) includes the legend.title element's margin.
-        # Using a bare text_grob here shrinks the cell below the
-        # glyph box and clips the top of the text (e.g. "drv" cap).
-        from ggplot2_py.theme_elements import element_render as _el_render
-        title_grob = _el_render(
-            theme, "legend.title",
-            label=str(entry["title"]),
-            margin_x=True, margin_y=True,
-        )
+        # Discrete-legend title with R's position_margin gap injection.
+        title_grob = _build_legend_title_grob(entry["title"])
+        _title_position = "top"
 
         legend_gt = assemble_legend(
             decor, label_grobs, title_grob,
             layout, sizes,
-            title_position="top",
+            title_position=_title_position,
             padding_cm=PADDING_CM,
             bg_colour="white",
         )

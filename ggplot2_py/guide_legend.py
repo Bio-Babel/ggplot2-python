@@ -129,8 +129,15 @@ def build_legend_decor(
     aes_mapped = entry["aes_mapped"]
     n_breaks = len(entry["breaks"])
 
-    # Resolve layer params (first layer only, like R)
+    # Resolve layer params (first layer only, like R).
+    # R (guide-legend.R:396-410): ``build_decor`` passes per-break
+    # ``data`` (from the scale) *merged* with the layer's fixed
+    # ``aes_params`` (e.g. ``fill='red'`` when the user wrote
+    # ``geom_point(shape=21, fill='red')``).  If we only forward
+    # the mapped aesthetics, a legend key for a shape=21 layer with
+    # ``fill='red'`` shows up as a black disc instead of a red ring.
     layer_params: Dict[str, Any] = {}
+    layer_aes_params: Dict[str, Any] = {}
     if layers:
         for layer in layers:
             geom = getattr(layer, "geom", None)
@@ -140,6 +147,7 @@ def build_legend_decor(
                     layer_params = getattr(geom, "default_params", {})
                     if callable(layer_params):
                         layer_params = layer_params()
+                layer_aes_params = dict(getattr(layer, "aes_params", {}) or {})
                 break
 
     # Key size passed to draw_key as mm (R multiplies by 10 from cm)
@@ -178,6 +186,25 @@ def build_legend_decor(
                 data["alpha"] = val
             else:
                 data[aes_name] = val
+
+        # Merge layer fixed aes_params on top of any mapped aesthetics.
+        # R (guide-legend.R:404) slices the decoration's ``data`` which
+        # already contains fixed params via ``Layer$compute_aesthetics``.
+        # Fixed params win when both are present (matches R's
+        # ``data <- vec_slice(dec$data, i)`` behaviour where fixed
+        # values are written into the data frame).
+        for k, v in layer_aes_params.items():
+            if k in ("colour", "color"):
+                data["colour"] = _safe_colour(v)
+            elif k == "fill":
+                data["fill"] = _safe_colour(v)
+            elif k == "shape" and v is not None:
+                try:
+                    data["shape"] = int(v)
+                except (TypeError, ValueError):
+                    data["shape"] = v
+            elif v is not None:
+                data[k] = v
 
         # Fill in defaults that draw_key functions expect
         data.setdefault("colour", "black")
@@ -258,29 +285,119 @@ def build_legend_labels(
     entry: Dict[str, Any],
     label_size: float = _DEFAULT_LABEL_SIZE,
     label_colour: str = "grey20",
+    theme: Any = None,
+    text_position: str = "right",
 ) -> List[Any]:
     """Build text grobs for legend labels.
 
-    Mirrors ``GuideLegend$build_labels`` (guide-legend.R:433-450).
+    Mirrors ``GuideLegend$build_labels`` (guide-legend.R:433-450)::
+
+        element_grob(elements$text, label = lab,
+                     margin_x = TRUE, margin_y = TRUE)
+
+    That call produces a ``titleGrob`` whose ``grobWidth`` / ``grobHeight``
+    include the theme element's margins.  ``measure_grobs`` subsequently
+    uses those widths to size the label column, which is why R leaves
+    visible space between each key and its label.  A bare ``text_grob``
+    (no margin) shrinks the column to the glyph box and the label text
+    ends up kissing the key rectangle.
 
     Parameters
     ----------
     entry : dict
         Merged legend entry.
     label_size : float
-        Font size in points.
+        Font size in points (used only as a fallback when *theme* is
+        not provided).
     label_colour : str
-        Font colour.
+        Font colour (fallback when *theme* is not provided).
+    theme : Theme or None
+        When given, labels are produced via
+        ``element_render(theme, "legend.text", ...)`` so that the
+        theme's ``legend.text`` element (fontsize, colour, hjust, vjust,
+        angle, margin) drives rendering — matching R exactly.
 
     Returns
     -------
     list of grob
-        One text grob per label.
+        One ``_TitleGrob`` (or ``text_grob``) per label.
     """
     labels = entry.get("labels", [])
     if not labels:
         return [null_grob()]
 
+    # Preferred path: route through element_render so the resulting
+    # _TitleGrob carries legend.text's margin.
+    if theme is not None:
+        from ggplot2_py.theme_elements import (
+            element_render as _el_render,
+            calc_element as _calc,
+            Margin as _Margin,
+        )
+        # R (guide-legend.R:336-349 setup_elements):
+        #   margin <- position_margin(text_position, base_margin, gap)
+        #   elements$text <- calc_element("legend.text", ...with injected margin)
+        # gap = legend.key.spacing (5.5pt default).  The gap is added to
+        # the side of the margin OPPOSITE to ``text_position`` so that
+        # it sits between the key and the label.
+        text_el = _calc("legend.text", theme)
+        gap_pt = 0.0
+        try:
+            from grid_py import convert_width as _cw
+            spacing = _calc("legend.key.spacing.x", theme) or _calc(
+                "legend.key.spacing", theme
+            )
+            if spacing is not None:
+                gap_pt = float(np.sum(_cw(spacing, "pt", valueOnly=True)))
+        except Exception:
+            gap_pt = 5.5  # R default fallback (not a Python invention)
+
+        base_margin = getattr(text_el, "margin", None)
+        if isinstance(base_margin, _Margin):
+            mt, mr, mb, ml = (
+                float(base_margin.t), float(base_margin.r),
+                float(base_margin.b), float(base_margin.l),
+            )
+            mu = base_margin.unit_str
+            # Convert gap_pt to base_margin's unit if not pt
+            if mu != "pt":
+                from grid_py import Unit as _U, convert_width as _cw
+                gap_val = float(np.sum(_cw(_U(gap_pt, "pt"), mu, valueOnly=True)))
+            else:
+                gap_val = gap_pt
+        else:
+            mt = mr = mb = ml = 0.0
+            mu = "pt"
+            gap_val = gap_pt
+
+        # R position_margin(position, margin, gap):
+        #   right  → margin[4] (left)   += gap
+        #   left   → margin[2] (right)  += gap
+        #   top    → margin[3] (bottom) += gap
+        #   bottom → margin[1] (top)    += gap
+        if text_position == "right":
+            ml += gap_val
+        elif text_position == "left":
+            mr += gap_val
+        elif text_position == "top":
+            mb += gap_val
+        elif text_position == "bottom":
+            mt += gap_val
+
+        injected = _Margin(t=mt, r=mr, b=mb, l=ml, unit=mu)
+        return [
+            _el_render(
+                theme, "legend.text",
+                label=str(lab),
+                margin=injected,
+                margin_x=True, margin_y=True,
+            )
+            for lab in labels
+        ]
+
+    # Fallback: legacy plain text_grob (no margin).  Callers that don't
+    # thread the theme down will lose the key↔label gap, which is
+    # acceptable as a pre-theme-init emergency default.
     grobs = []
     for lab in labels:
         grobs.append(text_grob(
@@ -376,21 +493,48 @@ def measure_legend_grobs(
     key_widths = [max(kw_matrix[r][c] for r in range(nrow)) for c in range(ncol)]
     key_heights = [max(kh_matrix[r][c] for c in range(ncol)) for r in range(nrow)]
 
-    # Label sizes: measure with font metrics (R: width_cm(grobs$labels))
+    # Label sizes: R (guide-legend.R:470-477) does:
+    #   label_widths  = apply(matrix(width_cm(grobs$labels),  ...), 2, max)
+    #   label_heights = apply(matrix(height_cm(grobs$labels), ...), 1, max)
+    # where ``grobs$labels`` are titleGrobs with margins, so ``width_cm``
+    # returns glyph_width + margin_left + margin_right.  When the label
+    # has no titleGrob wrapping, fall back to bare text width.
+    from grid_py import convert_width as _cw, convert_height as _ch, grob_width as _gw, grob_height as _gh
+    def _measure_label_w(g) -> float:
+        try:
+            u = _gw(g)
+            return float(np.sum(_cw(u, "cm", valueOnly=True)))
+        except Exception:
+            return 0.0
+    def _measure_label_h(g) -> float:
+        try:
+            u = _gh(g)
+            return float(np.sum(_ch(u, "cm", valueOnly=True)))
+        except Exception:
+            return 0.0
+
     label_w_per_entry = []
-    for i, lab_grob in enumerate(labels):
-        label_text = ""
-        if hasattr(lab_grob, "label"):
-            label_text = str(lab_grob.label)
-        elif hasattr(lab_grob, "_label"):
-            label_text = str(lab_grob._label)
-        label_w_per_entry.append(_text_width_cm(label_text, fontsize=label_size)
-                                 if label_text else 0.3)
+    label_h_per_entry = []
+    for lab_grob in labels:
+        w = _measure_label_w(lab_grob)
+        h = _measure_label_h(lab_grob)
+        if w <= 0:
+            # Last-resort fallback: measure the bare label text.
+            label_text = ""
+            if hasattr(lab_grob, "label"):
+                label_text = str(lab_grob.label)
+            elif hasattr(lab_grob, "_label"):
+                label_text = str(lab_grob._label)
+            w = (_text_width_cm(label_text, fontsize=label_size)
+                 if label_text else 0.3)
+        if h <= 0:
+            h = key_height_cm
+        label_w_per_entry.append(w)
+        label_h_per_entry.append(h)
 
-    # Pad label widths
+    # Pad to fill the nrow x ncol matrix
     label_w_per_entry.extend([0.0] * pad)
-
-    label_h_per_entry = [key_height_cm] * n_breaks + [0.0] * pad
+    label_h_per_entry.extend([0.0] * pad)
 
     # Arrange into matrix and take column-max / row-max
     if byrow:
