@@ -780,10 +780,15 @@ def add_legend_title(
     gt: Gtable,
     title_grob: Any,
     position: str = "top",
+    hjust: float = 0.0,
+    vjust: float = 0.5,
 ) -> Gtable:
     """Add a title to a legend gtable.
 
-    Mirrors ``Guide$add_title`` (guide-.R:924-951).
+    When the title's rendered size exceeds the existing table along the
+    long axis, padding columns (rows) are inserted on one or both sides
+    so the title stays within the legend background.  ``hjust`` / ``vjust``
+    control how the excess splits between the two sides.
 
     Parameters
     ----------
@@ -793,6 +798,8 @@ def add_legend_title(
         Title grob.
     position : str
         "top", "right", "bottom", or "left".
+    hjust, vjust : float
+        Title justification (0 = left/top, 1 = right/bottom).
 
     Returns
     -------
@@ -802,13 +809,21 @@ def add_legend_title(
     if title_grob is None:
         return gt
 
-    # R (guide-.R:924-951): cell size = ``grobHeight(title)`` /
-    # ``grobWidth(title)``.  When ``title_grob`` is a ``_TitleGrob``
-    # (produced by ``element_render(legend.title)``), ``grob_height``
-    # returns a lazy unit covering text + margin, which grid_py
-    # resolves correctly at draw time.  For a bare text_grob without
-    # margins, ``grob_height`` still gives the glyph box.
-    from grid_py import grob_height as _gh, grob_width as _gw
+    from grid_py import (
+        grob_height as _gh,
+        grob_width as _gw,
+        convert_width as _cw,
+        convert_height as _ch,
+    )
+
+    def _cm_total(u: Any, axis: str) -> float:
+        """Resolve a (possibly composite) unit to a total cm value."""
+        try:
+            fn = _cw if axis == "x" else _ch
+            arr = fn(u, "cm", valueOnly=True)
+            return float(np.sum(arr))
+        except Exception:
+            return 0.0
 
     if position == "top":
         gt = gtable_add_rows(gt, _gh(title_grob), pos=0)
@@ -838,6 +853,34 @@ def add_legend_title(
             t=1, l=gt.ncol, r=gt.ncol, b=gt.nrow,
             z=-math.inf, clip="off", name="title",
         )
+
+    # If the title overflows the existing table along its orientation axis,
+    # pad both sides so it stays inside the legend background.  The split
+    # between the two pad cells is controlled by hjust / vjust.
+    if position in ("top", "bottom"):
+        title_width_cm = _cm_total(_gw(title_grob), "x")
+        table_width_cm = sum(_cm_total(Unit(w, "cm") if isinstance(w, (int, float)) else w, "x")
+                             for w in gt.widths) if hasattr(gt, "widths") else _cm_total(gt.widths, "x")
+        extra = max(0.0, title_width_cm - table_width_cm)
+        if extra > 1e-6:
+            left_pad = hjust * extra
+            right_pad = (1.0 - hjust) * extra
+            if left_pad > 1e-6:
+                gt = gtable_add_cols(gt, Unit(left_pad, "cm"), pos=0)
+            if right_pad > 1e-6:
+                gt = gtable_add_cols(gt, Unit(right_pad, "cm"), pos=-1)
+    else:
+        title_height_cm = _cm_total(_gh(title_grob), "y")
+        table_height_cm = sum(_cm_total(Unit(h, "cm") if isinstance(h, (int, float)) else h, "y")
+                              for h in gt.heights) if hasattr(gt, "heights") else _cm_total(gt.heights, "y")
+        extra = max(0.0, title_height_cm - table_height_cm)
+        if extra > 1e-6:
+            top_pad = vjust * extra
+            bottom_pad = (1.0 - vjust) * extra
+            if top_pad > 1e-6:
+                gt = gtable_add_rows(gt, Unit(top_pad, "cm"), pos=0)
+            if bottom_pad > 1e-6:
+                gt = gtable_add_rows(gt, Unit(bottom_pad, "cm"), pos=-1)
 
     return gt
 
