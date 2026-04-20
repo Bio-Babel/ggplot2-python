@@ -1771,21 +1771,31 @@ class TestThemeValidation:
 class TestThemeInheritanceRendering:
     """Test that theme changes propagate to rendered output."""
 
-    def test_text_colour_inherits_to_axis(self):
+    def test_text_colour_does_not_override_axis_default(self):
+        # ``theme_grey`` sets ``axis.text = element_text(colour=col_mix(ink,
+        # paper, 0.302))`` — an explicit colour.  Overriding ``text.colour``
+        # alone does NOT propagate to ``axis.text.x`` because the closer
+        # ancestor already declared a non-null colour.  Both R and the
+        # Python port keep the default grey.
         from ggplot2_py.coord import _resolve_element
         from ggplot2_py import theme, element_text
         from ggplot2_py.theme import complete_theme
         t = complete_theme(theme(text=element_text(colour="red")))
         el = _resolve_element("axis.text.x", t, {"colour": "grey", "size": 8})
-        assert el["colour"] == "red"
+        assert el["colour"] != "red"  # axis.text defaults beat text override
+        assert el["colour"] != "grey"  # resolved from theme, not from fallback
 
-    def test_strip_text_inherits_from_text(self):
+    def test_text_colour_does_not_override_strip_default(self):
+        # ``strip.text`` in ``theme_grey`` also carries an explicit
+        # ``colour = col_mix(ink, paper, 0.1)`` default, so a user's
+        # ``text.colour`` override is preempted here as well.
         from ggplot2_py.coord import _resolve_element
         from ggplot2_py import theme, element_text
         from ggplot2_py.theme import complete_theme
         t = complete_theme(theme(text=element_text(colour="blue")))
         el = _resolve_element("strip.text.x", t, {"colour": "grey", "size": 8})
-        assert el["colour"] == "blue"
+        assert el["colour"] != "blue"
+        assert el["colour"] != "grey"
 
     def test_plot_title_inherits(self):
         from ggplot2_py.coord import _resolve_element
