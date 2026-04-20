@@ -9,8 +9,15 @@ from ggplot2_py.coord import CoordCartesian
 from ggplot2_py.facet import FacetNull
 
 
+from ggplot2_py._compat import waiver as _waiver
+
+
 class _FS:
     aesthetics = ["x"]
+    # Real scales inherit these from ``Scale``; the stubs mirror that so
+    # ``default_expansion`` can resolve an expansion spec.
+    expand = _waiver()
+
     def get_limits(self):
         return [0, 10]
     def dimension(self, expand=None, limits=None):
@@ -27,6 +34,8 @@ class _FS:
         return _FS()
     def reset(self):
         pass
+    def is_discrete(self):
+        return False
 
 
 class TestLayout:

@@ -16,10 +16,20 @@ class _FT:
 
 
 class _FS:
+    # Minimal stand-in for a continuous positional scale.  Real scales
+    # inherit ``expand = waiver()`` and an ``is_discrete()`` method from
+    # the ``Scale`` base class; mirror those here so ``default_expansion``
+    # can resolve the expansion spec without bailing out.
+    from ggplot2_py._compat import waiver as _waiver
+    expand = _waiver()
+    del _waiver
+
     def get_limits(self):
         return [0, 10]
     def dimension(self):
         return [0, 10]
+    def is_discrete(self):
+        return False
 
 
 class TestCoordAbstract:

@@ -22,6 +22,17 @@ import numpy as np
 import pandas as pd
 import warnings
 
+from ggplot2_py._compat import waiver as _waiver
+
+
+class _MockScaleBase:
+    """Baseline fields that real ``Scale`` subclasses declare.  Mock scales
+    in this file inherit from this so code paths in ``default_expansion``
+    / ``_scale_numeric_range`` can run."""
+    expand = _waiver()
+    def is_discrete(self):
+        return False
+
 from ggplot2_py.plot import (
     GGPlot,
     ggplot,
@@ -362,8 +373,8 @@ class TestScaleNumericRange:
 
     def test_scale_with_dimension(self):
         """Scale with dimension() method (lines 67-72)."""
-        class MockScale:
-            def dimension(self):
+        class MockScale(_MockScaleBase):
+            def dimension(self, expand=None):
                 return [1.0, 5.0]
         result = _scale_numeric_range(MockScale())
         assert result == [1.0, 5.0]
@@ -378,8 +389,8 @@ class TestScaleNumericRange:
 
     def test_scale_with_bad_dimension(self):
         """dimension() returns non-numeric => fallback to get_limits (line 73)."""
-        class MockScale:
-            def dimension(self):
+        class MockScale(_MockScaleBase):
+            def dimension(self, expand=None):
                 return ["a", "b"]
             def get_limits(self):
                 return [0.0, 10.0]
@@ -388,8 +399,8 @@ class TestScaleNumericRange:
 
     def test_scale_with_bad_dimension_and_bad_limits(self):
         """Both fail => return default fallback (line 86)."""
-        class MockScale:
-            def dimension(self):
+        class MockScale(_MockScaleBase):
+            def dimension(self, expand=None):
                 return ["a", "b"]
             def get_limits(self):
                 return ["c", "d"]
@@ -398,8 +409,8 @@ class TestScaleNumericRange:
 
     def test_scale_with_short_dimension(self):
         """dimension() returns less than 2 elements => fallback (line 69)."""
-        class MockScale:
-            def dimension(self):
+        class MockScale(_MockScaleBase):
+            def dimension(self, expand=None):
                 return [5.0]
             def get_limits(self):
                 return [1.0, 9.0]
@@ -963,7 +974,7 @@ class TestLayoutDirectPanelParams:
         })
 
         # Provide mock scales that match the real Scale API
-        class MockScale:
+        class MockScale(_MockScaleBase):
             aesthetics = ["x"]
             def dimension(self, expand=None):
                 return [0.0, 10.0]
