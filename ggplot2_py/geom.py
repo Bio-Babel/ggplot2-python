@@ -1255,7 +1255,7 @@ class GeomText(Geom):
     default_aes: Mapping = Mapping(
         colour=FromTheme("colour", fallback="ink"),
         family="",
-        size=FromTheme("fontsize"),
+        size=3.88,  # R GeomText$default_aes: literal 3.88 (mm), ≈ 11 pt when ×.pt
         angle=0,
         hjust=0.5,
         vjust=0.5,
@@ -1328,7 +1328,7 @@ class GeomLabel(Geom):
         colour=FromTheme("colour", fallback="ink"),
         fill="white",
         family="",
-        size=FromTheme("fontsize"),
+        size=3.88,  # R GeomLabel$default_aes: literal 3.88 (mm)
         angle=0,
         hjust=0.5,
         vjust=0.5,
