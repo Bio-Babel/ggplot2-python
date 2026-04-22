@@ -1425,16 +1425,26 @@ class _TitleGrob(GTree):
         self._title_widths = widths
         self._title_heights = heights
 
-    # R: widthDetails.titleGrob  → sum(x$widths)
+    # R: widthDetails.titleGrob <- function(x) sum(x$widths)
+    # (``ggplot2/R/margins.R:199-201``). R's ``sum()`` on a unit vector
+    # dispatches to ``Summary.unit`` which wraps the full vector in a
+    # *single-element* L_SUM compound (``grid/R/unit.R:300-347``). That
+    # is what ``evaluateGrobUnit`` expects at ``grid/src/unit.c:535``,
+    # where it reads ``transformWidthtoINCHES(unitx, 0, ...)``. Using
+    # Python's builtin ``sum`` here would leave a multi-element unit
+    # unchanged (because ``0 + Unit`` short-circuits to identity),
+    # which makes grid_py read only the left-margin element and
+    # underestimate the grob's width.
     def width_details(self) -> Any:
         if self._title_widths is not None:
-            return sum(self._title_widths)
+            from grid_py import unit_summary_sum
+            return unit_summary_sum(self._title_widths)
         return Unit(0, "cm")
 
-    # R: heightDetails.titleGrob → sum(x$heights)
     def height_details(self) -> Any:
         if self._title_heights is not None:
-            return sum(self._title_heights)
+            from grid_py import unit_summary_sum
+            return unit_summary_sum(self._title_heights)
         return Unit(0, "cm")
 
 

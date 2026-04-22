@@ -55,6 +55,130 @@ def _legend_label_width_cm(labels: List[Any], fontsize: float = 6.0) -> float:
     return max(max_w, 0.3)  # minimum width 0.3 cm
 
 
+# ---------------------------------------------------------------------------
+# Layer-to-guide filtering (ports of R's matched_aes / include_layer_in_guide,
+# ``ggplot2/R/guides-.R:871-912``).
+#
+# R's GuideLegend$process_layers only forwards layers whose aesthetic
+# mapping actually maps one of the guide's aesthetics, unless the user
+# explicitly set ``show.legend=TRUE``. Without this filter, a legend
+# picks up ``draw_key`` from any convenient layer (e.g. a backbone
+# ``geom_segment`` with a fixed black colour) and renders black path
+# glyphs instead of the colour-scale dots it should show.
+# ---------------------------------------------------------------------------
+
+_AES_SYNONYMS: Dict[str, str] = {"color": "colour"}
+
+
+def _canon_aes(name: str) -> str:
+    return _AES_SYNONYMS.get(name, name)
+
+
+def _aes_key_set(obj: Any) -> set:
+    """Return the canonicalised set of aesthetic names in a mapping-like obj."""
+    if obj is None:
+        return set()
+    try:
+        keys = obj.keys() if hasattr(obj, "keys") else list(obj)
+    except Exception:
+        return set()
+    return {_canon_aes(str(k)) for k in keys}
+
+
+def _matched_aes(layer: Any, guide_aes: set) -> set:
+    """Port of R's ``matched_aes`` (``guides-.R:871-880``).
+
+    Returns the canonical aesthetic names that are *mapped* by this
+    layer's ``aes()`` and also part of the guide's key columns, excluding
+    aesthetics that are fixed (``aes_params``/``computed_geom_params``).
+    """
+    mapping_keys = _aes_key_set(getattr(layer, "computed_mapping", None)
+                                or getattr(layer, "mapping", None))
+    stat = getattr(layer, "stat", None)
+    stat_default = _aes_key_set(getattr(stat, "default_aes", None))
+    all_names = mapping_keys | stat_default
+
+    geom = getattr(layer, "geom", None)
+    geom_required = set()
+    geom_default = set()
+    if geom is not None:
+        req = getattr(geom, "required_aes", None)
+        if req is not None:
+            geom_required = {_canon_aes(str(a)) for a in req}
+        geom_default = _aes_key_set(getattr(geom, "default_aes", None))
+    geom_names = geom_required | geom_default
+    # R's rename_size shim: size-renaming geoms contribute to size
+    # legends even without mapping "size" explicitly.
+    if geom is not None and getattr(geom, "rename_size", False):
+        if "size" in all_names and "linewidth" not in all_names:
+            geom_names = geom_names | {"size"}
+
+    matched = (all_names & geom_names) & {_canon_aes(a) for a in guide_aes}
+    matched -= _aes_key_set(getattr(layer, "computed_geom_params", None))
+    matched -= _aes_key_set(getattr(layer, "aes_params", None))
+    return matched
+
+
+def _include_layer_in_guide(layer: Any, matched: set) -> bool:
+    """Port of R's ``include_layer_in_guide`` (``guides-.R:885-912``)."""
+    show = getattr(layer, "show_legend", None)
+    # Non-logical values: R warns and treats as FALSE. Python accepts
+    # None (= NA) and bool; anything else is coerced to False.
+    if show is not None and not isinstance(show, (bool, np.bool_)):
+        # Named-dict form (``show.legend=c(colour=TRUE)``) — uncommon in
+        # ggplot2_py but supported for completeness.
+        if isinstance(show, dict):
+            if not matched:
+                return False
+            picks = {_canon_aes(k): v for k, v in show.items()}
+            vals = [picks[a] for a in matched if a in picks and picks[a] is not None]
+            return len(vals) == 0 or any(vals)
+        return False
+
+    if matched:
+        # Layer maps at least one of the guide's aesthetics:
+        # include unless show.legend is explicitly FALSE.
+        if show is None:
+            return True
+        return bool(show)
+    # Layer does not map any guide aesthetic: include only if show.legend
+    # is explicitly TRUE.
+    return show is True
+
+
+def _resolve_draw_key_for_entry(
+    entry: Dict[str, Any], layers: Any,
+) -> tuple[Any, List[Any]]:
+    """Pick the ``draw_key`` and layer subset for a single legend entry.
+
+    Mirrors R's ``GuideLegend$process_layers`` filtering combined with
+    ``get_layer_key``'s first-layer-wins behaviour for glyph selection.
+    Returns ``(draw_key_fn, included_layers)`` — the included layer
+    list is forwarded to ``build_legend_decor`` so ``aes_params`` /
+    ``default_aes`` resolution also uses only qualifying layers.
+    """
+    from ggplot2_py.draw_key import draw_key_point as _draw_key_point
+
+    guide_aes = {_canon_aes(a) for a in (entry.get("aes_mapped") or {}).keys()}
+    if not guide_aes:
+        guide_aes = {_canon_aes(str(entry.get("aesthetic", "")))}
+
+    included: List[Any] = []
+    if layers:
+        for layer in layers:
+            matched = _matched_aes(layer, guide_aes)
+            if _include_layer_in_guide(layer, matched):
+                included.append(layer)
+
+    draw_key_fn = _draw_key_point
+    for layer in included:
+        geom = getattr(layer, "geom", None)
+        if geom is not None and hasattr(geom, "draw_key"):
+            draw_key_fn = geom.draw_key
+            break
+    return draw_key_fn, included
+
+
 @singledispatch
 def ggplot_gtable(data: Any) -> Any:
     """Convert a built ggplot to a gtable for rendering.
@@ -362,16 +486,11 @@ def _table_add_legends(
     PADDING_CM = 0.15  # R: legend.margin default padding
 
     # ------------------------------------------------------------------
-    # 4. Determine draw_key function from layers
+    # 4. ``draw_key`` is now resolved per-entry inside the loop below
+    # (R's ``GuideLegend$process_layers`` filters layers against each
+    # guide's aesthetics via ``matched_aes`` / ``include_layer_in_guide``,
+    # ``guide-legend.R:219-231``). See ``_resolve_draw_key_for_entry``.
     # ------------------------------------------------------------------
-    from ggplot2_py.draw_key import draw_key_point as _draw_key_point
-    draw_key_fn = _draw_key_point
-    if layers:
-        for layer in layers:
-            geom = getattr(layer, "geom", None)
-            if geom is not None and hasattr(geom, "draw_key"):
-                draw_key_fn = geom.draw_key
-                break
 
     # ------------------------------------------------------------------
     # 5. Build each guide as an independent Gtable
@@ -537,11 +656,27 @@ def _table_add_legends(
             continue
 
         # --- Legend path: discrete scales ---
-        nrow = min(n_breaks, 20)
-        ncol = 1
+        # Mirror R ``GuideLegend$setup_params`` (``guide-legend.R:286-298``):
+        # vertical direction defaults to ``ncol = ceiling(n_breaks / 20)``,
+        # then ``nrow = ceiling(n_breaks / ncol)``. Previously hardcoded
+        # ``ncol = 1`` caused any legend with more than 20 entries to pile
+        # all wrapped entries into a single physical column (multi-column
+        # positions were computed by ``arrange_legend_layout`` but only
+        # one column width was allocated in the gtable), producing
+        # overlapping key + label glyphs per row.
+        ncol = max(1, math.ceil(n_breaks / 20))
+        nrow = max(1, math.ceil(n_breaks / ncol))
+
+        # Per-entry draw_key: mirror R's ``matched_aes`` /
+        # ``include_layer_in_guide`` so ``geom_segment`` / ``geom_path``
+        # layers that don't map the guide's aesthetic can't hijack the
+        # legend key glyph.
+        entry_draw_key_fn, entry_layers = _resolve_draw_key_for_entry(
+            entry, layers,
+        )
 
         decor = build_legend_decor(
-            entry, draw_key_fn, layers,
+            entry, entry_draw_key_fn, entry_layers,
             key_width_cm=KEY_W_CM, key_height_cm=KEY_H_CM,
             theme=theme,
         )
