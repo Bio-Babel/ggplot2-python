@@ -236,9 +236,12 @@ def _ggplot_gtable_impl(data):
     # Render panels via layout
     plot_table = layout.render(geom_grobs, layer_data, theme, labels)
 
-    # Legends — build directly from trained non-position scales.
+    # Legends — build directly from trained non-position scales. Pass
+    # ``plot.guides`` so ``guides(<aes>='none')`` user overrides suppress
+    # the corresponding legend (R parity with ``plot-render.R``).
     plot_table = _table_add_legends(
         plot_table, plot.scales, labels, theme, layers=plot.layers,
+        guides=plot.guides,
     )
 
     # Title / subtitle / caption / tag annotations
@@ -291,7 +294,7 @@ def _safe_colour(colour: Any) -> str:
 
 def _table_add_legends(
     table: Any, scales_list: Any, labels: Dict[str, Any], theme: Any,
-    layers: Any = None,
+    layers: Any = None, guides: Any = None,
 ) -> Any:
     """Build legends from trained non-position scales and add to the gtable.
 
@@ -345,8 +348,38 @@ def _table_add_legends(
     if np_scales is None or np_scales.n() == 0:
         return table
 
+    # Build a per-aesthetic user-override map from ``plot.guides``. When
+    # a user passes ``guides(<aes>='none')`` (or ``GuideNone()``) the
+    # corresponding legend must be suppressed — R parity. ``Guides.train``
+    # records the set on ``suppressed_aesthetics`` before dropping the
+    # GuideNone entries, so read from there. Also support the pre-build
+    # dict form for robustness.
+    suppressed_aes: set = set()
+    if guides is not None:
+        from ggplot2_py.guide import GuideNone
+
+        suppressed_aes |= set(getattr(guides, "suppressed_aesthetics", set()) or set())
+
+        guides_dict = getattr(guides, "guides", None)
+        if isinstance(guides_dict, dict):
+            for ak, av in guides_dict.items():
+                if av is None:
+                    continue
+                if (
+                    av == "none"
+                    or av is GuideNone
+                    or isinstance(av, GuideNone)
+                ):
+                    suppressed_aes.add(ak)
+
     for sc in np_scales.scales:
         aes_name = sc.aesthetics[0] if sc.aesthetics else "unknown"
+
+        # User asked for no legend for this aesthetic — skip.
+        if aes_name in suppressed_aes or any(
+            a in suppressed_aes for a in (sc.aesthetics or [])
+        ):
+            continue
 
         breaks = getattr(sc, "get_breaks", lambda: None)()
         if breaks is None or (hasattr(breaks, "__len__") and len(breaks) == 0):
@@ -383,9 +416,18 @@ def _table_add_legends(
         mapped = [mapped_arr[j] for j in keep]
         labs = [labs[j] for j in keep if j < len(labs)]
 
-        title = labels.get(aes_name, aes_name)
-        if hasattr(title, "__class__") and title.__class__.__name__ == "Waiver":
-            title = aes_name
+        # Scale-level ``name=`` overrides the aesthetic-derived default
+        # (R parity: ``scale.name %||% labels[[aes]]``).
+        scale_title = getattr(sc, "name", None)
+        if scale_title is not None and not (
+            hasattr(scale_title, "__class__")
+            and scale_title.__class__.__name__ == "Waiver"
+        ):
+            title = scale_title
+        else:
+            title = labels.get(aes_name, aes_name)
+            if hasattr(title, "__class__") and title.__class__.__name__ == "Waiver":
+                title = aes_name
 
         raw_entries.append({
             "aesthetic": aes_name,

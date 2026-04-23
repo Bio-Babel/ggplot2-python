@@ -2669,6 +2669,17 @@ class Guides:
         self.guides = [g for g, k in zip(guides_list, keep) if k]
         self.aesthetics = [a for a, k in zip(self.aesthetics, keep) if k]
 
+        # Record suppressed aesthetics before dropping GuideNone entries.
+        # Downstream renderers (``plot_render._table_add_legends``) check
+        # this set to skip scale-derived legends for aesthetics the user
+        # explicitly blanked via ``guides(<aes>='none')``.
+        existing = getattr(self, "suppressed_aesthetics", set()) or set()
+        self.suppressed_aesthetics = set(existing) | {
+            self.aesthetics[i]
+            for i, g in enumerate(self.guides)
+            if isinstance(g, GuideNone) and i < len(self.aesthetics)
+        }
+
         # Drop GuideNone entries
         keep_none = [not isinstance(g, GuideNone) for g in self.guides]
         self.subset_guides(keep_none)
@@ -2805,7 +2816,14 @@ class Guides:
         guides.train(flat_scales, labels)
 
         if not guides.guides:
-            return Guides()
+            # Preserve the ``suppressed_aesthetics`` set that
+            # ``Guides.train`` records before dropping GuideNone entries —
+            # downstream ``plot_render._table_add_legends`` reads it to
+            # skip scale-derived legends the user disabled via
+            # ``guides(<aes>='none')``.
+            empty = Guides()
+            empty.suppressed_aesthetics = getattr(guides, "suppressed_aesthetics", set())
+            return empty
 
         guides.merge()
         guides.process_layers(layers, layer_data, theme)
