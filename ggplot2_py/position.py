@@ -690,7 +690,12 @@ class PositionJitter(Position):
 
     width: Optional[float] = None
     height: Optional[float] = None
-    seed: Any = None  # NA -> random, None -> don't reset
+    # R position-jitter.R:61 — ``seed = NA`` default means "generate a
+    # fresh seed in ``setup_params`` so each plot build is reproducible
+    # *within* but independent *between* builds". ``None`` is reserved
+    # for the user-opt-out case (``R NULL``: use the global RNG, don't
+    # reset).
+    seed: Any = float("nan")
     required_aes: Tuple[str, ...] = ("x", "y")
 
     def __init__(self, **kwargs: Any) -> None:
@@ -1149,18 +1154,18 @@ def position_dodge2(
 def position_jitter(
     width: Optional[float] = None,
     height: Optional[float] = None,
-    seed: Any = None,
+    seed: Any = float("nan"),
 ) -> PositionJitter:
     """Create a jitter position adjustment.
 
-    Parameters
-    ----------
-    width, height : float or None
-    seed : int or None
+    ``seed`` semantics mirror R ``position_jitter(seed = NA)``:
 
-    Returns
-    -------
-    PositionJitter
+    - ``NaN`` (default): generate a fresh seed in ``setup_params`` so the
+      jitter is reproducible within a single plot build but independent
+      between builds.
+    - ``None``: use the global RNG (i.e. do not isolate state). Matches
+      R ``seed = NULL``.
+    - ``int``: use this exact seed.
     """
     return PositionJitter(width=width, height=height, seed=seed)
 

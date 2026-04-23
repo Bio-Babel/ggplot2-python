@@ -935,7 +935,10 @@ class TestStatDensityExtended:
 # ============================================================================
 
 class TestStatSmoothExtended:
-    def test_setup_params_auto_lm(self):
+    def test_setup_params_auto_gam_for_large_n(self):
+        """R stat-smooth.R:14-20 — auto at n >= 1000 per group selects
+        ``gam``; only if mgcv (statsmodels.gam here) is unavailable does
+        it fall back to ``loess``."""
         ss = StatSmooth()
         np.random.seed(42)
         df = pd.DataFrame({
@@ -945,7 +948,7 @@ class TestStatSmoothExtended:
             "PANEL": 1,
         })
         params = ss.setup_params(df, {"method": "auto"})
-        assert params["method"] == "lm"
+        assert params["method"] == "gam"
 
     def test_setup_params_auto_loess(self):
         ss = StatSmooth()

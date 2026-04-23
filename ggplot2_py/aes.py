@@ -446,10 +446,23 @@ def aes(
         raw["y"] = y
     raw.update(kwargs)
 
-    # Standardise names (e.g. "color" -> "colour").
+    # Standardise names (e.g. "color" -> "colour"). R's ``aes()`` also
+    # ``cli::cli_abort``s on duplicate x/y (aes.R:103-106). Python's
+    # ``**kwargs`` makes literal duplicates a ``SyntaxError`` at parse
+    # time, but ``color=`` + ``colour=`` both collapse to ``colour`` — we
+    # catch that post-standardisation because both refer to the same
+    # aesthetic.
     result = Mapping()
+    seen_aliases: Dict[str, str] = {}
     for key, value in raw.items():
         canonical = _standardise_single(key)
+        if canonical in seen_aliases and seen_aliases[canonical] != key:
+            from ggplot2_py._compat import cli_abort
+            cli_abort(
+                f"Duplicate aesthetic {canonical!r} — passed as both "
+                f"{seen_aliases[canonical]!r} and {key!r}."
+            )
+        seen_aliases[canonical] = key
         result[canonical] = value
 
     return result

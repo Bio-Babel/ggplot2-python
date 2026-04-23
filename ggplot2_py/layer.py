@@ -861,6 +861,47 @@ def layer(
         geom_params, stat_params, aes_params = _split_params(
             params, geom, stat, position
         )
+        # R layer.R:97-122 — warn on truly-unknown params / aesthetics.
+        def _known(obj, method, *args):
+            try:
+                r = getattr(obj, method)(*args)
+            except Exception:
+                return set()
+            return set(r) if r else set()
+
+        if check_param or check_aes:
+            known_params = _known(geom, "parameters", True) | _known(stat, "parameters", True)
+            known_aes = (
+                _known(geom, "aesthetics")
+                | _known(stat, "aesthetics")
+                | set(getattr(position, "required_aes", ()) or ())
+            )
+            # Infrastructure keywords the layer itself consumes — never a
+            # "typo in geom param".
+            infra = {
+                "na_rm", "show_legend", "inherit_aes", "key_glyph",
+                "layout", "name", "orientation",
+            }
+            if check_param:
+                unknown = [
+                    k for k in params
+                    if k not in known_params and k not in known_aes
+                    and k not in infra
+                ]
+                if unknown:
+                    cli_warn(
+                        "Ignoring unknown parameters: "
+                        + ", ".join(sorted(unknown))
+                    )
+            if check_aes and mapping:
+                unknown_aes = [
+                    k for k in mapping if k not in known_aes
+                ]
+                if unknown_aes:
+                    cli_warn(
+                        "Ignoring unknown aesthetics: "
+                        + ", ".join(sorted(unknown_aes))
+                    )
     else:
         # Deferred: put everything into geom_params for now
         geom_params = dict(params)

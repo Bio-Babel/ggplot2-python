@@ -383,10 +383,9 @@ class TestGeomStep:
 
 class TestGeomRect:
     def test_required_aes(self):
-        assert "xmin" in GeomRect.required_aes
-        assert "xmax" in GeomRect.required_aes
-        assert "ymin" in GeomRect.required_aes
-        assert "ymax" in GeomRect.required_aes
+        # R geom-rect.R:13: c("x|width|xmin|xmax", "y|height|ymin|ymax")
+        assert "x|width|xmin|xmax" in GeomRect.required_aes
+        assert "y|height|ymin|ymax" in GeomRect.required_aes
 
     def test_setup_data_all_present(self):
         g = GeomRect()
@@ -668,8 +667,10 @@ class TestGeomCrossbar:
 
 class TestGeomLinerange:
     def test_required_aes(self):
-        assert "ymin" in GeomLinerange.required_aes
-        assert "ymax" in GeomLinerange.required_aes
+        # R geom-linerange.R:12: c("x|y", "ymin|xmin", "ymax|xmax")
+        assert "x|y" in GeomLinerange.required_aes
+        assert "ymin|xmin" in GeomLinerange.required_aes
+        assert "ymax|xmax" in GeomLinerange.required_aes
 
 
 class TestGeomPointrange:

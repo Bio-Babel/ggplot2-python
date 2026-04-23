@@ -1029,7 +1029,13 @@ def _mix_ink_paper(ratio: float):
 class GeomRect(Geom):
     """Rectangle geom (defined by xmin, xmax, ymin, ymax)."""
 
-    required_aes: Tuple[str, ...] = ("xmin", "xmax", "ymin", "ymax")
+    # R ``geom-rect.R:13``: ``c("x|width|xmin|xmax", "y|height|ymin|ymax")``
+    # — the rect can be specified as (xmin, xmax) OR as (x, width) (same
+    # for y). ``setup_data`` below resolves the alternatives.
+    required_aes: Tuple[str, ...] = (
+        "x|width|xmin|xmax",
+        "y|height|ymin|ymax",
+    )
     # R (geom-rect.R:6-11):
     #   colour    = from_theme(colour %||% NA),
     #   fill      = from_theme(fill %||% col_mix(ink, paper, 0.35)),
@@ -1145,9 +1151,15 @@ class GeomTile(GeomRect):
 class GeomRaster(Geom):
     """Raster geom -- high-performance uniform tiles."""
 
+    # R geom-raster.R:13 — these aes matter for the raster rectangles and
+    # must be present after layer processing; drop rows missing any of them.
     required_aes: Tuple[str, ...] = ("x", "y")
-    non_missing_aes: Tuple[str, ...] = ("fill",)
-    default_aes: Mapping = Mapping(fill="grey35", alpha=None)
+    non_missing_aes: Tuple[str, ...] = ("fill", "xmin", "xmax", "ymin", "ymax")
+    # R geom-raster.R:9-11 — theme-delayed fill.
+    default_aes: Mapping = Mapping(
+        fill=FromTheme("fill", fallback=_mix_ink_paper(0.2)),
+        alpha=None,
+    )
     draw_key = draw_key_polygon
 
     def setup_data(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
@@ -1324,19 +1336,28 @@ class GeomLabel(Geom):
     """Label geom -- text with background rectangle."""
 
     required_aes: Tuple[str, ...] = ("x", "y", "label")
+    # R (geom-label.R:63-73):
+    #   colour    = from_theme(colour %||% ink)
+    #   fill      = from_theme(fill   %||% paper)
+    #   family    = from_theme(family)
+    #   size      = from_theme(fontsize)
+    #   linewidth = from_theme(borderwidth * 0.5)
+    #   linetype  = from_theme(bordertype)
     default_aes: Mapping = Mapping(
         colour=FromTheme("colour", fallback="ink"),
-        fill="white",
-        family="",
-        size=3.88,  # R GeomLabel$default_aes: literal 3.88 (mm)
+        fill=FromTheme("fill", fallback="paper"),
+        family=FromTheme("family", fallback=""),
+        size=FromTheme("fontsize", fallback=3.88),
         angle=0,
         hjust=0.5,
         vjust=0.5,
         alpha=None,
         fontface=1,
         lineheight=1.2,
-        linewidth=FromTheme("linewidth"),
-        linetype=FromTheme("linetype"),
+        # R uses ``borderwidth * 0.5`` / ``bordertype``; we approximate by
+        # reading ``borderwidth`` directly and halving in the callable.
+        linewidth=FromTheme("linewidth", fallback=lambda g: g.borderwidth * 0.5),
+        linetype=FromTheme("linetype", fallback="bordertype"),
     )
     draw_key = draw_key_label
 
@@ -1979,9 +2000,13 @@ class GeomCrossbar(Geom):
 # ===========================================================================
 
 class GeomLinerange(Geom):
-    """Linerange geom -- vertical line segments."""
+    """Linerange geom -- vertical (or horizontal) line segments."""
 
-    required_aes: Tuple[str, ...] = ("x", "ymin", "ymax")
+    # R geom-linerange.R:12: c("x|y", "ymin|xmin", "ymax|xmax")
+    # — supply (x, ymin, ymax) for vertical or (y, xmin, xmax) for
+    # horizontal; orientation is resolved in setup_params via
+    # has_flipped_aes.
+    required_aes: Tuple[str, ...] = ("x|y", "ymin|xmin", "ymax|xmax")
     default_aes: Mapping = Mapping(
         colour=FromTheme("colour", fallback="ink"),
         linewidth=FromTheme("linewidth"),
@@ -2091,7 +2116,13 @@ class GeomBoxplot(Geom):
         linewidth=FromTheme("linewidth"),
         width=0.9,
     )
-    extra_params: Tuple[str, ...] = ("na_rm", "orientation", "outliers")
+    # R geom-boxplot.R:292-296 — draw_group consumes these kwargs.
+    extra_params: Tuple[str, ...] = (
+        "na_rm", "orientation", "outliers",
+        "notch", "notchwidth", "staplewidth", "varwidth",
+        "outlier_gp", "whisker_gp", "staple_gp", "median_gp", "box_gp",
+        "lineend", "linejoin", "fatten",
+    )
     draw_key = draw_key_boxplot
     rename_size: bool = True
 
@@ -2316,6 +2347,14 @@ class GeomDotplot(Geom):
 
     required_aes: Tuple[str, ...] = ("x", "y")
     non_missing_aes: Tuple[str, ...] = ("size", "shape")
+    # R geom-dotplot.R:122-139 — parameters consumed by draw_group but not
+    # enumerated in draw_panel's signature. Register here so layer()'s
+    # ``check_param`` does not spuriously warn.
+    extra_params: Tuple[str, ...] = (
+        "na_rm", "binaxis", "method", "binpositions", "binwidth",
+        "stackdir", "stackratio", "dotsize", "stackgroups", "origin",
+        "right", "width", "drop",
+    )
     default_aes: Mapping = Mapping(
         colour=FromTheme("colour", fallback="ink"),
         fill="black",
@@ -3613,6 +3652,13 @@ def geom_boxplot(
     show_legend: Any = None,
     inherit_aes: bool = True,
     outliers: bool = True,
+    outlier_colour: Any = None,
+    outlier_color: Any = None,
+    outlier_fill: Any = None,
+    outlier_shape: int = 19,
+    outlier_size: float = 1.5,
+    outlier_stroke: float = 0.5,
+    outlier_alpha: Any = None,
     notch: bool = False,
     notchwidth: float = 0.5,
     staplewidth: float = 0,
@@ -3620,7 +3666,28 @@ def geom_boxplot(
     orientation: Any = None,
     **kwargs: Any,
 ) -> Any:
-    """Create a boxplot layer."""
+    """Create a boxplot layer.
+
+    Matches R ``geom_boxplot``: the individual ``outlier_colour`` /
+    ``outlier_fill`` / ``outlier_shape`` / ``outlier_size`` / ``outlier_stroke``
+    / ``outlier_alpha`` kwargs are gathered into the ``outlier_gp`` dict
+    consumed by ``GeomBoxplot.draw_group``; pass ``outlier_gp=`` directly to
+    override the whole dict at once.
+    """
+    # American spelling alias (R: outlier.color → outlier.colour).
+    if outlier_colour is None and outlier_color is not None:
+        outlier_colour = outlier_color
+    outlier_gp = kwargs.pop("outlier_gp", {}) or {}
+    for key, val in (
+        ("colour", outlier_colour),
+        ("fill", outlier_fill),
+        ("shape", outlier_shape),
+        ("size", outlier_size),
+        ("stroke", outlier_stroke),
+        ("alpha", outlier_alpha),
+    ):
+        if val is not None and key not in outlier_gp:
+            outlier_gp[key] = val
     layer = _layer_import()
     return layer(
         geom=GeomBoxplot, stat=stat, data=data, mapping=mapping,
@@ -3628,7 +3695,8 @@ def geom_boxplot(
         params={
             "na_rm": na_rm, "outliers": outliers, "notch": notch,
             "notchwidth": notchwidth, "staplewidth": staplewidth,
-            "varwidth": varwidth, "orientation": orientation, **kwargs,
+            "varwidth": varwidth, "orientation": orientation,
+            "outlier_gp": outlier_gp, **kwargs,
         },
     )
 
@@ -3658,20 +3726,42 @@ def geom_violin(
 def geom_dotplot(
     mapping: Optional[Mapping] = None,
     data: Any = None,
-    stat: str = "bindot",
     position: str = "identity",
-    na_rm: bool = False,
-    show_legend: Any = None,
-    inherit_aes: bool = True,
+    *,
+    binwidth: Optional[float] = None,
     binaxis: str = "x",
     method: str = "dotdensity",
+    binpositions: str = "bygroup",
     stackdir: str = "up",
     stackratio: float = 1,
     dotsize: float = 1,
+    stackgroups: bool = False,
+    origin: Optional[float] = None,
+    right: bool = True,
+    width: float = 0.9,
+    drop: bool = False,
+    na_rm: bool = False,
+    show_legend: Any = None,
+    inherit_aes: bool = True,
+    stat: str = "bindot",
     **kwargs: Any,
 ) -> Any:
-    """Create a dotplot layer."""
+    """Create a dotplot layer (R geom-dotplot.R:122-139 signature)."""
     layer = _layer_import()
+    kwargs.update({
+        "binwidth": binwidth,
+        "binaxis": binaxis,
+        "method": method,
+        "binpositions": binpositions,
+        "stackdir": stackdir,
+        "stackratio": stackratio,
+        "dotsize": dotsize,
+        "stackgroups": stackgroups,
+        "origin": origin,
+        "right": right,
+        "width": width,
+        "drop": drop,
+    })
     return layer(
         geom=GeomDotplot, stat=stat, data=data, mapping=mapping,
         position=position, show_legend=show_legend, inherit_aes=inherit_aes,
@@ -4424,13 +4514,24 @@ def geom_sf(
     inherit_aes: bool = True,
     **kwargs: Any,
 ) -> Any:
-    """Create a simple-features layer."""
+    """Create a simple-features layer.
+
+    Matches R ``geom_sf`` (geom-sf.R:293-312) which returns
+    ``c(layer_sf(...), coord_sf(default = TRUE))``. The list is iterated
+    by ``update_ggplot.register(list)`` so ``p + geom_sf()`` applies
+    both the layer and the default coord; a user-supplied non-default
+    ``coord_cartesian()`` (or any coord) then replaces the default via
+    the precedence rule in ``plot.py::_update_coord`` (plot-construction.R
+    :200-215 in R).
+    """
+    from ggplot2_py.coord import coord_sf
     layer = _layer_import()
-    return layer(
+    lyr = layer(
         geom=GeomSf, stat=stat, data=data, mapping=mapping or Mapping(),
         position=position, show_legend=show_legend, inherit_aes=inherit_aes,
         params={"na_rm": na_rm, **kwargs},
     )
+    return [lyr, coord_sf(default=True)]
 
 
 def geom_sf_text(

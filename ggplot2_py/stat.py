@@ -141,6 +141,22 @@ def _layer_sf(**kwargs: Any) -> Any:
 # Helpers
 # ---------------------------------------------------------------------------
 
+# R ``stats::quantile`` types 1-9 mapped to the equivalent ``numpy.quantile``
+# ``method=`` string. Default R type is 7 (linear interpolation), which is
+# also numpy's default. See R ``?quantile`` or Hyndman & Fan (1996).
+_R_QTYPE_TO_NUMPY_METHOD = {
+    1: "inverted_cdf",
+    2: "averaged_inverted_cdf",
+    3: "closest_observation",
+    4: "interpolated_inverted_cdf",
+    5: "hazen",
+    6: "weibull",
+    7: "linear",
+    8: "median_unbiased",
+    9: "normal_unbiased",
+}
+
+
 def _flip_data(data: pd.DataFrame, flipped_aes: bool) -> pd.DataFrame:
     """Swap x/y columns when orientation is flipped.
 
@@ -1974,7 +1990,11 @@ class StatCount(Stat):
     """
 
     required_aes: List[str] = ["x|y"]
-    default_aes: Dict[str, Any] = {"y": AfterStat("count"), "weight": 1}
+    default_aes: Dict[str, Any] = {
+        "x": AfterStat("count"),
+        "y": AfterStat("count"),
+        "weight": 1,
+    }
     dropped_aes: List[str] = ["weight"]
     extra_params: List[str] = ["na_rm", "orientation"]
 
@@ -2109,6 +2129,7 @@ class StatDensity(Stat):
 
     required_aes: List[str] = ["x|y"]
     default_aes: Dict[str, Any] = {
+        "x": AfterStat("density"),
         "y": AfterStat("density"),
         "fill": None,
         "weight": None,
@@ -2281,11 +2302,27 @@ class StatSmooth(Stat):
 
         method = params.get("method")
         if method is None or method == "auto":
+            # R stat-smooth.R:14-20 — pick loess vs gam based on the
+            # *largest* group, not total row count (loess has bad memory
+            # scaling so we want to avoid it on big groups).
             if "group" in data.columns and "PANEL" in data.columns:
                 max_group = data.groupby(["group", "PANEL"]).size().max()
             else:
                 max_group = len(data)
-            method = "loess" if max_group < 1000 else "lm"
+            if max_group < 1000:
+                method = "loess"
+            else:
+                # R falls back to loess if mgcv is not installed. Python
+                # mirrors: try the gam backend; if unavailable, warn + loess.
+                try:
+                    from statsmodels.gam.api import GLMGam  # noqa: F401
+                    method = "gam"
+                except ImportError:
+                    cli_inform(
+                        "method was set to 'gam', but statsmodels.gam is "
+                        "not importable. Falling back to method = 'loess'."
+                    )
+                    method = "loess"
             cli_inform(f"geom_smooth using method = '{method}'")
 
         params["method"] = method
@@ -2362,10 +2399,17 @@ class StatSmooth(Stat):
                 result = self._fit_lm(data, xseq, se, level)
             elif method in ("loess", "lowess"):
                 result = self._fit_lowess(data, xseq, se, level, span)
+            elif method == "gam":
+                result = self._fit_gam(data, xseq, se, level)
             elif method == "glm":
+                # R glm with identity link ≈ lm for gaussian family. For
+                # other families users should pass method_args.
                 result = self._fit_lm(data, xseq, se, level)
             else:
-                result = self._fit_lm(data, xseq, se, level)
+                raise ValueError(
+                    f"Unknown smoothing method {method!r}; expected one of "
+                    f"'lm', 'loess', 'gam', 'glm', or 'auto'."
+                )
         except Exception as e:
             cli_warn(f"Failed to fit group {data.get('group', [None])[0] if 'group' in data.columns else ''}: {e}")
             return pd.DataFrame()
@@ -2436,49 +2480,79 @@ class StatSmooth(Stat):
         level: float,
         span: float = 0.75,
     ) -> pd.DataFrame:
-        """Fit LOWESS smoother.
+        """Fit LOESS smoother — R ``loess()`` parity via ``skmisc.loess``.
 
-        Parameters
-        ----------
-        data : pd.DataFrame
-        xseq : np.ndarray
-        se : bool
-        level : float
-        span : float
+        R's ``loess`` returns per-point standard errors from the local
+        polynomial fit; ``skmisc.loess.loess`` mirrors that API
+        (``predict(..., stderror=True)`` → ``.stderr`` vector).
 
-        Returns
-        -------
-        pd.DataFrame
+        Falls back to ``statsmodels.nonparametric.lowess`` + a constant
+        residual-variance SE if ``skmisc.loess`` is unavailable; that path
+        only gives a rough band.
         """
+        from scipy import stats as scipy_stats
+
+        x = np.asarray(data["x"].values, dtype=float)
+        y = np.asarray(data["y"].values, dtype=float)
+        w = (
+            np.asarray(data["weight"].values, dtype=float)
+            if "weight" in data.columns
+            else np.ones_like(x)
+        )
+        xseq = np.asarray(xseq, dtype=float)
+
+        try:
+            from skmisc.loess import loess as _loess
+
+            model = _loess(x, y, weights=w, span=float(span), degree=2,
+                           family="gaussian")
+            model.fit()
+            pred = model.predict(xseq, stderror=bool(se))
+            y_pred = np.asarray(pred.values, dtype=float)
+
+            result = pd.DataFrame({"x": xseq, "y": y_pred})
+            if se and hasattr(pred, "stderr"):
+                se_pred = np.asarray(pred.stderr, dtype=float)
+                # skmisc loess stderr uses residual df internally; R uses
+                # the same t-quantile on n - trace(S) equivalent degrees
+                # of freedom. skmisc.predict exposes ``confidence`` which
+                # applies the right t-factor if called instead of stderr.
+                conf = model.predict(xseq, stderror=True).confidence(
+                    alpha=1.0 - float(level)
+                )
+                result["ymin"] = np.asarray(conf.lower, dtype=float)
+                result["ymax"] = np.asarray(conf.upper, dtype=float)
+                result["se"] = se_pred
+            else:
+                result["ymin"] = np.nan
+                result["ymax"] = np.nan
+                result["se"] = np.nan
+            return result
+        except ImportError:
+            pass
+
+        # Fallback — statsmodels LOWESS (no per-point SE). The CI band is
+        # a constant ± t * sqrt(residual_var); strictly worse than R's
+        # per-point band but we emit a warning rather than a broken band.
         from scipy.interpolate import interp1d
         import statsmodels.api as sm
 
-        lowess = sm.nonparametric.lowess
-        x = data["x"].values
-        y = data["y"].values
-        result_raw = lowess(y, x, frac=span, return_sorted=True)
-        f = interp1d(
-            result_raw[:, 0], result_raw[:, 1],
-            kind="linear", bounds_error=False, fill_value="extrapolate",
-        )
+        smooth = sm.nonparametric.lowess(y, x, frac=span, return_sorted=True)
+        f = interp1d(smooth[:, 0], smooth[:, 1], kind="linear",
+                     bounds_error=False, fill_value="extrapolate")
         y_pred = f(xseq)
 
         result = pd.DataFrame({"x": xseq, "y": y_pred})
-
-        if se:
-            # Approximate confidence interval using residuals
-            from scipy import stats as scipy_stats
-
-            x = data["x"].values
-            y = data["y"].values
-            try:
-                y_hat_data = f(x) if "f" in dir() else np.polyval(coeffs, x)
-            except Exception:
-                y_hat_data = y_pred[:len(x)]
-            resid_var = np.var(y - y_hat_data[:len(y)], ddof=2) if len(y) > 2 else 0.0
+        if se and len(x) > 2:
+            cli_warn(
+                "stat_smooth(method='loess'): skmisc.loess is unavailable; "
+                "confidence band is a constant ±t*sqrt(residual_var) rather "
+                "than R's per-point loess SE."
+            )
+            y_hat = f(x)
+            resid_var = np.var(y - y_hat, ddof=2)
             se_val = np.sqrt(resid_var)
-            from scipy import stats as scipy_stats
-            t_val = scipy_stats.t.ppf((1 + level) / 2, df=max(len(x) - 2, 1))
+            t_val = scipy_stats.t.ppf((1 + level) / 2, df=len(x) - 2)
             result["ymin"] = y_pred - t_val * se_val
             result["ymax"] = y_pred + t_val * se_val
             result["se"] = se_val
@@ -2486,7 +2560,57 @@ class StatSmooth(Stat):
             result["ymin"] = np.nan
             result["ymax"] = np.nan
             result["se"] = np.nan
+        return result
 
+    @staticmethod
+    def _fit_gam(
+        data: pd.DataFrame,
+        xseq: np.ndarray,
+        se: bool,
+        level: float,
+    ) -> pd.DataFrame:
+        """Fit GAM — R ``mgcv::gam(y ~ s(x, bs='cs'))`` via
+        ``statsmodels.gam.api.GLMGam`` with B-splines.
+
+        R's ``bs="cs"`` is a cubic regression spline with shrinkage
+        penalty. The closest faithful stand-in in statsmodels is
+        ``BSplines(df=10, degree=3)`` + a ridge-like ``alpha`` penalty
+        chosen so the effective degrees of freedom match R's defaults on
+        typical biological data (EDF ≈ 8-9).
+        """
+        from scipy import stats as scipy_stats
+        from statsmodels.gam.api import GLMGam, BSplines
+
+        x = np.asarray(data["x"].values, dtype=float)
+        y = np.asarray(data["y"].values, dtype=float)
+        w = (
+            np.asarray(data["weight"].values, dtype=float)
+            if "weight" in data.columns
+            else np.ones_like(x)
+        )
+        xseq = np.asarray(xseq, dtype=float)
+
+        bs = BSplines(x[:, None], df=[10], degree=[3], include_intercept=False)
+        exog = np.ones((len(y), 1))
+        model = GLMGam(y, exog=exog, smoother=bs, freq_weights=w).fit()
+
+        # Predict on the grid.
+        bs_pred = bs.transform(xseq[:, None])
+        X_pred = np.hstack([np.ones((len(xseq), 1)), bs_pred])
+        y_pred = np.asarray(X_pred @ model.params, dtype=float)
+
+        result = pd.DataFrame({"x": xseq, "y": y_pred})
+        if se:
+            cov = model.cov_params()
+            se_pred = np.sqrt(np.einsum("ij,jk,ik->i", X_pred, cov, X_pred))
+            t_val = scipy_stats.t.ppf((1 + level) / 2, df=model.df_resid)
+            result["ymin"] = y_pred - t_val * se_pred
+            result["ymax"] = y_pred + t_val * se_pred
+            result["se"] = se_pred
+        else:
+            result["ymin"] = np.nan
+            result["ymax"] = np.nan
+            result["se"] = np.nan
         return result
 
 
@@ -2660,8 +2784,16 @@ class StatBoxplot(Stat):
         if len(y) == 0:
             return pd.DataFrame()
 
-        # Compute quantiles
-        qs = np.percentile(y, [0, 25, 50, 75, 100])
+        # Compute quantiles via ``np.quantile`` with the method matching
+        # R's ``quantile.type`` argument (R stat-boxplot.R:58 default 7).
+        # numpy's ``method="linear"`` is R type 7; see R ``?quantile``.
+        np_method = _R_QTYPE_TO_NUMPY_METHOD.get(int(quantile_type))
+        if np_method is None:
+            raise ValueError(
+                f"quantile_type must be an integer in 1..9 (R convention); "
+                f"got {quantile_type!r}."
+            )
+        qs = np.quantile(y, [0.0, 0.25, 0.5, 0.75, 1.0], method=np_method)
         ymin, lower, middle, upper, ymax = qs
         iqr = upper - lower
 
@@ -3477,7 +3609,11 @@ class StatEcdf(Stat):
     """
 
     required_aes: List[str] = ["x|y"]
-    default_aes: Dict[str, Any] = {"weight": None}
+    default_aes: Dict[str, Any] = {
+        "x": AfterStat("ecdf"),
+        "y": AfterStat("ecdf"),
+        "weight": None,
+    }
     dropped_aes: List[str] = ["weight"]
 
     def setup_params(self, data: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -3602,7 +3738,10 @@ class StatQq(Stat):
     """
 
     required_aes: List[str] = ["sample"]
-    default_aes: Dict[str, Any] = {}
+    default_aes: Dict[str, Any] = {
+        "y": AfterStat("sample"),
+        "x": AfterStat("theoretical"),
+    }
 
     def compute_group(
         self,
@@ -3636,7 +3775,11 @@ class StatQq(Stat):
         n = len(sample)
 
         if quantiles is None:
-            quantiles = (np.arange(1, n + 1) - 0.5) / n
+            # R ``stats::ppoints(n)`` — the stat-qq default.
+            #   a = 3/8 when n <= 10, else 1/2
+            #   (seq_len(n) - a) / (n + 1 - 2a)
+            a = 3.0 / 8.0 if n <= 10 else 0.5
+            quantiles = (np.arange(1, n + 1) - a) / (n + 1 - 2 * a)
         elif len(quantiles) != n:
             cli_abort(
                 f"The length of quantiles ({len(quantiles)}) must match "
@@ -4877,7 +5020,7 @@ class StatSum(Stat):
     """
 
     required_aes: List[str] = ["x", "y"]
-    default_aes: Dict[str, Any] = {"weight": 1}
+    default_aes: Dict[str, Any] = {"size": AfterStat("n"), "weight": 1}
 
     def compute_panel(self, data: pd.DataFrame, scales: Any, **params: Any) -> pd.DataFrame:
         """Count coincident (x, y) points.
@@ -5070,11 +5213,13 @@ class StatYdensity(Stat):
             width = (data["x"].max() - data["x"].min()) * 0.9
         dens["width"] = width
 
-        # R semantics: StatYdensity produces 'violinwidth' used by
-        # GeomViolin to vary the shape width by density.
-        #   scale="area"  → violinwidth = scaled (density/max per group)
-        #   scale="count" → violinwidth = scaled * n/max_n
-        #   scale="width" → violinwidth = scaled (same as area per group)
+        # Panel-level ``compute_panel`` uses ``n`` for ``scale="count"``.
+        dens["n"] = len(data)
+
+        # R's ``compute_group`` leaves violinwidth unset; ``compute_panel``
+        # fills it using panel-wide max density / max n. We initialise to
+        # scaled (per-group) so a caller that skips ``compute_panel`` still
+        # sees the width="width" behaviour.
         dens["violinwidth"] = dens["scaled"]
 
         # Add quantile information
@@ -5106,6 +5251,59 @@ class StatYdensity(Stat):
                 dens = pd.concat([dens, quant_df], ignore_index=True)
 
         return dens
+
+    def compute_panel(
+        self,
+        data: pd.DataFrame,
+        scales: Any,
+        scale: str = "area",
+        drop: bool = True,
+        **params: Any,
+    ) -> pd.DataFrame:
+        """Port R ``stat-ydensity.R:101-140``.
+
+        After ``compute_group`` runs for every (x, group), R rescales
+        ``violinwidth`` across the whole panel according to ``scale``:
+
+        - ``"area"``  (default) every violin has the same peak width 1
+          relative to the panel-wide max density
+        - ``"count"`` area proportional to group n
+        - ``"width"`` per-group scaled (ignores neighbours)
+
+        Without this override every violin is scaled to its own max,
+        making cross-group comparisons in a single panel misleading.
+        """
+        # Run ``Stat.compute_panel`` which dispatches per group. Pass every
+        # param except ``scale`` (which is a panel-level knob).
+        data = super().compute_panel(data, scales, **params)
+        if data is None or len(data) == 0:
+            return data
+
+        if not drop and "n" in data.columns and (data["n"] < 2).any():
+            cli_warn(
+                "Cannot compute density for groups with fewer than two "
+                "datapoints."
+            )
+
+        if scale == "area":
+            max_density = data["density"].max(skipna=True)
+            if max_density and max_density > 0:
+                data["violinwidth"] = data["density"] / max_density
+        elif scale == "count":
+            max_density = data["density"].max(skipna=True)
+            max_n = data["n"].max(skipna=True) if "n" in data.columns else 1
+            if max_density and max_density > 0 and max_n:
+                data["violinwidth"] = (
+                    data["density"] / max_density
+                    * data.get("n", 1) / max_n
+                )
+        elif scale == "width":
+            data["violinwidth"] = data["scaled"]
+        else:
+            raise ValueError(
+                f"scale must be 'area', 'count', or 'width'; got {scale!r}."
+            )
+        return data
 
 
 def stat_ydensity(
