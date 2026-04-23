@@ -974,16 +974,13 @@ def ggplot_add(obj: Any, plot: GGPlot, object_name: str = "") -> GGPlot:
 @singledispatch
 def update_ggplot(obj: Any, plot: GGPlot, object_name: str = "") -> GGPlot:
     """Add *obj* to *plot*.  Open generic — register new types with
-    ``@update_ggplot.register(YourType)``."""
-    # Fallback: try some duck-typed checks for types that can't easily be
-    # registered at import time due to circular imports.
-    # --- Guides (duck-type: has _is_guides flag) ---
-    if getattr(obj, "_is_guides", False):
-        if plot.guides is not None and hasattr(plot.guides, "add"):
-            plot.guides.add(obj)
-        else:
-            plot.guides = obj
-        return plot
+    ``@update_ggplot.register(YourType)``.
+
+    Registrations that would require importing from other ggplot2_py modules
+    at this module's import time (e.g. ``Guides`` from :mod:`ggplot2_py.guide`)
+    are registered in the other module's own file to keep the dependency
+    graph acyclic — see ``guide.py``'s tail for an example.
+    """
     # --- GGProto (error) ---
     if is_ggproto(obj):
         cli_abort(

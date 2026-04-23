@@ -2449,6 +2449,11 @@ class Guides:
         Parallel list of aesthetic names.
     """
 
+    # ``plot.update_ggplot`` duck-types on this flag to route a ``Guides``
+    # added via ``ggplot() + guides(...)`` onto ``plot.guides`` (avoids a
+    # circular import from registering on the singledispatch generic).
+    _is_guides: bool = True
+
     def __init__(self, guide_map: Optional[Dict[str, Any]] = None) -> None:
         self.guides: Dict[str, Any] = guide_map or {}
         self.params: List[Dict[str, Any]] = []
@@ -2923,3 +2928,48 @@ def guides(**kwargs: Any) -> Optional[Guides]:
         standardised[new_key] = v
 
     return Guides(standardised)
+
+
+# ============================================================================
+# Register Guides with update_ggplot (R plot-construction.R:180-187)
+# ============================================================================
+#
+# R:
+#     S7::method(update_ggplot, list(class_guides, class_ggplot)) <-
+#       function(object, plot, ...) {
+#         old <- plot@guides
+#         new <- ggproto(NULL, old)   # clone before mutating
+#         new$add(object)
+#         plot@guides <- new
+#         plot
+#       }
+#
+# ggplot2_py mirrors this: allocate a fresh Guides, copy old fields into it,
+# then apply the user-supplied Guides. The copy is deliberate — ``GGPlot._clone``
+# is shallow and does not clone ``guides``, so mutating ``plot.guides`` in
+# place would bleed across ``p1`` / ``p2 = p1 + guides(...)``.
+
+from ggplot2_py.plot import update_ggplot as _update_ggplot
+
+
+def _clone_guides(old: "Guides") -> "Guides":
+    """Return a new Guides whose mutable fields are independent of *old*.
+
+    Mirrors R ``ggproto(NULL, old)``'s copy-on-write semantics for the
+    guides / params / aesthetics collections.
+    """
+    new = Guides()
+    new.guides = dict(old.guides)
+    new.params = list(old.params)
+    new.aesthetics = list(old.aesthetics)
+    new._missing = old._missing  # shared; set once at init, never mutated
+    return new
+
+
+@_update_ggplot.register(Guides)
+def _update_ggplot_guides(obj: Guides, plot: Any, object_name: str = "") -> Any:
+    old = plot.guides if plot.guides is not None else Guides()
+    new = _clone_guides(old)
+    new.add(obj)
+    plot.guides = new
+    return plot
