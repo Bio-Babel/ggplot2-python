@@ -30,6 +30,7 @@ __all__ = [
     "CoordFlip",
     "CoordPolar",
     "CoordRadial",
+    "CoordSf",
     "CoordTrans",
     "CoordTransform",
     "coord_cartesian",
@@ -38,6 +39,7 @@ __all__ = [
     "coord_flip",
     "coord_polar",
     "coord_radial",
+    "coord_sf",
     "coord_trans",
     "coord_transform",
     "coord_munch",
@@ -1212,6 +1214,1158 @@ def _flip_axis_labels(x: Any) -> Any:
                 rename_map[c] = "x" + c[1:]
         return x.rename(columns=rename_map)
     return x
+
+
+# ---------------------------------------------------------------------------
+# CoordSf — simple-features / spatial coord system
+#
+# Faithful port of R's ``CoordSf`` (coord-sf.R:5-606), including:
+#   * CRS reprojection of both sf geometry and plain (x, y) data
+#     (``_sf_transform_xy``, ``_sf_rescale01``).
+#   * Limit-projection methods cross / box / orthogonal / geometry_bbox
+#     (``_calc_limits_bbox``).
+#   * Graticule generation (``_st_graticule``) — port of
+#     ``sf::st_graticule()`` covering meridian (E) and parallel (N)
+#     LineStrings clipped to the panel bbox in target CRS, with start /
+#     end / angle metadata.
+#   * Axis-label viewscales (``_view_scales_from_graticule``) honouring
+#     ``label_axes`` and ``label_graticule``.
+#   * Aspect-ratio correction for longlat CRS
+#     (``aspect`` returning ``Δy / Δx / cos(mid_lat)``).
+#   * Bounding-box accumulation from sf layers via ``record_bbox``.
+#   * ``render_bg`` drawing projected graticule lines as panel grid.
+#
+# Spatial dependencies (``shapely`` / ``pyproj`` / ``geopandas``) are
+# imported lazily inside the helpers that need them so the ``coord``
+# module loads without sf installed; calling ``coord_sf()`` itself only
+# fails if a method that needs reprojection is invoked.
+# ---------------------------------------------------------------------------
+
+
+def _coerce_crs(value: Any) -> Any:
+    """Coerce *value* to a ``pyproj.CRS`` instance (or ``None``).
+
+    Mirrors ``sf::st_crs()`` coercion: ``None``/``NaN`` → ``None``,
+    integers → ``EPSG:N``, strings/dicts → ``CRS.from_user_input``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    from pyproj import CRS  # lazy
+    if isinstance(value, CRS):
+        return value
+    return CRS.from_user_input(value)
+
+
+def _sf_transform_xy(
+    data: Any,
+    target_crs: Any,
+    source_crs: Any,
+    authority_compliant: bool = False,
+) -> Any:
+    """Project ``x`` / ``y`` columns of *data* from source to target CRS.
+
+    Port of R ``sf_transform_xy()`` (coord-sf.R:392-413). Operates on
+    dict-like or DataFrame inputs and returns the same structure with
+    projected coordinates. Returns *data* unchanged if either CRS is
+    ``None``, the CRSs are equal, or *data* lacks ``x`` and ``y``.
+    """
+    if data is None:
+        return data
+    target = _coerce_crs(target_crs)
+    source = _coerce_crs(source_crs)
+    if target is None or source is None or target == source:
+        return data
+    # sf's identical() check: use the proj equality test
+    if not all(k in data for k in ("x", "y")):
+        return data
+
+    from pyproj import Transformer  # lazy
+    transformer = Transformer.from_crs(
+        source, target, always_xy=not authority_compliant,
+    )
+    xs = np.asarray(data["x"], dtype=float)
+    ys = np.asarray(data["y"], dtype=float)
+    new_x, new_y = transformer.transform(xs, ys)
+    new_x = np.where(np.isfinite(new_x), new_x, np.nan)
+    new_y = np.where(np.isfinite(new_y), new_y, np.nan)
+
+    if isinstance(data, pd.DataFrame):
+        out = data.copy()
+        out["x"] = new_x
+        out["y"] = new_y
+        return out
+    out = dict(data)
+    out["x"] = new_x
+    out["y"] = new_y
+    return out
+
+
+def _sf_rescale01(geom: Any, x_range: Sequence[float], y_range: Sequence[float]) -> Any:
+    """Normalise geometry coordinates to ``[0, 1] x [0, 1]`` panel space.
+
+    Port of R ``sf_rescale01()`` (coord-sf.R:420-438). Wraps
+    ``sf::st_normalize`` with handling for reversed ranges (which flip
+    the corresponding axis after normalisation).
+    """
+    if geom is None:
+        return geom
+    from shapely import affinity  # lazy
+
+    mult_x, mult_y = 1, 1
+    xr0, xr1 = float(x_range[0]), float(x_range[1])
+    yr0, yr1 = float(y_range[0]), float(y_range[1])
+    if xr0 > xr1:
+        xr0, xr1 = xr1, xr0
+        mult_x = -1
+    if yr0 > yr1:
+        yr0, yr1 = yr1, yr0
+        mult_y = -1
+
+    dx = xr1 - xr0 if xr1 != xr0 else 1.0
+    dy = yr1 - yr0 if yr1 != yr0 else 1.0
+
+    def _normalize_one(g: Any) -> Any:
+        if g is None or (hasattr(g, "is_empty") and g.is_empty):
+            return g
+        out = affinity.translate(g, xoff=-xr0, yoff=-yr0)
+        out = affinity.scale(out, xfact=1.0 / dx, yfact=1.0 / dy, origin=(0, 0))
+        if mult_x != 1 or mult_y != 1:
+            out = affinity.scale(out, xfact=mult_x, yfact=mult_y, origin=(0, 0))
+            out = affinity.translate(
+                out, xoff=max(-mult_x, 0), yoff=max(-mult_y, 0),
+            )
+        return out
+
+    if hasattr(geom, "__iter__") and not hasattr(geom, "is_empty"):
+        return [_normalize_one(g) for g in geom]
+    return _normalize_one(geom)
+
+
+def _calc_limits_bbox(
+    method: str,
+    xlim: Sequence[float],
+    ylim: Sequence[float],
+    crs: Any,
+    default_crs: Any,
+) -> Dict[str, np.ndarray]:
+    """Project the scale-limit polygon under ``lims_method`` and return points.
+
+    Port of R ``calc_limits_bbox()`` (coord-sf.R:441-486). Returns a dict
+    ``{"x": ..., "y": ...}`` whose ``min`` / ``max`` define the bounding
+    box of the limits in target CRS.
+    """
+    finite = all(np.isfinite([xlim[0], xlim[1], ylim[0], ylim[1]]))
+    if not finite and method != "geometry_bbox":
+        cli_abort(
+            "Scale limits cannot be mapped onto spatial coordinates in "
+            "coord_sf(). Consider setting lims_method='geometry_bbox' or "
+            "default_crs=None."
+        )
+
+    if method == "box":
+        x = np.concatenate([
+            np.repeat(xlim[0], 20),
+            np.linspace(xlim[0], xlim[1], 20),
+            np.repeat(xlim[1], 20),
+            np.linspace(xlim[1], xlim[0], 20),
+        ])
+        y = np.concatenate([
+            np.linspace(ylim[0], ylim[1], 20),
+            np.repeat(ylim[1], 20),
+            np.linspace(ylim[1], ylim[0], 20),
+            np.repeat(ylim[0], 20),
+        ])
+    elif method == "geometry_bbox":
+        x = np.array([np.nan, np.nan])
+        y = np.array([np.nan, np.nan])
+    elif method == "orthogonal":
+        x = np.array([float(xlim[0]), float(xlim[1])])
+        y = np.array([float(ylim[0]), float(ylim[1])])
+    else:  # "cross" — also the default in R
+        x = np.concatenate([
+            np.repeat((xlim[0] + xlim[1]) / 2.0, 20),
+            np.linspace(xlim[0], xlim[1], 20),
+        ])
+        y = np.concatenate([
+            np.linspace(ylim[0], ylim[1], 20),
+            np.repeat((ylim[0] + ylim[1]) / 2.0, 20),
+        ])
+
+    bbox = {"x": x, "y": y}
+    return _sf_transform_xy(bbox, crs, default_crs)
+
+
+def _format_degree_label(degree: float, type_: str) -> str:
+    """Format a degree value as ``'120°W'`` / ``'30°N'`` (sf's format_lonlat)."""
+    if not np.isfinite(degree):
+        return ""
+    abs_deg = abs(float(degree))
+    if type_ == "E":
+        suffix = "°E" if degree > 0 else ("°W" if degree < 0 else "°")
+    else:  # "N"
+        suffix = "°N" if degree > 0 else ("°S" if degree < 0 else "°")
+    if abs_deg == int(abs_deg):
+        return f"{int(abs_deg)}{suffix}"
+    return f"{abs_deg:g}{suffix}"
+
+
+def _st_graticule(
+    bbox: Sequence[float],
+    crs: Any = None,
+    lat: Optional[Sequence[float]] = None,
+    lon: Optional[Sequence[float]] = None,
+    datum: Any = None,
+    ndiscr: int = 100,
+) -> pd.DataFrame:
+    """Generate meridian / parallel LineStrings clipped to *bbox*.
+
+    Port of ``sf::st_graticule()``. Returns a ``pandas.DataFrame`` with
+    columns ``type`` (``"E"``/``"N"``), ``degree``, ``degree_label``,
+    ``geometry`` (shapely ``LineString``), ``x_start``, ``y_start``,
+    ``x_end``, ``y_end``, ``angle_start``, ``angle_end``. Empty rows
+    (lines that fully fall outside *bbox* in target space) are dropped.
+    """
+    from shapely.geometry import LineString  # lazy
+
+    crs_obj = _coerce_crs(crs)
+    datum_obj = _coerce_crs(datum) if datum is not None else _coerce_crs(4326)
+
+    # Compute datum-space bbox (long/lat by default) by densely sampling
+    # the target-space bbox edges and forward-projecting.
+    if crs_obj is not None and datum_obj is not None and crs_obj != datum_obj:
+        from pyproj import Transformer  # lazy
+        edge_x = np.concatenate([
+            np.linspace(bbox[0], bbox[2], 50),
+            np.repeat(bbox[2], 50),
+            np.linspace(bbox[2], bbox[0], 50),
+            np.repeat(bbox[0], 50),
+        ])
+        edge_y = np.concatenate([
+            np.repeat(bbox[1], 50),
+            np.linspace(bbox[1], bbox[3], 50),
+            np.repeat(bbox[3], 50),
+            np.linspace(bbox[3], bbox[1], 50),
+        ])
+        t_to_datum = Transformer.from_crs(crs_obj, datum_obj, always_xy=True)
+        lon_edge, lat_edge = t_to_datum.transform(edge_x, edge_y)
+        good = np.isfinite(lon_edge) & np.isfinite(lat_edge)
+        if good.any():
+            datum_bbox = (
+                float(lon_edge[good].min()), float(lat_edge[good].min()),
+                float(lon_edge[good].max()), float(lat_edge[good].max()),
+            )
+        else:
+            datum_bbox = (-180.0, -90.0, 180.0, 90.0)
+    else:
+        datum_bbox = (float(bbox[0]), float(bbox[1]),
+                      float(bbox[2]), float(bbox[3]))
+
+    # Compute lon/lat breaks (R-style pretty()).  scales_py provides a
+    # bit-for-bit port of R's pretty algorithm.
+    def _pretty_breaks(lo: float, hi: float, n: int = 5) -> np.ndarray:
+        try:
+            from scales.breaks import _pretty as _scales_pretty
+            return np.asarray(_scales_pretty(lo, hi, n=n), dtype=float)
+        except ImportError:
+            return np.linspace(lo, hi, n + 2)[1:-1]
+
+    if lon is None:
+        lon_breaks = _pretty_breaks(datum_bbox[0], datum_bbox[2], n=5)
+    else:
+        lon_breaks = np.asarray(lon, dtype=float)
+    if lat is None:
+        lat_breaks = _pretty_breaks(datum_bbox[1], datum_bbox[3], n=5)
+    else:
+        lat_breaks = np.asarray(lat, dtype=float)
+
+    lon_breaks = lon_breaks[(lon_breaks >= datum_bbox[0])
+                            & (lon_breaks <= datum_bbox[2])]
+    lat_breaks = lat_breaks[(lat_breaks >= datum_bbox[1])
+                            & (lat_breaks <= datum_bbox[3])]
+
+    # Forward transformer from datum back to target CRS for line densification.
+    if crs_obj is not None and datum_obj is not None and crs_obj != datum_obj:
+        from pyproj import Transformer  # lazy
+        t_to_target = Transformer.from_crs(datum_obj, crs_obj, always_xy=True)
+    else:
+        t_to_target = None
+
+    n = max(int(ndiscr), 2)
+    rows: List[Dict[str, Any]] = []
+
+    from shapely.geometry import box as _shapely_box  # lazy
+    bbox_poly = _shapely_box(bbox[0], bbox[1], bbox[2], bbox[3])
+
+    def _add_line(deg: float, type_: str, lon_seq: np.ndarray,
+                  lat_seq: np.ndarray) -> None:
+        if t_to_target is not None:
+            xs, ys = t_to_target.transform(lon_seq, lat_seq)
+        else:
+            xs, ys = lon_seq, lat_seq
+        good = np.isfinite(xs) & np.isfinite(ys)
+        if good.sum() < 2:
+            return
+        xs = np.asarray(xs)[good]; ys = np.asarray(ys)[good]
+        line = LineString(list(zip(xs.tolist(), ys.tolist())))
+
+        # Geometric clip to the plot bbox so endpoints land on bbox edges,
+        # matching sf::st_graticule's behaviour.
+        clipped = line.intersection(bbox_poly)
+        if clipped.is_empty:
+            return
+        # intersection can yield a (Multi)LineString or even a Point.
+        if clipped.geom_type == "MultiLineString":
+            # Take the longest piece (sf chooses the dominant one too).
+            parts = list(clipped.geoms)
+            clipped = max(parts, key=lambda g: g.length)
+        if clipped.geom_type != "LineString" or len(clipped.coords) < 2:
+            return
+
+        cxs, cys = clipped.coords.xy
+        cxs = np.asarray(cxs, dtype=float)
+        cys = np.asarray(cys, dtype=float)
+
+        ang_start = math.degrees(math.atan2(cys[1] - cys[0], cxs[1] - cxs[0]))
+        ang_end = math.degrees(math.atan2(cys[-1] - cys[-2], cxs[-1] - cxs[-2]))
+        rows.append({
+            "type": type_,
+            "degree": float(deg),
+            "degree_label": _format_degree_label(deg, type_),
+            "geometry": clipped,
+            "x_start": float(cxs[0]), "y_start": float(cys[0]),
+            "x_end": float(cxs[-1]), "y_end": float(cys[-1]),
+            "angle_start": float(ang_start),
+            "angle_end": float(ang_end),
+        })
+
+    # Meridians: constant longitude, latitude varying from south to north
+    for lon_v in lon_breaks:
+        lat_seq = np.linspace(datum_bbox[1], datum_bbox[3], n)
+        lon_seq = np.full_like(lat_seq, lon_v)
+        _add_line(lon_v, "E", lon_seq, lat_seq)
+
+    # Parallels: constant latitude, longitude varying from west to east
+    for lat_v in lat_breaks:
+        lon_seq = np.linspace(datum_bbox[0], datum_bbox[2], n)
+        lat_seq = np.full_like(lon_seq, lat_v)
+        _add_line(lat_v, "N", lon_seq, lat_seq)
+
+    if not rows:
+        return pd.DataFrame(columns=[
+            "type", "degree", "degree_label", "geometry",
+            "x_start", "y_start", "x_end", "y_end",
+            "angle_start", "angle_end",
+        ])
+    return pd.DataFrame(rows)
+
+
+def _sf_breaks(scale_x: Any, scale_y: Any,
+               bbox: Sequence[float], crs: Any) -> Dict[str, Any]:
+    """Choose break sets for graticule generation.
+
+    Port of R ``sf_breaks()`` (coord-sf.R:623-664). Returns a dict
+    ``{"x": <array|None|waiver>, "y": <array|None|waiver>}``:
+
+    * ``None`` instructs ``_st_graticule`` to suppress that direction
+      (scale set ``breaks = NULL``).
+    * ``waiver`` means "let st_graticule pick defaults".
+    * an array means "use these explicit breaks" (scale supplied a
+      break vector or ``n.breaks``).
+    """
+
+    def _scale_breaks(scale: Any) -> Any:
+        # Match R's `scale$breaks` access — None when explicitly suppressed.
+        return getattr(scale, "breaks", None)
+
+    def _scale_n_breaks(scale: Any) -> Any:
+        # ggplot2_py uses ``n_breaks`` (Pythonic); be tolerant of either.
+        return getattr(scale, "n_breaks", None) or getattr(scale, "n.breaks", None)
+
+    x_brk = _scale_breaks(scale_x)
+    y_brk = _scale_breaks(scale_y)
+    x_n = _scale_n_breaks(scale_x)
+    y_n = _scale_n_breaks(scale_y)
+
+    has_x = x_brk is not None or x_n is not None
+    has_y = y_brk is not None or y_n is not None
+
+    x_breaks: Any = waiver() if has_x else None
+    y_breaks: Any = waiver() if has_y else None
+
+    if not (has_x or has_y):
+        return {"x": x_breaks, "y": y_breaks}
+
+    # Project bbox to long/lat (4326) so user-supplied breaks (assumed
+    # in long/lat) line up with the scale's ``get_breaks`` domain.
+    bbox_ll = list(bbox)
+    if crs is not None:
+        try:
+            crs_obj = _coerce_crs(crs)
+            if crs_obj is not None:
+                from pyproj import CRS, Transformer  # lazy
+                target = CRS.from_user_input(4326)
+                if crs_obj != target:
+                    t = Transformer.from_crs(crs_obj, target, always_xy=True)
+                    edge_x = np.array([bbox[0], bbox[2], bbox[0], bbox[2]])
+                    edge_y = np.array([bbox[1], bbox[1], bbox[3], bbox[3]])
+                    lon_e, lat_e = t.transform(edge_x, edge_y)
+                    if np.all(np.isfinite(lon_e)) and np.all(np.isfinite(lat_e)):
+                        bbox_ll = [float(lon_e.min()), float(lat_e.min()),
+                                   float(lon_e.max()), float(lat_e.max())]
+                    else:
+                        bbox_ll = [-180.0, -90.0, 180.0, 90.0]
+        except Exception:
+            bbox_ll = list(bbox)
+
+    # R: only override x_breaks when scale supplied non-default breaks
+    # OR an n.breaks setting (coord-sf.R:650-660).
+    if has_x and not (_is_waiver_like(x_brk) and x_n is None):
+        try:
+            raw = scale_x.get_breaks(limits=[bbox_ll[0], bbox_ll[2]])
+        except TypeError:
+            raw = scale_x.get_breaks([bbox_ll[0], bbox_ll[2]])
+        if raw is None or len(np.asarray(raw)) == 0:
+            x_breaks = None
+        else:
+            arr = np.asarray(raw, dtype=float)
+            arr = arr[np.isfinite(arr)]
+            x_breaks = arr if arr.size else None
+
+    if has_y and not (_is_waiver_like(y_brk) and y_n is None):
+        try:
+            raw = scale_y.get_breaks(limits=[bbox_ll[1], bbox_ll[3]])
+        except TypeError:
+            raw = scale_y.get_breaks([bbox_ll[1], bbox_ll[3]])
+        if raw is None or len(np.asarray(raw)) == 0:
+            y_breaks = None
+        else:
+            arr = np.asarray(raw, dtype=float)
+            arr = arr[np.isfinite(arr)]
+            y_breaks = arr if arr.size else None
+
+    return {"x": x_breaks, "y": y_breaks}
+
+
+def _view_scales_from_graticule(
+    graticule: pd.DataFrame,
+    scale: Any,
+    aesthetic: str,
+    label: str,
+    label_graticule: Sequence[str],
+    bbox: Sequence[float],
+) -> Dict[str, Any]:
+    """Convert a graticule into per-axis tick positions and labels.
+
+    Port of R ``view_scales_from_graticule()`` (coord-sf.R:685-812).
+    Python coords store axis breaks as ``x_major``/``y_major`` arrays
+    rather than ``ViewScale`` objects, so this returns the dict shape
+    consumed by ``CoordCartesian.render_axis_*``.
+    """
+    if graticule is None or len(graticule) == 0:
+        return {
+            "position": _aes_to_position(aesthetic),
+            "limits": _aes_limits(aesthetic, bbox),
+            "breaks": np.array([]),
+            "labels": [],
+        }
+
+    position = _aes_to_position(aesthetic)
+    axis = aesthetic.replace(".sec", "")
+    if axis == "x":
+        orth = "y"
+        thres = (float(bbox[1]), float(bbox[3]))
+        limits = (float(bbox[0]), float(bbox[2]))
+    else:
+        orth = "x"
+        thres = (float(bbox[0]), float(bbox[2]))
+        limits = (float(bbox[1]), float(bbox[3]))
+
+    axis_start = f"{axis}_start"
+    axis_end = f"{axis}_end"
+    orth_start = f"{orth}_start"
+    orth_end = f"{orth}_end"
+
+    span = thres[1] - thres[0]
+    if position in ("top", "right"):
+        thr = thres[0] + 0.999 * span
+        accept_start = graticule[orth_start].values > thr
+        accept_end = graticule[orth_end].values > thr
+    else:
+        thr = thres[0] + 0.001 * span
+        accept_start = graticule[orth_start].values < thr
+        accept_end = graticule[orth_end].values < thr
+
+    if not (accept_start | accept_end).any():
+        eps = math.sqrt(np.finfo(float).tiny)
+        # For top/bottom we expect meridians angled near 90° (vertical);
+        # for left/right we expect parallels near 0° (horizontal).
+        subtract = 90.0 if position in ("top", "bottom") else 0.0
+        straight = (
+            (np.abs(graticule["angle_start"].values - subtract) < eps)
+            & (np.abs(graticule["angle_end"].values - subtract) < eps)
+        )
+        accept_start = straight
+
+    types = graticule["type"].values
+    idx_start: List[int] = list(np.where((types == label) & accept_start)[0])
+    idx_end: List[int] = list(np.where((types == label) & accept_end)[0])
+
+    if "S" in label_graticule:
+        idx_start += list(np.where((types == "E") & accept_start)[0])
+    if "N" in label_graticule:
+        idx_end += list(np.where((types == "E") & accept_end)[0])
+    if "W" in label_graticule:
+        idx_start += list(np.where((types == "N") & accept_start)[0])
+    if "E" in label_graticule:
+        idx_end += list(np.where((types == "N") & accept_end)[0])
+
+    idx_start = sorted(set(idx_start))
+    idx_end = sorted(set(idx_end))
+
+    positions = list(graticule.iloc[idx_start][axis_start].values) \
+        + list(graticule.iloc[idx_end][axis_end].values)
+    labels = list(graticule.iloc[idx_start]["degree_label"].values) \
+        + list(graticule.iloc[idx_end]["degree_label"].values)
+
+    if positions:
+        ord_idx = np.argsort(positions)
+        positions = [positions[i] for i in ord_idx]
+        labels = [labels[i] for i in ord_idx]
+
+    return {
+        "position": position,
+        "limits": limits,
+        "breaks": np.asarray(positions, dtype=float),
+        "labels": labels,
+    }
+
+
+def _aes_to_position(aesthetic: str) -> str:
+    return {"x": "bottom", "x.sec": "top",
+            "y": "left", "y.sec": "right"}[aesthetic]
+
+
+def _aes_limits(aesthetic: str, bbox: Sequence[float]) -> Tuple[float, float]:
+    if aesthetic.startswith("x"):
+        return (float(bbox[0]), float(bbox[2]))
+    return (float(bbox[1]), float(bbox[3]))
+
+
+def _parse_axes_labeling(x: Any) -> Dict[str, str]:
+    """Port of R ``parse_axes_labeling()`` (coord-sf.R:608-616)."""
+    if isinstance(x, str):
+        chars = list(x)
+        chars += [""] * (4 - len(chars))
+        return {"top": chars[0], "right": chars[1],
+                "bottom": chars[2], "left": chars[3]}
+    if isinstance(x, dict):
+        return {k: x.get(k, "") for k in ("top", "right", "bottom", "left")}
+    cli_abort("Panel labeling format not recognized.")
+
+
+def _detect_geom_column(data: Any) -> Optional[str]:
+    """Find the active geometry column on a (Geo)DataFrame, else ``None``."""
+    if data is None:
+        return None
+    name = getattr(data, "_geometry_column_name", None)
+    if name and name in getattr(data, "columns", []):
+        return name
+    if "geometry" in getattr(data, "columns", []):
+        return "geometry"
+    return None
+
+
+def _is_sf_data(data: Any) -> bool:
+    """True if *data* carries a shapely-geometry column (analogue of ``is_sf``)."""
+    if data is None:
+        return False
+    cls_name = type(data).__name__
+    if cls_name in ("GeoDataFrame", "GeoSeries"):
+        return True
+    geom_col = _detect_geom_column(data)
+    if geom_col is None:
+        return False
+    series = data[geom_col]
+    for v in series:
+        if v is not None and hasattr(v, "geom_type"):
+            return True
+        # only inspect the first non-null cell
+        if v is not None:
+            return False
+    return False
+
+
+def _is_transform_immune(data: Any, coord_name: str) -> bool:
+    """Port of R ``is_transform_immune()`` (coord-.R:749-768).
+
+    Python data has no ``AsIs`` analogue, so this is always ``False``.
+    Kept for parity with the R surface so future ``I()`` support hooks
+    in cleanly.
+    """
+    return False
+
+
+# ---- CoordSf class ---------------------------------------------------------
+
+
+class CoordSf(CoordCartesian):
+    """Spatial-features coordinate system.
+
+    Port of R ``CoordSf`` (coord-sf.R:5-359). Inherits ``CoordCartesian``
+    for ``setup_layout`` / ``setup_panel_guides`` / ``modify_scales`` /
+    rendering helpers, and overrides every method whose semantics differ
+    under sf — ``setup_params``, ``setup_data``, ``transform``,
+    ``setup_panel_params``, ``aspect``, ``is_linear``, ``is_free``,
+    ``distance``, ``backtransform_range``, ``range``, and ``render_bg``.
+    """
+
+    # --- Class fields, mirroring R CoordSf (coord-sf.R:5-22) -------------
+    default: bool = False
+    clip: str = "on"
+    lims_method: str = "cross"
+    ndiscr: int = 100
+    crs: Any = None
+    default_crs: Any = None
+    datum: Any = None
+    label_graticule: Any = None
+    label_axes: Any = None
+    expand: Any = True
+    reverse: str = "none"
+    limits: Dict[str, Any] = {"x": None, "y": None}
+
+    def __init__(self, **kwargs: Any) -> None:
+        # Per-instance params dict so different panels do not share state.
+        self.params: Dict[str, Any] = {}
+        super().__init__(**kwargs)
+
+    # ---- bbox accumulation hook used by GeomSf draw_panel (coord-sf.R:70-77)
+
+    def record_bbox(self, xmin: float, xmax: float,
+                    ymin: float, ymax: float) -> None:
+        bbox = self.params.get("bbox") or {
+            "xmin": math.inf, "xmax": -math.inf,
+            "ymin": math.inf, "ymax": -math.inf,
+        }
+        bbox["xmin"] = min(bbox["xmin"], float(xmin))
+        bbox["xmax"] = max(bbox["xmax"], float(xmax))
+        bbox["ymin"] = min(bbox["ymin"], float(ymin))
+        bbox["ymax"] = max(bbox["ymax"], float(ymax))
+        self.params["bbox"] = bbox
+
+    def get_default_crs(self) -> Any:
+        return self.default_crs if self.default_crs is not None \
+            else self.params.get("default_crs")
+
+    # ---- setup_params / determine_crs (coord-sf.R:20-51) ----------------
+
+    def setup_params(self, data: Any) -> Dict[str, Any]:
+        params = Coord.setup_params(self, data)
+        params["crs"] = self.determine_crs(data)
+        params["default_crs"] = self.default_crs
+        self.params.update(params)
+        return params
+
+    def determine_crs(self, data: Any) -> Any:
+        if self.crs is not None:
+            return self.crs
+        if data is None:
+            return None
+        for layer_data in data:
+            if not _is_sf_data(layer_data):
+                continue
+            geom_col = _detect_geom_column(layer_data)
+            if geom_col is None:
+                continue
+            series = layer_data[geom_col]
+            crs = getattr(series, "crs", None)
+            if crs is None:
+                continue
+            return _coerce_crs(crs)
+        return None
+
+    # ---- setup_data: project all sf layers to common CRS (coord-sf.R:54-67)
+
+    def setup_data(self, data: Any, params: Optional[Dict[str, Any]] = None) -> Any:
+        params = params or self.params
+        target_crs = params.get("crs")
+        if target_crs is None or data is None:
+            return data
+        target = _coerce_crs(target_crs)
+        if target is None:
+            return data
+
+        out = []
+        for layer_data in data:
+            if not _is_sf_data(layer_data):
+                out.append(layer_data)
+                continue
+            geom_col = _detect_geom_column(layer_data)
+            if geom_col is None:
+                out.append(layer_data)
+                continue
+            try:
+                import geopandas as gpd  # lazy
+            except ImportError:
+                out.append(layer_data)
+                continue
+            series = layer_data[geom_col]
+            if not isinstance(series, gpd.GeoSeries):
+                series = gpd.GeoSeries(series, crs=getattr(series, "crs", None))
+            if series.crs is None or series.crs == target:
+                out.append(layer_data)
+                continue
+            new_geom = series.to_crs(target)
+            if isinstance(layer_data, gpd.GeoDataFrame):
+                new_layer = layer_data.copy()
+                new_layer[geom_col] = new_geom
+            else:
+                new_layer = layer_data.copy()
+                new_layer[geom_col] = list(new_geom)
+            out.append(new_layer)
+        return out
+
+    # ---- transform: rescale geometry + reproject + rescale x/y (coord-sf.R:79-107)
+
+    def transform(self, data: pd.DataFrame, panel_params: Dict[str, Any]) -> pd.DataFrame:
+        if _is_transform_immune(data, snake_class(self)):
+            return data
+
+        source_crs = panel_params.get("default_crs")
+        target_crs = panel_params.get("crs")
+        reverse = panel_params.get("reverse") or getattr(self, "reverse", "none")
+        x_range = list(panel_params.get("x_range", [0, 1]))
+        y_range = list(panel_params.get("y_range", [0, 1]))
+        if reverse in ("xy", "x"):
+            x_range = list(reversed(x_range))
+        if reverse in ("xy", "y"):
+            y_range = list(reversed(y_range))
+
+        # Rescale geometry column (already in target CRS) to NPC.
+        geom_col = _detect_geom_column(data) if isinstance(data, pd.DataFrame) else None
+        if geom_col is not None:
+            data = data.copy()
+            data[geom_col] = _sf_rescale01(list(data[geom_col]), x_range, y_range)
+
+        # Reproject + rescale plain x/y data.
+        if isinstance(data, pd.DataFrame) and {"x", "y"}.issubset(data.columns):
+            data = _sf_transform_xy(data, target_crs, source_crs)
+
+            def rescale_x(vals: np.ndarray) -> np.ndarray:
+                return _rescale(vals, to=(0, 1), from_=tuple(x_range))
+
+            def rescale_y(vals: np.ndarray) -> np.ndarray:
+                return _rescale(vals, to=(0, 1), from_=tuple(y_range))
+
+            data = _transform_position(data, rescale_x, rescale_y)
+            data = _transform_position(data, _squish_infinite, _squish_infinite)
+        return data
+
+    # ---- panel-params with graticule (coord-sf.R:177-278) ---------------
+
+    def setup_panel_params(self, scale_x: Any, scale_y: Any,
+                           params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        from ggplot2_py.scale import default_expansion, expand_range4
+
+        coord_params: Dict[str, Any] = self.params.copy()
+        if params:
+            coord_params.update(params)
+        expand_vec = _parse_coord_expand(getattr(self, "expand", True))
+        # R: expansion_x uses positions [4, 2] (left, right); expansion_y
+        # uses positions [3, 1] (bottom, top).  Our parsed expand is
+        # (top, right, bottom, left).
+        try:
+            expansion_x = default_expansion(scale_x, expand=bool(expand_vec[3] or expand_vec[1]))
+            expansion_y = default_expansion(scale_y, expand=bool(expand_vec[2] or expand_vec[0]))
+        except Exception:
+            from ggplot2_py.scale import expansion as _expansion
+            expansion_x = _expansion(mult=0.05) if any(expand_vec) else _expansion()
+            expansion_y = _expansion(mult=0.05) if any(expand_vec) else _expansion()
+
+        scale_xlim = list(scale_x.get_limits()) if hasattr(scale_x, "get_limits") else [0.0, 1.0]
+        scale_ylim = list(scale_y.get_limits()) if hasattr(scale_y, "get_limits") else [0.0, 1.0]
+        coord_xlim = list(self.limits.get("x") or [np.nan, np.nan])
+        coord_ylim = list(self.limits.get("y") or [np.nan, np.nan])
+
+        scale_xlim = [scale_xlim[i] if not np.isfinite(coord_xlim[i]) else coord_xlim[i]
+                      for i in range(2)]
+        scale_ylim = [scale_ylim[i] if not np.isfinite(coord_ylim[i]) else coord_ylim[i]
+                      for i in range(2)]
+
+        scales_bbox = _calc_limits_bbox(
+            self.lims_method, scale_xlim, scale_ylim,
+            coord_params.get("crs"), coord_params.get("default_crs"),
+        )
+
+        coord_bbox = self.params.get("bbox") or {}
+
+        if (self.limits.get("x") is None and self.limits.get("y") is None
+                and getattr(scale_x, "limits", None) is None
+                and getattr(scale_y, "limits", None) is None):
+            xs = np.concatenate([
+                np.asarray(scales_bbox["x"], dtype=float),
+                np.asarray([coord_bbox.get("xmin", np.nan),
+                            coord_bbox.get("xmax", np.nan)], dtype=float),
+            ])
+            ys = np.concatenate([
+                np.asarray(scales_bbox["y"], dtype=float),
+                np.asarray([coord_bbox.get("ymin", np.nan),
+                            coord_bbox.get("ymax", np.nan)], dtype=float),
+            ])
+            scales_xrange = [float(np.nanmin(xs)), float(np.nanmax(xs))]
+            scales_yrange = [float(np.nanmin(ys)), float(np.nanmax(ys))]
+        elif (np.any(~np.isfinite(np.asarray(scales_bbox["x"], dtype=float)))
+              or np.any(~np.isfinite(np.asarray(scales_bbox["y"], dtype=float)))):
+            if self.lims_method != "geometry_bbox":
+                cli_warn(
+                    "Projection of x or y limits failed in coord_sf(). "
+                    "Consider setting lims_method='geometry_bbox' or default_crs=None."
+                )
+            xmin = coord_bbox.get("xmin", 0.0)
+            xmax = coord_bbox.get("xmax", 0.0)
+            ymin = coord_bbox.get("ymin", 0.0)
+            ymax = coord_bbox.get("ymax", 0.0)
+            scales_xrange = [float(xmin), float(xmax)]
+            scales_yrange = [float(ymin), float(ymax)]
+        else:
+            scales_xrange = [float(np.nanmin(scales_bbox["x"])),
+                             float(np.nanmax(scales_bbox["x"]))]
+            scales_yrange = [float(np.nanmin(scales_bbox["y"])),
+                             float(np.nanmax(scales_bbox["y"]))]
+
+        x_range = list(expand_range4(scales_xrange, expansion_x))
+        y_range = list(expand_range4(scales_yrange, expansion_y))
+        bbox = (x_range[0], y_range[0], x_range[1], y_range[1])
+
+        breaks = _sf_breaks(scale_x, scale_y, bbox, coord_params.get("crs"))
+
+        graticule = _st_graticule(
+            bbox,
+            crs=coord_params.get("crs"),
+            lat=breaks["y"] if not _is_waiver_like(breaks["y"]) else None,
+            lon=breaks["x"] if not _is_waiver_like(breaks["x"]) else None,
+            datum=self.datum,
+            ndiscr=self.ndiscr,
+        )
+
+        if breaks["x"] is None and len(graticule):
+            graticule = graticule[graticule["type"] != "E"].reset_index(drop=True)
+        if breaks["y"] is None and len(graticule):
+            graticule = graticule[graticule["type"] != "N"].reset_index(drop=True)
+
+        graticule = self.fixup_graticule_labels(graticule, scale_x, scale_y, coord_params)
+
+        label_axes = self.label_axes or {"top": "", "right": "", "bottom": "E", "left": "N"}
+        label_graticule = self.label_graticule or []
+
+        view_x = _view_scales_from_graticule(
+            graticule, scale_x, "x", label_axes.get("bottom", ""),
+            label_graticule, bbox,
+        )
+        view_y = _view_scales_from_graticule(
+            graticule, scale_y, "y", label_axes.get("left", ""),
+            label_graticule, bbox,
+        )
+        view_x_sec = _view_scales_from_graticule(
+            graticule, scale_x, "x.sec", label_axes.get("top", ""),
+            label_graticule, bbox,
+        )
+        view_y_sec = _view_scales_from_graticule(
+            graticule, scale_y, "y.sec", label_axes.get("right", ""),
+            label_graticule, bbox,
+        )
+
+        # Convert view-scale tick positions (in target CRS) to NPC for axis
+        # rendering, matching CoordCartesian's panel_params contract.
+        def _to_npc(values: np.ndarray, lo: float, hi: float) -> np.ndarray:
+            arr = np.asarray(values, dtype=float)
+            if arr.size == 0:
+                return arr
+            span = hi - lo
+            if span == 0:
+                return np.full_like(arr, 0.5)
+            return (arr - lo) / span
+
+        x_major_npc = _to_npc(view_x["breaks"], x_range[0], x_range[1])
+        y_major_npc = _to_npc(view_y["breaks"], y_range[0], y_range[1])
+        x_sec_npc = _to_npc(view_x_sec["breaks"], x_range[0], x_range[1])
+        y_sec_npc = _to_npc(view_y_sec["breaks"], y_range[0], y_range[1])
+
+        panel_params = {
+            "x_range": x_range,
+            "y_range": y_range,
+            "x.range": x_range,
+            "y.range": y_range,
+            "crs": coord_params.get("crs"),
+            "default_crs": coord_params.get("default_crs"),
+            "reverse": getattr(self, "reverse", "none"),
+            "x_major": x_major_npc,
+            "y_major": y_major_npc,
+            "x_minor": np.array([]),
+            "y_minor": np.array([]),
+            "x_labels": list(view_x["labels"]),
+            "y_labels": list(view_y["labels"]),
+            "x_sec_major": x_sec_npc if x_sec_npc.size else None,
+            "y_sec_major": y_sec_npc if y_sec_npc.size else None,
+            "x_sec_labels": list(view_x_sec["labels"]),
+            "y_sec_labels": list(view_y_sec["labels"]),
+            "view_scales": {
+                "x": view_x, "y": view_y,
+                "x.sec": view_x_sec, "y.sec": view_y_sec,
+            },
+            "graticule": graticule,
+        }
+
+        # Rescale graticule LineStrings into NPC for render_bg.
+        if len(graticule):
+            normalized_lines = _sf_rescale01(
+                list(graticule["geometry"]), x_range, y_range,
+            )
+            graticule = graticule.copy()
+            graticule["geometry"] = normalized_lines
+            panel_params["graticule"] = graticule
+        return panel_params
+
+    # ---- backtransform (coord-sf.R:290-299) ------------------------------
+
+    def backtransform_range(self, panel_params: Dict[str, Any]) -> Dict[str, list]:
+        target_crs = panel_params.get("default_crs")
+        source_crs = panel_params.get("crs")
+        x = panel_params.get("x_range", [0, 1])
+        y = panel_params.get("y_range", [0, 1])
+        data = {"x": np.array([x[0], x[1], x[0], x[1]]),
+                "y": np.array([y[0], y[1], y[1], y[0]])}
+        data = _sf_transform_xy(data, target_crs, source_crs)
+        xs = np.asarray(data["x"], dtype=float)
+        ys = np.asarray(data["y"], dtype=float)
+        xs = xs[np.isfinite(xs)]
+        ys = ys[np.isfinite(ys)]
+        if xs.size == 0:
+            xs = np.asarray(x, dtype=float)
+        if ys.size == 0:
+            ys = np.asarray(y, dtype=float)
+        return {"x": [float(xs.min()), float(xs.max())],
+                "y": [float(ys.min()), float(ys.max())]}
+
+    def range(self, panel_params: Dict[str, Any]) -> Dict[str, list]:
+        return {"x": list(panel_params.get("x_range", [0, 1])),
+                "y": list(panel_params.get("y_range", [0, 1]))}
+
+    def is_free(self) -> bool:
+        return False
+
+    def is_linear(self) -> bool:
+        # Non-linear when default_crs is specified (so plain x/y get reprojected).
+        return self.get_default_crs() is None
+
+    def distance(self, x: np.ndarray, y: np.ndarray,
+                 panel_params: Dict[str, Any]) -> np.ndarray:
+        d = self.backtransform_range(panel_params)
+        max_dist = math.hypot(d["x"][1] - d["x"][0], d["y"][1] - d["y"][0])
+        if max_dist == 0:
+            max_dist = 1.0
+        return _dist_euclidean(np.asarray(x), np.asarray(y)) / max_dist
+
+    def aspect(self, panel_params: Dict[str, Any]) -> Optional[float]:
+        crs_obj = _coerce_crs(panel_params.get("crs"))
+        is_longlat = bool(getattr(crs_obj, "is_geographic", False))
+        y_range = list(panel_params.get("y_range", [0, 1]))
+        x_range = list(panel_params.get("x_range", [0, 1]))
+        if is_longlat:
+            mid_y = (y_range[0] + y_range[1]) / 2.0
+            ratio = math.cos(mid_y * math.pi / 180.0)
+        else:
+            ratio = 1.0
+        if ratio == 0:
+            ratio = 1e-10
+        dx = x_range[1] - x_range[0]
+        if dx == 0:
+            return None
+        return (y_range[1] - y_range[0]) / dx / ratio
+
+    def labels(self, labels: Any, panel_params: Dict[str, Any]) -> Any:
+        return labels
+
+    # ---- graticule label override (coord-sf.R:112-175) ------------------
+
+    def fixup_graticule_labels(
+        self, graticule: pd.DataFrame, scale_x: Any, scale_y: Any,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> pd.DataFrame:
+        if graticule is None or len(graticule) == 0:
+            return graticule
+        graticule = graticule.copy()
+
+        for axis_type, scale in (("E", scale_x), ("N", scale_y)):
+            mask = graticule["type"].values == axis_type
+            n_breaks = int(mask.sum())
+            if n_breaks == 0:
+                continue
+            user_labels = getattr(scale, "labels", None)
+            if user_labels is None:
+                # rep(NA, length(x_breaks)) — clear labels
+                graticule.loc[mask, "degree_label"] = ""
+            elif _is_waiver_like(user_labels):
+                # leave sf's default labels (already populated)
+                continue
+            else:
+                breaks = graticule.loc[mask, "degree"].values
+                if callable(user_labels):
+                    new_labels = user_labels(breaks)
+                else:
+                    new_labels = user_labels
+                new_labels = list(new_labels)
+                if len(new_labels) != n_breaks:
+                    cli_abort(
+                        f"breaks and labels along {axis_type} direction "
+                        f"have different lengths."
+                    )
+                graticule.loc[mask, "degree_label"] = [
+                    str(v) for v in new_labels
+                ]
+        return graticule
+
+    # ---- render_bg (coord-sf.R:339-358) ---------------------------------
+
+    def render_bg(self, panel_params: Dict[str, Any], theme: Any) -> Any:
+        from grid_py import (
+            polyline_grob, grob_tree, null_grob, Gpar,
+        )
+        from ggplot2_py.theme_elements import (
+            calc_element, element_render, ElementBlank,
+        )
+
+        try:
+            el = calc_element("panel.grid.major", theme)
+        except Exception:
+            el = None
+
+        children = []
+        bg = element_render(theme, "panel.background")
+        if bg is not None:
+            children.append(bg)
+
+        graticule = panel_params.get("graticule")
+        if (el is not None and not isinstance(el, ElementBlank)
+                and graticule is not None and len(graticule)):
+            colour = getattr(el, "colour", None)
+            linewidth = getattr(el, "linewidth", None)
+            linetype = getattr(el, "linetype", None)
+            gp = Gpar(col=colour, lwd=linewidth, lty=linetype)
+
+            x_arr: List[float] = []
+            y_arr: List[float] = []
+            id_lengths: List[int] = []
+            for line in graticule["geometry"]:
+                if line is None or line.is_empty:
+                    continue
+                xs, ys = line.coords.xy
+                xs = list(xs); ys = list(ys)
+                if len(xs) < 2:
+                    continue
+                x_arr.extend(xs)
+                y_arr.extend(ys)
+                id_lengths.append(len(xs))
+            if id_lengths:
+                children.append(polyline_grob(
+                    x=np.asarray(x_arr, dtype=float),
+                    y=np.asarray(y_arr, dtype=float),
+                    id_lengths=id_lengths,
+                    gp=gp, name="graticule",
+                ))
+
+        if not children:
+            return null_grob()
+        return grob_tree(*children, name="grill")
+
+
+def coord_sf(
+    xlim: Optional[Sequence[float]] = None,
+    ylim: Optional[Sequence[float]] = None,
+    expand: Union[bool, List[bool]] = True,
+    crs: Any = None,
+    default_crs: Any = None,
+    datum: Any = 4326,
+    label_graticule: Any = waiver(),
+    label_axes: Any = waiver(),
+    lims_method: str = "cross",
+    ndiscr: int = 100,
+    default: bool = False,
+    clip: str = "on",
+    reverse: str = "none",
+) -> CoordSf:
+    """R port of ``coord_sf()`` (coord-sf.R:555-606).
+
+    The ``default=True`` flag is used by ``geom_sf()`` to auto-inject a
+    coord that a user-supplied coord will replace (matching R ``c(layer,
+    coord_sf(default = TRUE))`` semantics).
+
+    Parameters
+    ----------
+    xlim, ylim : sequence of float, optional
+        Limits for the x / y axes in default-CRS units.
+    expand : bool or list of bool
+    crs : pyproj.CRS or str/int, optional
+        CRS into which all data will be projected.
+    default_crs : pyproj.CRS or str/int, optional
+        CRS used for non-sf layers and scale limits.
+    datum : pyproj.CRS or str/int, default ``4326``
+        CRS providing the datum for graticule generation.
+    label_graticule : str
+        Which graticule end-points to label (subset of ``"NESW"``).
+    label_axes : str or dict
+        Which graticule lines to label per side (e.g. ``"--EN"``).
+    lims_method : {'cross', 'box', 'orthogonal', 'geometry_bbox'}
+    ndiscr : int
+        Number of segments for graticule discretisation.
+    default : bool
+        If ``True``, this coord can be replaced by a later coord+ call.
+    clip : {'on', 'off'}
+    reverse : {'none', 'x', 'y', 'xy'}
+    """
+    if _is_waiver_like(label_graticule) and _is_waiver_like(label_axes):
+        # If both are waiver, apply the standard default (no labels on top
+        # / right; meridians on bottom; parallels on left).
+        label_graticule_resolved: Any = ""
+        label_axes_resolved: Any = "--EN"
+    else:
+        label_graticule_resolved = "" if _is_waiver_like(label_graticule) else label_graticule
+        label_axes_resolved = "" if _is_waiver_like(label_axes) else label_axes
+
+    label_axes_parsed = _parse_axes_labeling(label_axes_resolved)
+    if isinstance(label_graticule_resolved, str):
+        label_graticule_parsed = list(label_graticule_resolved)
+    else:
+        cli_abort("Graticule labeling format not recognized.")
+
+    # R: switch limit method to "orthogonal" if not specified and
+    # default_crs indicates projected coords (default_crs=NULL).
+    if default_crs is None and lims_method == "cross":
+        lims_method_resolved = "orthogonal"
+    elif lims_method not in ("cross", "box", "orthogonal", "geometry_bbox"):
+        cli_abort(
+            f"lims_method must be one of 'cross', 'box', 'orthogonal', "
+            f"'geometry_bbox'; got {lims_method!r}."
+        )
+    else:
+        lims_method_resolved = lims_method
+
+    return CoordSf(
+        limits={"x": list(xlim) if xlim is not None else None,
+                "y": list(ylim) if ylim is not None else None},
+        expand=expand,
+        crs=_coerce_crs(crs) if crs is not None else None,
+        default_crs=_coerce_crs(default_crs) if default_crs is not None else None,
+        datum=datum,
+        label_graticule=label_graticule_parsed,
+        label_axes=label_axes_parsed,
+        lims_method=lims_method_resolved,
+        ndiscr=int(ndiscr),
+        default=bool(default),
+        clip=clip,
+        reverse=reverse,
+    )
 
 
 # ---------------------------------------------------------------------------
