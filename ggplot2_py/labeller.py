@@ -20,6 +20,7 @@ __all__ = [
     "label_both",
     "label_context",
     "label_parsed",
+    "label_bquote",
     "label_wrap_gen",
     "as_labeller",
 ]
@@ -206,6 +207,103 @@ def label_parsed(
 
 
 # ---------------------------------------------------------------------------
+# label_bquote
+# ---------------------------------------------------------------------------
+
+def label_bquote(
+    rows: Optional[Union[str, Callable]] = None,
+    cols: Optional[Union[str, Callable]] = None,
+    default: Any = None,
+) -> Callable:
+    """Label facets with an expression-like string — Pythonic adaptation.
+
+    R's ``label_bquote(rows, cols)`` uses R's ``bquote()`` quasi-quotation,
+    where strip labels are R expressions that reference facet variables by
+    name (e.g. ``label_bquote(alpha ^ .(vs))``), later rendered as plotmath
+    by the graphics device.
+
+    Python has no direct equivalent of ``bquote``; this port accepts the
+    following two forms for each of *rows* / *cols*:
+
+    * a :class:`str` with Python ``str.format`` placeholders that reference
+      facet variable names (e.g. ``"alpha^{vs}"``, which becomes
+      ``"alpha^0"`` / ``"alpha^1"`` etc.), OR
+    * a callable ``fn(labels_dict) -> str`` taking a dict of the form
+      ``{variable_name: value}`` for a single panel and returning the
+      formatted label.
+
+    Since grid_py does not implement R plotmath, labels render as plain
+    text; if you want pretty math, embed the mathtext yourself in the
+    template string.
+
+    Deviation from R
+    ----------------
+    R's quasi-quoted call syntax (``alpha ^ .(vs)``) is not emulated — pass
+    a format string or callable instead. When *rows* and *cols* are both
+    ``None`` the function behaves exactly like :func:`label_value`.
+
+    Parameters
+    ----------
+    rows : str or callable, optional
+        Template for row labels. If ``None``, rows fall back to ``label_value``.
+    cols : str or callable, optional
+        Template for column labels. If ``None``, cols fall back to ``label_value``.
+    default : any
+        Unused, kept for compatibility with the R signature.
+
+    Returns
+    -------
+    callable
+        A labeller function consuming ``{variable_name: [values...]}``.
+
+    Examples
+    --------
+    >>> fn = label_bquote(rows="alpha^{vs}")
+    >>> fn({"vs": ["0", "1"]})
+    ['alpha^0', 'alpha^1']
+    >>> fn2 = label_bquote(cols=lambda lab: f"{lab['am']}^{lab['vs']}")
+    >>> fn2({"am": ["0", "1"], "vs": ["1", "0"]})
+    ['0^1', '1^0']
+    """
+    del default  # accepted for parity with R signature
+
+    def _apply(
+        template: Union[str, Callable],
+        labels: Dict[str, List[str]],
+        n_panels: int,
+    ) -> List[str]:
+        out: List[str] = []
+        for i in range(n_panels):
+            panel_vars = {k: labels[k][i] for k in labels}
+            if callable(template):
+                out.append(str(template(panel_vars)))
+            else:
+                out.append(template.format(**panel_vars))
+        return out
+
+    def _fun(
+        labels: Dict[str, List[str]],
+        multi_line: bool = True,
+    ) -> List[str]:
+        # Both None -> fall through to label_value (matches R behaviour).
+        if rows is None and cols is None:
+            return label_value(labels, multi_line)
+
+        if not labels:
+            return []
+        n_panels = len(next(iter(labels.values())))
+
+        # rows vs cols dispatch: the caller (facet layout) is expected to
+        # pick the correct side. For the unit-level API here, prefer rows if
+        # supplied, else cols. Mirrors R's behaviour where only the relevant
+        # template applies.
+        template = rows if rows is not None else cols
+        return _apply(template, labels, n_panels)
+
+    return _fun
+
+
+# ---------------------------------------------------------------------------
 # label_wrap_gen
 # ---------------------------------------------------------------------------
 
@@ -249,6 +347,7 @@ _LABELLER_REGISTRY: Dict[str, Callable] = {
     "label_both": label_both,
     "label_context": label_context,
     "label_parsed": label_parsed,
+    "label_bquote": label_bquote,
 }
 
 

@@ -639,8 +639,26 @@ from ggplot2_py.draw_key import (
 # Save, fortify, qplot
 # ---------------------------------------------------------------------------
 from ggplot2_py.save import ggsave, check_device
-from ggplot2_py.fortify import fortify
+from ggplot2_py.fortify import (
+    fortify,
+    fortify_lm,
+    fortify_dispatch,
+    fortify_glht,
+    fortify_confint_glht,
+    fortify_summary_glht,
+    fortify_cld,
+)
 from ggplot2_py.qplot import qplot, quickplot
+from ggplot2_py.labeller import (
+    label_value,
+    label_both,
+    label_context,
+    label_parsed,
+    label_bquote,
+    label_wrap_gen,
+    as_labeller,
+)
+from ggplot2_py.autoplot import autoplot, autolayer
 
 # ---------------------------------------------------------------------------
 # Utility re-exports (matching R namespace)
@@ -826,7 +844,15 @@ __all__ = [
     "draw_key_pointrange", "draw_key_smooth", "draw_key_text",
     "draw_key_abline", "draw_key_vline", "draw_key_timeseries", "draw_key_vpath",
     # Save, fortify, qplot
-    "ggsave", "check_device", "fortify", "qplot", "quickplot",
+    "ggsave", "check_device",
+    "fortify", "fortify_lm", "fortify_dispatch",
+    "fortify_glht", "fortify_confint_glht", "fortify_summary_glht", "fortify_cld",
+    "qplot", "quickplot",
+    # Labellers
+    "label_value", "label_both", "label_context", "label_parsed",
+    "label_bquote", "label_wrap_gen", "as_labeller",
+    # autoplot / autolayer generics
+    "autoplot", "autolayer",
     # Utilities
     "resolution", "remove_missing",
     "unit", "arrow", "alpha",

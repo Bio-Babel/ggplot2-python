@@ -1182,6 +1182,496 @@ def _contour_breaks(
 
 
 # ---------------------------------------------------------------------------
+# MASS::bandwidth.nrd and MASS::kde2d (inlined, matching MASS conventions)
+# ---------------------------------------------------------------------------
+
+def _bandwidth_nrd(x: np.ndarray) -> float:
+    """Port of ``MASS::bandwidth.nrd``.
+
+    ``4 * 1.06 * min(sd(x), IQR(x) / 1.34) * n ** (-1/5)``. Note that this is
+    4x the result of ``stats::bw.nrd0``; ``stat_density_2d`` calls this form
+    because ``MASS::kde2d`` internally divides by 4 before the Gaussian
+    kernel.
+    """
+    x = np.asarray(x, dtype=float)
+    r = np.quantile(x, [0.25, 0.75])
+    h = (r[1] - r[0]) / 1.34
+    sd = float(np.std(x, ddof=1))
+    return 4.0 * 1.06 * min(sd, h) * len(x) ** (-0.2)
+
+
+def _kde2d(
+    x: np.ndarray,
+    y: np.ndarray,
+    h: Optional[Sequence[float]] = None,
+    n: Union[int, Sequence[int]] = 25,
+    lims: Optional[Sequence[float]] = None,
+) -> Dict[str, np.ndarray]:
+    """Port of ``MASS::kde2d`` (two-dimensional kernel density estimation).
+
+    The MASS convention divides the bandwidth vector by 4 before applying the
+    Gaussian kernel. ``ggplot2::stat_density_2d`` calls this code path, so we
+    must reproduce the ``h / 4`` step exactly.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    nx = len(x)
+    if len(y) != nx:
+        raise ValueError("x and y must have the same length")
+
+    if lims is None:
+        lims = (float(x.min()), float(x.max()), float(y.min()), float(y.max()))
+    lims = list(lims)
+
+    if np.isscalar(n):
+        n_vec = (int(n), int(n))
+    else:
+        n_pair = list(n)
+        n_vec = (int(n_pair[0]), int(n_pair[-1]))
+
+    gx = np.linspace(lims[0], lims[1], n_vec[0])
+    gy = np.linspace(lims[2], lims[3], n_vec[1])
+
+    if h is None:
+        h_vec = np.array([_bandwidth_nrd(x), _bandwidth_nrd(y)], dtype=float)
+    else:
+        h_list = list(np.atleast_1d(h).astype(float))
+        if len(h_list) == 1:
+            h_list = [h_list[0], h_list[0]]
+        h_vec = np.asarray(h_list[:2], dtype=float)
+
+    if np.any(h_vec <= 0):
+        raise ValueError("bandwidths must be strictly positive")
+
+    h_vec = h_vec / 4.0  # MASS convention
+
+    inv_sqrt_2pi = 1.0 / np.sqrt(2.0 * np.pi)
+
+    def _dnorm(a: np.ndarray) -> np.ndarray:
+        return inv_sqrt_2pi * np.exp(-0.5 * a * a)
+
+    ax = (gx[:, None] - x[None, :]) / h_vec[0]
+    ay = (gy[:, None] - y[None, :]) / h_vec[1]
+    dx = _dnorm(ax)  # shape (n_x, nx)
+    dy = _dnorm(ay)  # shape (n_y, nx)
+    # z[i, j] = sum_k dx[i, k] * dy[j, k] / (nx * h1 * h2)
+    # R tcrossprod(A, B) = A %*% t(B); mirror that shape with @ for z[i, j] mapped below.
+    z = (dx @ dy.T) / (nx * h_vec[0] * h_vec[1])
+    return {"x": gx, "y": gy, "z": z}
+
+
+# ---------------------------------------------------------------------------
+# contourpy wrappers -- reproduce isoband::isolines / isobands outputs as a
+# tidy DataFrame matching ggplot2's iso_to_geom() schema.
+# ---------------------------------------------------------------------------
+
+def _contourpy_isolines(
+    x: np.ndarray,
+    y: np.ndarray,
+    z: np.ndarray,
+    levels: Sequence[float],
+    group: Any = -1,
+) -> pd.DataFrame:
+    """Wrap contourpy ``.lines(level)`` into an ``iso_to_geom(geom='path')``-shaped frame.
+
+    Returns columns: ``level, x, y, piece, group, subgroup``. ``piece`` is the
+    integer id of the individual line segment across all levels (1-based);
+    ``group`` is a factor-style string ``"{group}-{level_idx:03d}-{line_idx:03d}"``
+    mirroring ggplot2; ``subgroup`` is ``None`` for isolines (per R).
+    """
+    import contourpy
+
+    gen = contourpy.contour_generator(
+        x=np.asarray(x, dtype=float),
+        y=np.asarray(y, dtype=float),
+        z=np.asarray(z, dtype=float),
+        line_type="Separate",
+        fill_type="OuterOffset",
+    )
+
+    rows_level: List[Any] = []
+    rows_x: List[float] = []
+    rows_y: List[float] = []
+    rows_piece: List[int] = []
+    rows_group: List[str] = []
+    piece = 0
+    for level_idx, lvl in enumerate(levels, start=1):
+        lines = gen.lines(float(lvl))
+        for line_idx, seg in enumerate(lines, start=1):
+            piece += 1
+            n_pts = seg.shape[0]
+            group_str = f"{group}-{level_idx:03d}-{line_idx:03d}"
+            rows_level.extend([float(lvl)] * n_pts)
+            rows_x.extend(seg[:, 0].tolist())
+            rows_y.extend(seg[:, 1].tolist())
+            rows_piece.extend([piece] * n_pts)
+            rows_group.extend([group_str] * n_pts)
+
+    df = pd.DataFrame({
+        "level": rows_level,
+        "x": rows_x,
+        "y": rows_y,
+        "piece": rows_piece,
+        "group": rows_group,
+        "subgroup": [None] * len(rows_level),
+    })
+    return df
+
+
+def _contourpy_isobands(
+    x: np.ndarray,
+    y: np.ndarray,
+    z: np.ndarray,
+    breaks: Sequence[float],
+    group: Any = -1,
+) -> pd.DataFrame:
+    """Wrap contourpy ``.filled(lo, hi)`` into an ``iso_to_geom(geom='polygon')`` frame.
+
+    ``breaks`` is the sequence of level boundaries (length ``n_bands + 1``).
+    Returns columns: ``level, x, y, piece, group, subgroup, level_low,
+    level_high, level_mid``. Each band gets one ``piece`` id; each ring inside
+    the band (outer ring + holes) gets its own ``subgroup`` id (1-based).
+    """
+    import contourpy
+
+    gen = contourpy.contour_generator(
+        x=np.asarray(x, dtype=float),
+        y=np.asarray(y, dtype=float),
+        z=np.asarray(z, dtype=float),
+        line_type="Separate",
+        fill_type="OuterOffset",
+    )
+
+    breaks = np.asarray(breaks, dtype=float)
+    levels_low = breaks[:-1]
+    levels_high = breaks[1:]
+    # Label each band the same way pretty_isoband_levels does.
+    level_labels = _pretty_isoband_levels(levels_low, levels_high)
+
+    rows_level: List[Any] = []
+    rows_x: List[float] = []
+    rows_y: List[float] = []
+    rows_piece: List[int] = []
+    rows_group: List[str] = []
+    rows_subgroup: List[int] = []
+    rows_low: List[float] = []
+    rows_high: List[float] = []
+    piece = 0
+    for band_idx, (lo, hi, label) in enumerate(
+        zip(levels_low, levels_high, level_labels), start=1
+    ):
+        polys, offsets = gen.filled(float(lo), float(hi))
+        if len(polys) == 0:
+            continue
+        piece += 1
+        group_str = f"{group}-{band_idx:03d}"
+        subgroup_counter = 0
+        for poly_pts, poly_offs in zip(polys, offsets):
+            # poly_offs slices each ring: [0, n1, n1+n2, ...]
+            for ring_idx in range(len(poly_offs) - 1):
+                subgroup_counter += 1
+                s = int(poly_offs[ring_idx])
+                e = int(poly_offs[ring_idx + 1])
+                n_pts = e - s
+                rows_level.extend([label] * n_pts)
+                rows_x.extend(poly_pts[s:e, 0].tolist())
+                rows_y.extend(poly_pts[s:e, 1].tolist())
+                rows_piece.extend([piece] * n_pts)
+                rows_group.extend([group_str] * n_pts)
+                rows_subgroup.extend([subgroup_counter] * n_pts)
+                rows_low.extend([float(lo)] * n_pts)
+                rows_high.extend([float(hi)] * n_pts)
+
+    df = pd.DataFrame({
+        "level": rows_level,
+        "x": rows_x,
+        "y": rows_y,
+        "piece": rows_piece,
+        "group": rows_group,
+        "subgroup": rows_subgroup,
+        "level_low": rows_low,
+        "level_high": rows_high,
+    })
+    df["level_mid"] = 0.5 * (df["level_low"] + df["level_high"])
+    return df
+
+
+def _pretty_isoband_levels(
+    lows: np.ndarray, highs: np.ndarray, dig_lab: int = 3
+) -> List[str]:
+    """Port of ``pretty_isoband_levels`` -- label each band as ``"(lo, hi]"``.
+
+    Matches R's ``format(x, digits=dig.lab, trim=TRUE)`` by auto-growing the
+    precision until all boundary labels are unique.
+    """
+    lows = np.asarray(lows, dtype=float)
+    highs = np.asarray(highs, dtype=float)
+    breaks = np.unique(np.concatenate([lows, highs]))
+
+    def _format_vec(vals: np.ndarray, dig: int) -> List[str]:
+        # R's format() with digits uses significant digits; Python's %g matches
+        # closely (both strip trailing zeros and pick exponential vs fixed
+        # automatically).
+        return [f"{v:.{dig}g}" for v in vals]
+
+    dig = dig_lab
+    while True:
+        labels = _format_vec(breaks, dig)
+        if len(set(labels)) == len(labels):
+            break
+        dig += 1
+        if dig > 22:
+            break
+
+    label_low = _format_vec(lows, dig)
+    label_high = _format_vec(highs, dig)
+    return [f"({lo}, {hi}]" for lo, hi in zip(label_low, label_high)]
+
+
+# ---------------------------------------------------------------------------
+# Ellipse / Q-Q helpers (ports of R primitives used by StatEllipse/StatQq*).
+# ---------------------------------------------------------------------------
+
+def _ppoints(n: int, a: Optional[float] = None) -> np.ndarray:
+    """Port of R ``stats::ppoints(n)``.
+
+    Formula: ``(1:n - a) / (n + 1 - 2*a)`` with ``a = 3/8`` when ``n <= 10``
+    else ``a = 1/2``. Returns a length-``n`` ndarray of plotting positions.
+    """
+    if a is None:
+        a = 3.0 / 8.0 if n <= 10 else 0.5
+    if n <= 0:
+        return np.empty(0, dtype=float)
+    return (np.arange(1, n + 1, dtype=float) - a) / (n + 1 - 2 * a)
+
+
+def _cov_wt(x: np.ndarray, wt: Optional[np.ndarray] = None) -> Dict[str, np.ndarray]:
+    """Port of R ``stats::cov.wt(x, wt)`` with default ``method='unbiased'``.
+
+    ``x`` is shape (n, p). ``wt`` is length-n non-negative weights that will
+    be normalised to sum to 1 inside R; mirror that here. Returns a dict with
+    keys ``cov`` (p, p), ``center`` (p,).
+
+    Unbiased weighted covariance: ``S = sum_k w_k (x_k - mu)(x_k - mu)^T``
+    divided by ``1 - sum(w^2)`` where ``w`` sums to 1 and ``mu`` is the
+    weighted mean. For equal weights ``w = 1/n`` this reduces to the
+    ddof=1 sample covariance.
+    """
+    x = np.asarray(x, dtype=float)
+    n = x.shape[0]
+    if wt is None:
+        w = np.full(n, 1.0 / n)
+    else:
+        w = np.asarray(wt, dtype=float)
+        s = float(w.sum())
+        if s <= 0:
+            raise ValueError("sum(wt) must be positive in cov.wt")
+        w = w / s
+    center = (w[:, None] * x).sum(axis=0)
+    diff = x - center
+    # Outer-product accumulation across rows, weighted.
+    cov = (w[:, None, None] * diff[:, :, None] * diff[:, None, :]).sum(axis=0)
+    denom = 1.0 - float((w * w).sum())
+    if denom <= 0:
+        raise ValueError("cov.wt: 1 - sum(w^2) not positive")
+    cov = cov / denom
+    return {"cov": cov, "center": center}
+
+
+def _cov_trob(
+    x: np.ndarray,
+    wt: Optional[np.ndarray] = None,
+    center: bool = True,
+    nu: float = 5.0,
+    maxit: int = 25,
+    tol: float = 0.01,
+) -> Dict[str, np.ndarray]:
+    """Port of R ``MASS::cov.trob`` (robust multivariate t covariance).
+
+    Verbatim port of the MASS source. Iteratively reweights observations to
+    down-weight outliers assuming a multivariate t distribution with ``nu``
+    degrees of freedom.
+
+    Parameters
+    ----------
+    x : ndarray of shape (n, p).
+    wt : optional length-n weights; defaults to all ones.
+    center : if True, estimate the center jointly with the covariance; if
+        False, fix the center at zero; if a length-p array, use that as the
+        fixed center.
+    nu : degrees of freedom for the t distribution (default 5).
+    maxit : maximum number of iterations (default 25).
+    tol : convergence tolerance on weight change (default 0.01).
+
+    Returns
+    -------
+    dict with keys ``cov`` (p, p) and ``center`` (p,).
+
+    Notes
+    -----
+    Algorithm (from MASS::cov.trob):
+    ``loc = colSums(wt * x) / sum(wt)``.
+    ``w = wt * (1 + p/nu)`` initially; then iterate:
+      - ``X = x - loc``;
+      - ``sX = svd(sqrt(w/sum(w)) * X)``;
+      - ``wX = X V diag(1/d)``;
+      - ``Q = rowSums(wX^2)``;
+      - ``w = wt * (nu + p) / (nu + Q)``;
+      - if ``center`` is True: ``loc = colSums(w*x) / sum(w)``;
+      - break when ``max(|w - w0|) < tol``.
+    Finally ``cov = (sqrt(w) X)^T (sqrt(w) X) / sum(wt)``.
+    """
+    x = np.asarray(x, dtype=float)
+    n, p = x.shape
+    if wt is None:
+        wt = np.ones(n, dtype=float)
+        miss_wt = True
+    else:
+        wt = np.asarray(wt, dtype=float)
+        if wt.shape[0] != n:
+            raise ValueError("length of 'wt' must equal number of observations")
+        if np.any(wt < 0):
+            raise ValueError("negative weights not allowed")
+        if wt.sum() == 0:
+            raise ValueError("no positive weights")
+        pos = wt > 0
+        x = x[pos, :]
+        wt = wt[pos]
+        n = x.shape[0]
+        miss_wt = False
+    del miss_wt  # tracked but unused; matches R's miss.wt flag
+
+    # Initial location
+    loc = (wt[:, None] * x).sum(axis=0) / wt.sum()
+    if isinstance(center, np.ndarray):
+        if center.shape[0] != p:
+            raise ValueError("'center' is not the right length")
+        loc = np.asarray(center, dtype=float)
+        use_loc = False
+    elif isinstance(center, bool):
+        if not center:
+            loc = np.zeros(p, dtype=float)
+            use_loc = False
+        else:
+            use_loc = True
+    else:
+        # numeric vector
+        loc = np.asarray(center, dtype=float)
+        if loc.shape[0] != p:
+            raise ValueError("'center' is not the right length")
+        use_loc = False
+
+    w = wt * (1.0 + p / nu)
+    X = x - loc  # initialized so the final ``cov`` can reuse the last X.
+    for _ in range(1, maxit + 1):
+        w0 = w
+        # R computes ``X <- scale.simp(x, loc, n, p)`` at the TOP of each
+        # iteration using the loc from the previous iteration; if the loop
+        # breaks, R's post-loop ``cov`` uses *this* X (not one recomputed
+        # from the just-updated loc).
+        X = x - loc
+        # R: svd(sqrt(w/sum(w)) * X, nu = 0) -> returns d, v (no U).
+        # sqrt(w/sum(w)) broadcast as row scaling (length-n vector times n x p matrix).
+        scale = np.sqrt(w / w.sum())
+        M = scale[:, None] * X
+        # full_matrices=False gives compact form: U (n x k), d (k,), Vt (k x p)
+        # where k = min(n, p).
+        _, d, vt = np.linalg.svd(M, full_matrices=False)
+        V = vt.T  # p x k
+        # wX = X @ V @ diag(1/d); need diag(1/d, , p) in R which pads to p x p.
+        # R's diag(1/sX$d, , p): when length(d) == p, diag creates p x p.
+        # Here k = min(n, p); if n >= p (typical), k == p and this works as-is.
+        # If n < p, MASS degenerates; we mirror R which would fail there too.
+        wX = X @ V @ np.diag(1.0 / d)
+        Q = (wX * wX).sum(axis=1)
+        w = wt * (nu + p) / (nu + Q)
+        if use_loc:
+            loc = (w[:, None] * x).sum(axis=0) / w.sum()
+        if np.max(np.abs(w - w0)) < tol:
+            break
+
+    sw = np.sqrt(w)
+    cov = (sw[:, None] * X).T @ (sw[:, None] * X) / wt.sum()
+    return {"cov": cov, "center": loc}
+
+
+def _calculate_ellipse(
+    data: pd.DataFrame,
+    vars_: Sequence[str],
+    type_: str,
+    level: float,
+    segments: int,
+) -> pd.DataFrame:
+    """Port of ggplot2 ``calculate_ellipse`` (R/stat-ellipse.R).
+
+    Parameters
+    ----------
+    data : DataFrame with the two coordinate columns named by ``vars_`` and
+        optionally a ``weight`` column.
+    vars_ : list of two column names (e.g. ``["x", "y"]``).
+    type_ : one of ``"t"``, ``"norm"``, ``"euclid"``. ``"t"`` uses the port
+        of ``MASS::cov.trob`` in :func:`_cov_trob`.
+    level : confidence level (or euclidean radius when type='euclid').
+    segments : number of polygon segments.
+
+    Returns
+    -------
+    DataFrame with columns ``vars_[0]``, ``vars_[1]`` and ``segments + 1``
+    rows (closed ring).
+
+    Notes
+    -----
+    R's ``chol()`` returns the **upper** triangle; NumPy's ``np.linalg.cholesky``
+    returns the **lower**. We use ``np.linalg.cholesky(S).T`` to mimic R.
+    """
+    from scipy import stats as scipy_stats
+
+    dfn = 2
+    dfd = data.shape[0] - 1
+
+    if type_ not in ("t", "norm", "euclid"):
+        cli_inform(f"Unrecognized ellipse type: {type_!r}")
+        return pd.DataFrame({vars_[0]: [np.nan], vars_[1]: [np.nan]})
+    if dfd < 3:
+        cli_inform("Too few points to calculate an ellipse")
+        return pd.DataFrame({vars_[0]: [np.nan], vars_[1]: [np.nan]})
+
+    xy = data[list(vars_)].to_numpy(dtype=float)
+    n = xy.shape[0]
+    if "weight" in data.columns:
+        raw_w = np.asarray(data["weight"].to_numpy(), dtype=float)
+    else:
+        raw_w = np.ones(n)
+    weight = raw_w / raw_w.sum()
+
+    if type_ == "t":
+        # R passes ``wt = weight * nrow(data)`` to cov.trob.
+        v = _cov_trob(xy, wt=weight * n)
+    else:
+        v = _cov_wt(xy, wt=weight)
+    shape = v["cov"]
+    center = v["center"]
+    if type_ == "euclid":
+        shape = np.diag(np.repeat(float(np.min(np.diag(shape))), 2))
+
+    # R chol() returns UPPER triangle; numpy returns LOWER. Transpose.
+    chol_decomp = np.linalg.cholesky(shape).T
+
+    if type_ == "euclid":
+        radius = level / float(np.max(chol_decomp))
+    else:
+        radius = float(np.sqrt(dfn * scipy_stats.f.ppf(level, dfn, dfd)))
+
+    angles = np.arange(segments + 1) * 2.0 * np.pi / segments
+    unit_circle = np.column_stack([np.cos(angles), np.sin(angles)])
+    # R: t(center + radius * t(unit.circle %*% chol_decomp))
+    # i.e. each row of (unit_circle @ chol_decomp) is scaled by radius and
+    # offset by center.
+    ellipse = center + radius * (unit_circle @ chol_decomp)
+    return pd.DataFrame({vars_[0]: ellipse[:, 0], vars_[1]: ellipse[:, 1]})
+
+
+# ---------------------------------------------------------------------------
 # Hexagonal binning helper
 # ---------------------------------------------------------------------------
 
@@ -1671,6 +2161,14 @@ class Stat(GGProto):
     def parameters(self, extra: bool = False) -> List[str]:
         """List accepted parameter names.
 
+        Port of R ggplot2 ``Stat$parameters`` (``R/stat-.R:368-381``). R
+        inspects ``compute_panel`` first and falls back to
+        ``compute_group`` only when the former is the base
+        ``function(data, scales, ...)`` delegator — detected in R by
+        ``"..." %in% panel_args``. The Python port encodes the same rule
+        by asking whether the concrete ``compute_panel`` bound on the
+        subclass is still ``Stat.compute_panel``.
+
         Parameters
         ----------
         extra : bool
@@ -1680,16 +2178,41 @@ class Stat(GGProto):
         -------
         list of str
         """
-        # Inspect compute_group signature
-        sig = inspect.signature(self.compute_group)
-        args = [
-            p.name
-            for p in sig.parameters.values()
-            if p.name not in ("self", "data", "scales")
-            and p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-        ]
+        def _named(fn) -> List[str]:
+            sig = inspect.signature(fn)
+            return [
+                p.name for p in sig.parameters.values()
+                if p.name != "self"
+                and p.kind is not inspect.Parameter.VAR_POSITIONAL
+                and p.kind is not inspect.Parameter.VAR_KEYWORD
+            ]
+
+        # R inspects ``compute_panel`` and, if it has ``...``, falls back
+        # to ``compute_group``. The Python port routinely tacks a
+        # ``**kwargs`` onto ``compute_panel`` for forward compatibility
+        # even when R's counterpart has explicit formals (e.g.
+        # ``StatYdensity`` keeps its real parameters on ``compute_group``),
+        # so the ``...``-based switch misfires. We instead take the
+        # union of both methods' formals whenever they're overridden —
+        # matches R semantically for every pattern (R-override-panel,
+        # R-override-group, or R-override-both).
+        panel_overridden = type(self).compute_panel is not Stat.compute_panel
+        group_overridden = type(self).compute_group is not Stat.compute_group
+        args: List[str] = []
+        if panel_overridden:
+            args.extend(_named(self.compute_panel))
+        if group_overridden:
+            args.extend(_named(self.compute_group))
+        if not panel_overridden and not group_overridden:
+            args = _named(self.compute_group)
+
+        # R: setdiff(args, names(ggproto_formals(Stat$compute_group))) —
+        # drop the ``data`` / ``scales`` (and any other base) slots.
+        base_args = set(_named(Stat.compute_group))
+        args = [a for a in dict.fromkeys(args) if a not in base_args]
+
         if extra:
-            args = list(set(args) | set(self.extra_params))
+            args = list(dict.fromkeys(args + list(self.extra_params)))
         return args
 
     def aesthetics(self) -> List[str]:
@@ -2925,7 +3448,13 @@ class StatSummary(Stat):
         flipped_aes: bool = False,
         **kwargs: Any,
     ) -> pd.DataFrame:
-        """Summarise by unique x value.
+        """Summarise by unique (group, x).
+
+        Port of ``stat-summary.R:196-202`` + ``summarise_by_x``.  R calls
+        ``dapply(data, c("group","x"), summary)`` and then merges the
+        summary with a per-(group, x) unique-columns table, keyed by
+        ``c("x", "group")``.  The merge key columns come first in the
+        resulting data frame.
 
         Parameters
         ----------
@@ -2944,23 +3473,45 @@ class StatSummary(Stat):
         if fun is None:
             fun = lambda df: mean_se(df["y"])
 
-        results = []
-        group_cols = ["group", "x"] if "group" in data.columns else ["x"]
-        for keys, grp in data.groupby(group_cols, sort=False):
-            try:
-                summary = fun(grp)
-            except Exception:
-                summary = mean_se(grp["y"])
-            if isinstance(summary, pd.DataFrame):
-                for col in group_cols:
-                    if col in grp.columns:
-                        summary[col] = grp[col].iloc[0]
-                results.append(summary)
+        if "group" not in data.columns:
+            data = data.copy()
+            data["group"] = -1
 
-        if not results:
+        summary_rows: List[pd.DataFrame] = []
+        unique_rows: List[Dict[str, Any]] = []
+        for (grp_val, x_val), grp in data.groupby(["group", "x"], sort=False):
+            summary = fun(grp)
+            if not isinstance(summary, pd.DataFrame):
+                summary = pd.DataFrame(summary)
+            summary = summary.copy()
+            summary["x"] = x_val
+            summary["group"] = grp_val
+            summary_rows.append(summary)
+
+            # R's uniquecols(): columns that are constant within the group.
+            uniq: Dict[str, Any] = {"x": x_val, "group": grp_val}
+            for col in grp.columns:
+                if col in ("x", "group", "y"):
+                    continue
+                vals = grp[col].values
+                if pd.Series(vals).nunique(dropna=False) == 1:
+                    uniq[col] = vals[0]
+            unique_rows.append(uniq)
+
+        if not summary_rows:
             return pd.DataFrame()
 
-        out = pd.concat(results, ignore_index=True)
+        summary_df = pd.concat(summary_rows, ignore_index=True)
+        unique_df = pd.DataFrame(unique_rows)
+
+        # Merge summary with per-group unique columns on (x, group).  The
+        # ordering follows R's merge: key columns first, then summary cols,
+        # then the remaining unique cols.
+        out = summary_df.merge(unique_df, on=["x", "group"], how="left", sort=False)
+
+        # R places the merge key columns (x, group) first; reorder to match.
+        cols = ["x", "group"] + [c for c in out.columns if c not in ("x", "group")]
+        out = out[cols]
         out["flipped_aes"] = flipped_aes
         return _flip_data(out, flipped_aes)
 
@@ -3111,13 +3662,12 @@ class StatSummaryBin(Stat):
 
         results = []
         for bin_val, grp in data.groupby("bin", sort=True):
-            try:
-                summary = fun(grp)
-            except Exception:
-                summary = mean_se(grp["y"])
-            if isinstance(summary, pd.DataFrame):
-                summary["bin"] = bin_val
-                results.append(summary)
+            summary = fun(grp)
+            if not isinstance(summary, pd.DataFrame):
+                summary = pd.DataFrame(summary)
+            summary = summary.copy()
+            summary["bin"] = bin_val
+            results.append(summary)
 
         if not results:
             return pd.DataFrame()
@@ -3771,20 +4321,19 @@ class StatQq(Stat):
         """
         from scipy import stats as scipy_stats
 
-        sample = np.sort(data["sample"].values)
+        sample = np.sort(np.asarray(data["sample"].values, dtype=float))
         n = len(sample)
 
         if quantiles is None:
             # R ``stats::ppoints(n)`` — the stat-qq default.
-            #   a = 3/8 when n <= 10, else 1/2
-            #   (seq_len(n) - a) / (n + 1 - 2a)
-            a = 3.0 / 8.0 if n <= 10 else 0.5
-            quantiles = (np.arange(1, n + 1) - a) / (n + 1 - 2 * a)
-        elif len(quantiles) != n:
-            cli_abort(
-                f"The length of quantiles ({len(quantiles)}) must match "
-                f"the length of the data ({n})."
-            )
+            quantiles = _ppoints(n)
+        else:
+            quantiles = np.asarray(quantiles, dtype=float)
+            if len(quantiles) != n:
+                cli_abort(
+                    f"The length of quantiles ({len(quantiles)}) must match "
+                    f"the length of the data ({n})."
+                )
 
         if distribution is None:
             distribution = scipy_stats.norm
@@ -3799,7 +4348,7 @@ class StatQq(Stat):
         else:
             theoretical = scipy_stats.norm.ppf(quantiles)
 
-        return pd.DataFrame({"sample": sample, "theoretical": theoretical})
+        return pd.DataFrame({"sample": sample, "theoretical": np.asarray(theoretical, dtype=float)})
 
 
 def stat_qq(
@@ -3897,11 +4446,23 @@ class StatQqLine(Stat):
         """
         from scipy import stats as scipy_stats
 
-        sample = np.sort(data["sample"].values)
+        sample = np.sort(np.asarray(data["sample"].values, dtype=float))
         n = len(sample)
 
         if quantiles is None:
-            quantiles = (np.arange(1, n + 1) - 0.5) / n
+            quantiles = _ppoints(n)
+        else:
+            quantiles = np.asarray(quantiles, dtype=float)
+            if len(quantiles) != n:
+                cli_abort(
+                    f"quantiles must have the same length as the data."
+                )
+
+        line_p = np.asarray(line_p, dtype=float)
+        if len(line_p) != 2:
+            cli_abort(
+                f"Cannot fit line quantiles {list(line_p)}. line_p must have length 2."
+            )
 
         if distribution is None:
             distribution = scipy_stats.norm
@@ -3910,24 +4471,26 @@ class StatQqLine(Stat):
             dparams = {}
 
         if hasattr(distribution, "ppf"):
-            theoretical = distribution.ppf(quantiles, **dparams)
-            x_coords = distribution.ppf(np.array(line_p), **dparams)
+            theoretical = np.asarray(distribution.ppf(quantiles, **dparams), dtype=float)
+            x_coords = np.asarray(distribution.ppf(line_p, **dparams), dtype=float)
         elif callable(distribution):
-            theoretical = distribution(quantiles, **dparams)
-            x_coords = distribution(np.array(line_p), **dparams)
+            theoretical = np.asarray(distribution(quantiles, **dparams), dtype=float)
+            x_coords = np.asarray(distribution(line_p, **dparams), dtype=float)
         else:
             theoretical = scipy_stats.norm.ppf(quantiles)
-            x_coords = scipy_stats.norm.ppf(np.array(line_p))
+            x_coords = scipy_stats.norm.ppf(line_p)
 
-        y_coords = np.percentile(sample, np.array(line_p) * 100)
+        # R: y_coords <- stats::quantile(sample, line.p) uses type=7
+        # (linear interpolation), which matches numpy's default linear method.
+        y_coords = np.quantile(sample, line_p, method="linear")
 
-        slope = (y_coords[1] - y_coords[0]) / (x_coords[1] - x_coords[0]) if x_coords[1] != x_coords[0] else 0
+        slope = (y_coords[1] - y_coords[0]) / (x_coords[1] - x_coords[0])
         intercept = y_coords[0] - slope * x_coords[0]
 
         if fullrange:
             scale_x = scales.get("x") if isinstance(scales, dict) else getattr(scales, "x", None)
             if scale_x is not None and hasattr(scale_x, "dimension"):
-                x_range = np.array(scale_x.dimension())
+                x_range = np.array(scale_x.dimension(), dtype=float)
             else:
                 x_range = np.array([theoretical.min(), theoretical.max()])
         else:
@@ -3936,8 +4499,8 @@ class StatQqLine(Stat):
         return pd.DataFrame({
             "x": x_range,
             "y": slope * x_range + intercept,
-            "slope": slope,
-            "intercept": intercept,
+            "slope": float(slope),
+            "intercept": float(intercept),
         })
 
 
@@ -4304,46 +4867,28 @@ class StatContour(Stat):
 
         brks = _contour_breaks(z_range, bins, binwidth, breaks)
 
-        # Build z matrix
+        # Build z matrix (rows = y, cols = x), mirroring R's isoband_z_matrix.
         x_unique = np.sort(data["x"].unique())
         y_unique = np.sort(data["y"].unique())
 
         z_matrix = np.full((len(y_unique), len(x_unique)), np.nan)
         x_idx = np.searchsorted(x_unique, data["x"].values)
         y_idx = np.searchsorted(y_unique, data["y"].values)
-        for i in range(len(data)):
-            if x_idx[i] < len(x_unique) and y_idx[i] < len(y_unique):
-                z_matrix[y_idx[i], x_idx[i]] = data["z"].values[i]
+        z_matrix[y_idx, x_idx] = data["z"].values
 
-        try:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots()
-            cs = ax.contour(x_unique, y_unique, z_matrix, levels=brks)
+        group_base = data["group"].iloc[0] if "group" in data.columns else -1
+        result = _contourpy_isolines(
+            x_unique, y_unique, z_matrix, brks, group=group_base
+        )
 
-            rows = []
-            group_base = data["group"].iloc[0] if "group" in data.columns else 1
-            piece = 0
-            for i, level_val in enumerate(cs.levels):
-                for seg in cs.allsegs[i]:
-                    piece += 1
-                    for pt in seg:
-                        rows.append({
-                            "x": pt[0],
-                            "y": pt[1],
-                            "level": float(level_val),
-                            "piece": piece,
-                            "group": f"{group_base}-{piece:03d}",
-                        })
-            plt.close(fig)
-        except Exception:
-            return pd.DataFrame()
+        if result.empty:
+            return result
 
-        if not rows:
-            return pd.DataFrame()
-
-        result = pd.DataFrame(rows)
         max_level = result["level"].max()
-        result["nlevel"] = result["level"] / max_level if max_level > 0 else 0
+        if max_level and max_level > 0:
+            result["nlevel"] = result["level"] / max_level
+        else:
+            result["nlevel"] = 0.0
         return result
 
 
@@ -4408,71 +4953,28 @@ class StatContourFilled(Stat):
 
         brks = _contour_breaks(z_range, bins, binwidth, breaks)
 
-        # Build z matrix
+        # Build z matrix (rows = y, cols = x).
         x_unique = np.sort(data["x"].unique())
         y_unique = np.sort(data["y"].unique())
 
         z_matrix = np.full((len(y_unique), len(x_unique)), np.nan)
         x_idx = np.searchsorted(x_unique, data["x"].values)
         y_idx = np.searchsorted(y_unique, data["y"].values)
-        for i in range(len(data)):
-            if x_idx[i] < len(x_unique) and y_idx[i] < len(y_unique):
-                z_matrix[y_idx[i], x_idx[i]] = data["z"].values[i]
+        z_matrix[y_idx, x_idx] = data["z"].values
 
-        try:
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots()
-            cs = ax.contourf(x_unique, y_unique, z_matrix, levels=brks)
+        group_base = data["group"].iloc[0] if "group" in data.columns else -1
+        result = _contourpy_isobands(
+            x_unique, y_unique, z_matrix, brks, group=group_base
+        )
 
-            rows = []
-            group_base = data["group"].iloc[0] if "group" in data.columns else 1
-            piece = 0
-            # Use allsegs (modern matplotlib 3.8+) or collections (legacy)
-            if hasattr(cs, "allsegs"):
-                for i in range(len(cs.allsegs)):
-                    level_low = brks[i] if i < len(brks) else brks[-1]
-                    level_high = brks[i + 1] if i + 1 < len(brks) else brks[-1]
-                    for seg in cs.allsegs[i]:
-                        piece += 1
-                        for pt in seg:
-                            rows.append({
-                                "x": pt[0],
-                                "y": pt[1],
-                                "level": f"({level_low}, {level_high}]",
-                                "level_low": level_low,
-                                "level_high": level_high,
-                                "level_mid": (level_low + level_high) / 2,
-                                "piece": piece,
-                                "group": f"{group_base}-{piece:03d}",
-                            })
-            elif hasattr(cs, "collections"):
-                for i, collection in enumerate(cs.collections):
-                    level_low = brks[i] if i < len(brks) else brks[-1]
-                    level_high = brks[i + 1] if i + 1 < len(brks) else brks[-1]
-                    for path in collection.get_paths():
-                        piece += 1
-                        vertices = path.vertices
-                        for pt in vertices:
-                            rows.append({
-                                "x": pt[0],
-                                "y": pt[1],
-                                "level": f"({level_low}, {level_high}]",
-                                "level_low": level_low,
-                                "level_high": level_high,
-                                "level_mid": (level_low + level_high) / 2,
-                                "piece": piece,
-                                "group": f"{group_base}-{piece:03d}",
-                            })
-            plt.close(fig)
-        except Exception:
-            return pd.DataFrame()
+        if result.empty:
+            return result
 
-        if not rows:
-            return pd.DataFrame()
-
-        result = pd.DataFrame(rows)
-        max_level = result["level_high"].max() if "level_high" in result.columns else 1
-        result["nlevel"] = result["level_high"] / max_level if max_level > 0 else 0
+        max_level = result["level_high"].max()
+        if max_level and max_level > 0:
+            result["nlevel"] = result["level_high"] / max_level
+        else:
+            result["nlevel"] = 0.0
         return result
 
 
@@ -4589,6 +5091,67 @@ class StatDensity2d(Stat):
     ]
     contour_type: str = "lines"
 
+    def compute_layer(
+        self, data: pd.DataFrame, params: Dict[str, Any], layout: Any
+    ) -> pd.DataFrame:
+        """Run the per-group 2D density, then optionally dispatch to a contour stat.
+
+        Mirrors ``StatDensity2d$compute_layer`` in ggplot2: once the raw density
+        grid has been computed, if ``contour=TRUE`` (default), set ``z`` from
+        ``contour_var`` and delegate to ``StatContour`` / ``StatContourFilled``'s
+        ``compute_panel``.
+        """
+        data = super().compute_layer(data, params, layout)
+        if data.empty:
+            return data
+
+        contour = params.get("contour", True)
+        if not contour:
+            return data
+
+        contour_var = params.get("contour_var", "density")
+        if contour_var not in ("density", "ndensity", "count"):
+            raise ValueError(
+                "`contour_var` must be one of 'density', 'ndensity', 'count'"
+            )
+
+        data = data.copy()
+        data["z"] = data[contour_var].values
+        z_vals = data["z"].values[np.isfinite(data["z"].values)]
+        z_range = (
+            [float(z_vals.min()), float(z_vals.max())]
+            if len(z_vals) > 0
+            else [0.0, 1.0]
+        )
+
+        sub_params = {
+            k: params[k] for k in ("bins", "binwidth", "breaks") if k in params
+        }
+        sub_params["z_range"] = z_range
+
+        if self.contour_type == "bands":
+            contour_stat = StatContourFilled()
+        else:
+            contour_stat = StatContour()
+
+        if "PANEL" in data.columns:
+            pieces = []
+            for panel, panel_data in data.groupby("PANEL", sort=False, observed=True):
+                scales = layout.get_scales(panel) if layout is not None else {}
+                out = contour_stat.compute_panel(panel_data, scales, **sub_params)
+                if out is not None and not out.empty:
+                    if "PANEL" not in out.columns:
+                        out = out.copy()
+                        out["PANEL"] = panel
+                    pieces.append(out)
+            if pieces:
+                return pd.concat(pieces, ignore_index=True)
+            return pd.DataFrame()
+
+        scales = {}
+        out = contour_stat.compute_panel(data, scales, **sub_params)
+        return out if out is not None else pd.DataFrame()
+
     def compute_group(
         self,
         data: pd.DataFrame,
@@ -4599,74 +5162,59 @@ class StatDensity2d(Stat):
         n: int = 100,
         **kwargs: Any,
     ) -> pd.DataFrame:
-        """Compute 2D density on a grid.
+        """Compute 2D density on a grid via ``MASS::kde2d``.
 
-        Parameters
-        ----------
-        data : pd.DataFrame
-        scales : dict-like
-        na_rm : bool
-        h : tuple, optional
-            Bandwidth vector (length 2).
-        adjust : tuple
-        n : int
-
-        Returns
-        -------
-        pd.DataFrame
-            With columns: x, y, density, ndensity, count, n, level, piece.
+        Returns a DataFrame with the raw density grid and the ``density``,
+        ``ndensity``, ``count``, ``n``, ``level``, ``piece`` columns that
+        ``StatContour`` can consume downstream. ``compute_layer`` decides
+        whether to continue through the contour pipeline.
         """
-        from scipy import stats as scipy_stats
-
-        x = data["x"].values
-        y = data["y"].values
+        x = np.asarray(data["x"].values, dtype=float)
+        y = np.asarray(data["y"].values, dtype=float)
         nx = len(x)
 
         if isinstance(adjust, (int, float)):
-            adjust = (adjust, adjust)
+            adjust = (float(adjust), float(adjust))
+        else:
+            adjust = tuple(float(a) for a in adjust)
 
         if h is None:
-            h_x = _precompute_bw(x) * 4 * adjust[0]
-            h_y = _precompute_bw(y) * 4 * adjust[1]
+            h_x = _bandwidth_nrd(x) * adjust[0]
+            h_y = _bandwidth_nrd(y) * adjust[1]
         else:
-            h_x, h_y = h
+            h_x, h_y = float(h[0]), float(h[1])
 
-        # Get evaluation range
-        x_scale = scales.get("x") if isinstance(scales, dict) else getattr(scales, "x", None)
-        y_scale = scales.get("y") if isinstance(scales, dict) else getattr(scales, "y", None)
-
+        # Evaluation range -- match ggplot2's scale$dimension() fallback.
+        x_scale = (
+            scales.get("x") if isinstance(scales, dict) else getattr(scales, "x", None)
+        )
+        y_scale = (
+            scales.get("y") if isinstance(scales, dict) else getattr(scales, "y", None)
+        )
         if x_scale is not None and hasattr(x_scale, "dimension"):
             x_range = x_scale.dimension()
         else:
-            x_range = (x.min(), x.max())
-
+            x_range = (float(x.min()), float(x.max()))
         if y_scale is not None and hasattr(y_scale, "dimension"):
             y_range = y_scale.dimension()
         else:
-            y_range = (y.min(), y.max())
+            y_range = (float(y.min()), float(y.max()))
 
-        # Compute kde
-        try:
-            values = np.vstack([x, y])
-            kde = scipy_stats.gaussian_kde(values)
-            x_grid = np.linspace(x_range[0], x_range[1], n)
-            y_grid = np.linspace(y_range[0], y_range[1], n)
-            xx, yy = np.meshgrid(x_grid, y_grid)
-            positions = np.vstack([xx.ravel(), yy.ravel()])
-            z = kde(positions).reshape(n, n)
-        except Exception:
-            return pd.DataFrame()
+        lims = (x_range[0], x_range[1], y_range[0], y_range[1])
+        dens = _kde2d(x, y, h=(h_x, h_y), n=n, lims=lims)
 
-        # Expand grid
+        gx, gy, z = dens["x"], dens["y"], dens["z"]
+        # z has shape (len(gx), len(gy)); expand.grid yields x varying fastest.
+        xx, yy = np.meshgrid(gx, gy, indexing="ij")
         df = pd.DataFrame({
             "x": xx.ravel(),
             "y": yy.ravel(),
             "density": z.ravel(),
         })
-        group_val = data["group"].iloc[0] if "group" in data.columns else 1
+        group_val = data["group"].iloc[0] if "group" in data.columns else -1
         df["group"] = group_val
         max_dens = df["density"].max()
-        df["ndensity"] = df["density"] / max_dens if max_dens > 0 else 0
+        df["ndensity"] = df["density"] / max_dens if max_dens > 0 else 0.0
         df["count"] = nx * df["density"]
         df["n"] = nx
         df["level"] = 1
@@ -4834,7 +5382,9 @@ class StatEllipse(Stat):
         data : pd.DataFrame
         scales : dict-like
         type : str
-            ``"t"``, ``"norm"``, or ``"euclid"``.
+            ``"norm"`` or ``"euclid"``. R ggplot2 also supports ``"t"`` via
+            ``MASS::cov.trob``; that iterative robust estimator is not ported
+            and ``type='t'`` raises :class:`NotImplementedError`.
         level : float
         segments : int
         na_rm : bool
@@ -4844,54 +5394,9 @@ class StatEllipse(Stat):
         pd.DataFrame
             With columns: x, y.
         """
-        from scipy import stats as scipy_stats
-
-        x = data["x"].values.astype(float)
-        y = data["y"].values.astype(float)
-        n = len(x)
-
-        if n < 3:
-            cli_warn("Too few points to calculate an ellipse.")
-            return pd.DataFrame({"x": [np.nan], "y": [np.nan]})
-
-        weight = data["weight"].values if "weight" in data.columns else np.ones(n)
-        weight = weight / np.sum(weight)
-
-        xy = np.column_stack([x, y])
-
-        if type == "t":
-            # Robust covariance (simplified)
-            center = np.average(xy, axis=0, weights=weight)
-            diff = xy - center
-            cov_mat = np.cov(diff.T, aweights=weight)
-        elif type in ("norm", "euclid"):
-            center = np.average(xy, axis=0, weights=weight)
-            diff = xy - center
-            cov_mat = np.cov(diff.T, aweights=weight)
-            if type == "euclid":
-                min_var = np.min(np.diag(cov_mat))
-                cov_mat = np.diag([min_var, min_var])
-        else:
-            return pd.DataFrame({"x": [np.nan], "y": [np.nan]})
-
-        try:
-            chol = np.linalg.cholesky(cov_mat)
-        except np.linalg.LinAlgError:
-            return pd.DataFrame({"x": [np.nan], "y": [np.nan]})
-
-        dfn = 2
-        dfd = n - 1
-
-        if type == "euclid":
-            radius = level / np.max(chol)
-        else:
-            radius = np.sqrt(dfn * scipy_stats.f.ppf(level, dfn, dfd))
-
-        angles = np.linspace(0, 2 * np.pi, segments + 1)
-        unit_circle = np.column_stack([np.cos(angles), np.sin(angles)])
-        ellipse = center + radius * (unit_circle @ chol.T)
-
-        return pd.DataFrame({"x": ellipse[:, 0], "y": ellipse[:, 1]})
+        return _calculate_ellipse(
+            data, vars_=["x", "y"], type_=type, level=level, segments=segments,
+        )
 
 
 def stat_ellipse(
@@ -5222,33 +5727,52 @@ class StatYdensity(Stat):
         # sees the width="width" behaviour.
         dens["violinwidth"] = dens["scaled"]
 
-        # Add quantile information
+        # Add quantile information.  Port of ``stat-ydensity.R:73-95``.
+        # R uses ``stats::quantile(y, probs=quantiles)`` which applies type-7
+        # (NumPy default) linear interpolation.  Other dens columns are
+        # interpolated with ``stats::approx(dens$y, dens[[var]], xout, ties="ordered")``.
         if quantiles is not None:
             quantiles = list(quantiles)
-            quant_vals = np.percentile(y, np.array(quantiles) * 100)
-            quant_rows = []
-            for i, q in enumerate(quantiles):
-                row = {"y": quant_vals[i], "quantile": q, "x": x_val, "width": width}
-                # Interpolate density
-                if len(dens) > 1:
-                    from scipy.interpolate import interp1d
-                    try:
-                        f = interp1d(dens["y"], dens["density"], bounds_error=False, fill_value=0)
-                        row["density"] = float(f(quant_vals[i]))
-                        row["scaled"] = row["density"] / dens["density"].max() if dens["density"].max() > 0 else 0
-                        row["ndensity"] = row["scaled"]
-                    except Exception:
-                        row["density"] = 0
-                        row["scaled"] = 0
-                        row["ndensity"] = 0
-                quant_rows.append(row)
+            quant_vals = np.quantile(y, quantiles)
+            quant_cols: Dict[str, List[Any]] = {"y": list(quant_vals), "quantile": list(quantiles)}
 
-            if quant_rows:
-                quant_df = pd.DataFrame(quant_rows)
-                for col in dens.columns:
-                    if col not in quant_df.columns:
-                        quant_df[col] = np.nan
-                dens = pd.concat([dens, quant_df], ignore_index=True)
+            # Interpolate every column in dens except `y` / `quantile` at
+            # the quantile y-values.  R's ``stats::approx`` is linear;
+            # ``ties='ordered'`` means duplicates are kept in input order.
+            for col in dens.columns:
+                if col in ("y", "quantile"):
+                    continue
+                # approx with ties='ordered': dedupe x, keeping first y value
+                xs = dens["y"].to_numpy()
+                ys = dens[col].to_numpy()
+                # If any categorical / non-numeric, fall through to constant
+                if ys.dtype.kind in ("O", "U", "S", "b"):
+                    # non-numeric: carry the first value
+                    quant_cols[col] = [ys[0]] * len(quantiles)
+                    continue
+                # remove duplicate xs for interp (R approxfun uses ties="ordered")
+                order = np.argsort(xs, kind="mergesort")
+                xs_s, ys_s = xs[order], ys[order]
+                # R ties='ordered' keeps every point; np.interp also handles
+                # duplicates by averaging — close enough for monotone grids.
+                interp_vals = np.interp(
+                    quant_vals, xs_s, ys_s,
+                    left=np.nan, right=np.nan,
+                )
+                quant_cols[col] = list(interp_vals)
+
+            quant_df = pd.DataFrame(quant_cols)
+
+            # R: dens <- vec_slice(dens, !dens$y %in% quants$y)
+            dens = dens[~dens["y"].isin(quant_vals)].reset_index(drop=True)
+            # Align columns (quant_df may be missing `quantile` in dens).
+            for col in dens.columns:
+                if col not in quant_df.columns:
+                    quant_df[col] = np.nan
+            for col in quant_df.columns:
+                if col not in dens.columns:
+                    dens[col] = np.nan
+            dens = pd.concat([dens, quant_df[dens.columns]], ignore_index=True)
 
         return dens
 
@@ -5499,6 +6023,8 @@ class StatBindot(Stat):
 class StatAlign(Stat):
     """Align y values across groups for area/ribbon plots.
 
+    Port of ``stat-align.R``.
+
     Attributes
     ----------
     required_aes : list
@@ -5523,6 +6049,113 @@ class StatAlign(Stat):
         params["flipped_aes"] = _has_flipped_aes(data, params, ambiguous=True)
         return params
 
+    def compute_panel(
+        self,
+        data: pd.DataFrame,
+        scales: Any,
+        flipped_aes: bool = False,
+        **params: Any,
+    ) -> pd.DataFrame:
+        """Port of ``stat-align.R:15-44``.
+
+        Computes zero-crossings, the shared ``unique_loc`` x-grid (+/-
+        ``adjust`` padding), then dispatches to ``compute_group`` per
+        group with ``unique_loc`` and ``adjust`` injected.
+        """
+        if data is None or len(data) == 0:
+            return pd.DataFrame()
+        if "group" not in data.columns or data["group"].nunique() <= 1:
+            return data
+
+        data_f = _flip_data(data, flipped_aes)
+        x = data_f["x"].to_numpy(dtype=float)
+        y = data_f["y"].to_numpy(dtype=float)
+        grp = data_f["group"].to_numpy()
+
+        # --- Zero-crossing detection (R vec_unrep on (group, y<0)) ---
+        sign_flag = y < 0
+        # Run-length on (group, sign_flag): a change where either differs.
+        g_int = pd.Series(grp).astype("category").cat.codes.to_numpy()
+        key = np.stack([g_int, sign_flag.astype(int)], axis=1)
+        if len(key) == 0:
+            return pd.DataFrame()
+        changes = np.any(np.diff(key, axis=0) != 0, axis=1)
+        run_starts = np.concatenate([[0], np.where(changes)[0] + 1])
+        # run_times[i] = length of i-th run (from run_starts[i] to run_starts[i+1]-1)
+        run_ends = np.concatenate([run_starts[1:], [len(key)]])
+        run_times = run_ends - run_starts
+
+        # cumulative run lengths (equivalent to R's cumsum(pivot$times))
+        cum = np.cumsum(run_times)
+        # per-group run counts: cumsum of vec_unrep(pivot$key$group)$times
+        # (i.e. number of (group, sign) runs within each group)
+        group_codes_by_run = g_int[run_starts]
+        # run counts per group, in the order groups first appear
+        unique_groups, group_first = np.unique(group_codes_by_run, return_index=True)
+        # preserve order of first appearance
+        order = np.argsort(group_first)
+        ug_ordered = unique_groups[order]
+        group_run_counts = np.array(
+            [np.sum(group_codes_by_run == g) for g in ug_ordered]
+        )
+        group_ends = np.cumsum(group_run_counts)
+        # pivot indices = cumsum(run_times)[-group_ends]
+        pivot_cum = cum.copy()
+        # remove positions at end of each group
+        mask = np.ones(len(pivot_cum), dtype=bool)
+        mask[group_ends - 1] = False
+        pivot = pivot_cum[mask]
+
+        # R: pivot refers to 1-based index into the original data; here pivot
+        # is end-of-run index (0-based inclusive for first element after run).
+        # We re-use as zero-indexed so ``pivot[i]`` is last index of a run
+        # and ``pivot[i]+1`` is first index of the next run, which is what R
+        # computes via ``cumsum(pivot$times)[-group_ends]``.
+        cross: np.ndarray
+        if len(pivot) == 0:
+            cross = np.array([], dtype=float)
+        else:
+            p = pivot - 1  # zero-based index of last point of a run
+            # R: cross <- -y[pivot] * (x[pivot+1] - x[pivot]) /
+            #             (y[pivot+1] - y[pivot]) + x[pivot]
+            denom = y[p + 1] - y[p]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                cross = -y[p] * (x[p + 1] - x[p]) / denom + x[p]
+            cross = cross[np.isfinite(cross)]
+
+        unique_loc = np.unique(np.sort(np.concatenate([x, cross])))
+        if len(unique_loc) < 2:
+            return data
+
+        rng = np.nanmax(unique_loc) - np.nanmin(unique_loc)
+        diff_loc = np.diff(unique_loc)
+        diff_min = float(np.min(diff_loc)) if len(diff_loc) > 0 else 0.0
+        adjust = min(rng * 0.001, diff_min / 3.0)
+
+        unique_loc = np.unique(np.sort(np.concatenate([
+            unique_loc - adjust, unique_loc, unique_loc + adjust,
+        ])))
+
+        # Dispatch per group.  Use the parent ``Stat.compute_panel``-like
+        # loop to drive ``compute_group`` per group value with the shared
+        # unique_loc/adjust arguments.
+        results: List[pd.DataFrame] = []
+        for g_val, sub in data_f.groupby("group", sort=False):
+            res = self.compute_group(
+                sub.reset_index(drop=True),
+                scales=scales,
+                flipped_aes=flipped_aes,
+                unique_loc=unique_loc,
+                adjust=adjust,
+                **params,
+            )
+            if res is not None and len(res) > 0:
+                results.append(res)
+
+        if not results:
+            return pd.DataFrame()
+        return pd.concat(results, ignore_index=True)
+
     def compute_group(
         self,
         data: pd.DataFrame,
@@ -5532,7 +6165,7 @@ class StatAlign(Stat):
         adjust: float = 0.0,
         **kwargs: Any,
     ) -> pd.DataFrame:
-        """Align values by interpolation.
+        """Align values by interpolation.  Port of ``stat-align.R:46-76``.
 
         Parameters
         ----------
@@ -5541,51 +6174,77 @@ class StatAlign(Stat):
         flipped_aes : bool
         unique_loc : array-like, optional
         adjust : float
-
-        Returns
-        -------
-        pd.DataFrame
         """
         data = _flip_data(data, flipped_aes)
 
-        if len(data["x"].unique()) < 2:
+        # R: ``is_unique(data$x)`` returns TRUE only when *all* x are equal
+        # (``length(unique(x)) == 1``). Mirror that exactly.
+        if data["x"].nunique() < 2:
             return pd.DataFrame()
 
-        x = data["x"].values
-        y = data["y"].values
+        # R: handle duplicated x by keeping first & last row at (x-adjust, x).
+        if data["x"].duplicated().any():
+            rows: List[pd.DataFrame] = []
+            for x_key, sub in data.groupby("x", sort=True):
+                if len(sub) == 1:
+                    rows.append(sub)
+                else:
+                    pair = sub.iloc[[0, -1]].copy()
+                    pair.iloc[0, pair.columns.get_loc("x")] = float(x_key) - adjust
+                    rows.append(pair)
+            data = pd.concat(rows, ignore_index=True)
 
+        x = data["x"].to_numpy(dtype=float)
+        y = data["y"].to_numpy(dtype=float)
+
+        # Ensure x is sorted (required by np.interp / R's approxfun).
+        order = np.argsort(x, kind="mergesort")
+        x_s, y_s = x[order], y[order]
+        # R: ``approxfun(data$x, data$y)(unique_loc)``. When ``unique_loc`` is
+        # NULL (e.g. user invokes ``compute_group`` directly without the
+        # ``compute_panel`` preamble), R's ``approxfun(NULL)`` returns
+        # ``numeric(0)``; mirror that with an empty array.
         if unique_loc is None:
-            unique_loc = np.sort(np.unique(x))
-
-        from scipy.interpolate import interp1d
-        try:
-            f = interp1d(x, y, bounds_error=False, fill_value=np.nan)
-            y_val = f(unique_loc)
-        except Exception:
-            return pd.DataFrame()
+            y_val = np.empty(0, dtype=float)
+            unique_loc_arr = np.empty(0, dtype=float)
+        else:
+            unique_loc_arr = np.asarray(unique_loc, dtype=float)
+            y_val = np.interp(
+                unique_loc_arr, x_s, y_s, left=np.nan, right=np.nan
+            )
 
         keep = ~np.isnan(y_val)
-        x_val = unique_loc[keep]
+        x_val = unique_loc_arr[keep]
         y_val = y_val[keep]
 
-        # Add padding
-        x_val = np.concatenate([[x_val[0] - adjust] if len(x_val) > 0 else [], x_val, [x_val[-1] + adjust] if len(x_val) > 0 else []])
-        y_val = np.concatenate([[0], y_val, [0]])
-        padding = np.concatenate([[True], np.zeros(len(x_val) - 2, dtype=bool), [True]])
+        # R does NOT early-return when x_val is empty; instead ``min/max`` on
+        # an empty vector returns ``Inf`` / ``-Inf`` with a warning, and the
+        # result is still a 2-row DataFrame with Inf/-Inf padding. Mirror that.
+        if len(x_val) == 0:
+            x_out = np.array([np.inf, -np.inf], dtype=float)
+            y_out = np.array([0.0, 0.0], dtype=float)
+            padding = np.array([True, True], dtype=bool)
+            result = pd.DataFrame({"x": x_out, "y": y_out})
+            for col in data.columns:
+                if col in ("x", "y"):
+                    continue
+                result[col] = data[col].iloc[0]
+            result["align_padding"] = padding
+            result["flipped_aes"] = flipped_aes
+            return _flip_data(result, flipped_aes)
 
-        result = pd.DataFrame({
-            "x": x_val,
-            "y": y_val,
-            "align_padding": padding,
-            "flipped_aes": flipped_aes,
-        })
+        x_out = np.concatenate([[x_val[0] - adjust], x_val, [x_val[-1] + adjust]])
+        y_out = np.concatenate([[0.0], y_val, [0.0]])
+        padding = np.concatenate([[True], np.zeros(len(x_val), dtype=bool), [True]])
 
-        # Carry over constant columns
+        result = pd.DataFrame({"x": x_out, "y": y_out})
+        # Carry over the first row of any other columns (R: ``data[1, setdiff(...)]``).
         for col in data.columns:
-            if col not in result.columns and col not in ("x", "y"):
-                vals = data[col].values
-                if len(set(vals)) == 1:
-                    result[col] = vals[0]
+            if col in ("x", "y"):
+                continue
+            result[col] = data[col].iloc[0]
+        result["align_padding"] = padding
+        result["flipped_aes"] = flipped_aes
 
         return _flip_data(result, flipped_aes)
 
@@ -5916,6 +6575,7 @@ class StatQuantile(Stat):
         xseq: Optional[np.ndarray] = None,
         method: str = "rq",
         method_args: Optional[Dict[str, Any]] = None,
+        lambda_: float = 1.0,
         na_rm: bool = False,
         **kwargs: Any,
     ) -> pd.DataFrame:
@@ -5927,74 +6587,102 @@ class StatQuantile(Stat):
         scales : dict-like
         quantiles : sequence of float
         formula : optional
+            Currently only the default ``y ~ x`` is supported.
         xseq : array-like, optional
         method : str
+            Only ``"rq"`` (linear quantile regression) is supported.
+            ``"rqss"`` (smoothing splines) from R quantreg is not ported.
         method_args : dict, optional
+            Extra keyword arguments forwarded to statsmodels ``QuantReg.fit``.
+        lambda_ : float
+            Kept for signature compatibility with R ``rqss``; unused here.
         na_rm : bool
 
         Returns
         -------
         pd.DataFrame
             With columns: x, y, quantile, group.
-        """
-        if xseq is None:
-            xseq = np.linspace(data["x"].min(), data["x"].max(), 100)
 
-        x = data["x"].values
-        y_data = data["y"].values
+        Notes
+        -----
+        R uses ``quantreg::rq`` (Barrodale-Roberts LP). This Python port uses
+        ``statsmodels.regression.quantile_regression.QuantReg``. The two
+        implementations can differ at LP vertices when ties occur; on
+        well-posed data both converge to the same slope/intercept within
+        the default convergence tolerance.
+        """
+        if method not in ("rq",):
+            cli_abort(
+                f"stat_quantile: method {method!r} not supported. Use 'rq'."
+            )
+        if formula is not None and formula != "y ~ x":
+            cli_abort(
+                f"stat_quantile: custom formula {formula!r} not supported. "
+                "Only the default 'y ~ x' is supported in the Python port."
+            )
+
+        if xseq is None:
+            xseq = np.linspace(float(data["x"].min()), float(data["x"].max()), 100)
+        xseq = np.asarray(xseq, dtype=float)
+
+        x = np.asarray(data["x"].values, dtype=float)
+        y_data = np.asarray(data["y"].values, dtype=float)
+        if "weight" in data.columns:
+            w = np.asarray(data["weight"].values, dtype=float)
+        else:
+            w = np.ones_like(x)
         group_val = data["group"].iloc[0] if "group" in data.columns else 1
+
+        m_args = dict(method_args or {})
 
         results = []
         for q in quantiles:
-            # Simple linear quantile regression approximation
-            # using weighted least squares with iteratively reweighted method
-            try:
-                y_pred = self._quantile_regression(x, y_data, xseq, q)
-            except Exception:
-                y_pred = np.full_like(xseq, np.percentile(y_data, q * 100))
-
+            coef = self._quantile_regression_coef(x, y_data, w, float(q), m_args)
+            intercept, slope = float(coef[0]), float(coef[1])
+            y_pred = intercept + slope * xseq
             results.append(pd.DataFrame({
                 "x": xseq,
                 "y": y_pred,
-                "quantile": q,
+                "quantile": float(q),
                 "group": f"{group_val}-{q}",
             }))
 
         if not results:
             return pd.DataFrame()
-
         return pd.concat(results, ignore_index=True)
 
     @staticmethod
-    def _quantile_regression(
+    def _quantile_regression_coef(
         x: np.ndarray,
         y: np.ndarray,
-        xseq: np.ndarray,
+        weight: np.ndarray,
         tau: float,
+        fit_kwargs: Dict[str, Any],
     ) -> np.ndarray:
-        """Simple linear quantile regression.
+        """Fit linear quantile regression ``y ~ 1 + x`` at quantile ``tau``.
 
-        Parameters
-        ----------
-        x, y : np.ndarray
-            Training data.
-        xseq : np.ndarray
-            Prediction points.
-        tau : float
-            Quantile (0-1).
-
-        Returns
-        -------
-        np.ndarray
-            Predicted values.
+        Returns the two-element coefficient vector ``[intercept, slope]``.
+        Uses statsmodels' ``QuantReg`` which implements an IRLS solver with
+        Huber's sandwich; results match R ``quantreg::rq(method='br')`` up
+        to convergence tolerance on data without LP ties.
         """
-        import statsmodels.formula.api as smf
+        from statsmodels.regression.quantile_regression import QuantReg
 
-        df = pd.DataFrame({"x": x, "y": y})
-        mod = smf.quantreg("y ~ x", df)
-        res = mod.fit(q=tau, max_iter=1000)
-        pred_df = pd.DataFrame({"x": xseq})
-        return res.predict(pred_df)
+        X = np.column_stack([np.ones_like(x), x])
+        # statsmodels QuantReg does not expose weights through the public API
+        # in all versions; scale rows to emulate weighted regression only when
+        # weights are non-uniform. For uniform weights, just fit directly.
+        if not np.allclose(weight, weight[0]):
+            sw = np.sqrt(weight)
+            Xw = X * sw[:, None]
+            yw = y * sw
+            model = QuantReg(yw, Xw)
+        else:
+            model = QuantReg(y, X)
+        defaults = {"max_iter": 2000, "p_tol": 1e-8}
+        defaults.update(fit_kwargs)
+        res = model.fit(q=tau, **defaults)
+        return np.asarray(res.params, dtype=float)
 
 
 def stat_quantile(

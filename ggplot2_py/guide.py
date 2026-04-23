@@ -2570,6 +2570,316 @@ class Guides:
             return self.params[index]
         return None
 
+    def get_position(
+        self,
+        position: str,
+        theme: Any = None,
+        direction: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Return guides registered at *position*.
+
+        Mirrors R ``Guides$get_position`` (guides-.R:211-238).
+
+        Filters ``self.guides`` / ``self.params`` by the ``position``
+        entry in each params dict (matching ``position[1]`` in R for
+        multi-value positions).  When more than one guide matches the
+        position, they are merged in ``order`` order using the guide's
+        own ``merge`` method — exactly what R does.
+
+        Parameters
+        ----------
+        position : str
+            One of ``"top"``, ``"right"``, ``"bottom"``, ``"left"``,
+            ``"inside"``.
+        theme, direction : optional
+            Accepted for API symmetry with R (which does not use them
+            in the core logic, but downstream calls inspect them).
+
+        Returns
+        -------
+        dict or None
+            ``{"guide": Guide, "params": dict}`` for the resolved guide,
+            or a ``{"guide": GuideNone, "params": ...}`` sentinel when
+            no guide matches.  Returns ``None`` only when the container
+            is empty.
+        """
+        if not isinstance(position, str):
+            cli_abort("`position` must be a string.")
+
+        guides_list = (
+            list(self.guides.values())
+            if isinstance(self.guides, dict)
+            else self.guides
+        )
+        params_list = self.params
+
+        # Extract each guide's position (first element if multi-valued).
+        guide_positions: List[Optional[str]] = []
+        for p in params_list:
+            pos = p.get("position") if isinstance(p, dict) else None
+            if isinstance(pos, (list, tuple, np.ndarray)):
+                pos = pos[0] if len(pos) > 0 else None
+            guide_positions.append(pos)
+
+        idx = [i for i, pos in enumerate(guide_positions) if pos == position]
+
+        if len(idx) < 1:
+            return {
+                "guide": self._missing,
+                "params": dict(getattr(self._missing, "params", {})),
+            }
+        if len(idx) == 1:
+            i = idx[0]
+            return {
+                "guide": guides_list[i],
+                "params": dict(params_list[i]),
+            }
+
+        # Multiple guides at the same position — merge in ``order`` order.
+        pairs = [
+            {"guide": guides_list[i], "params": dict(params_list[i])}
+            for i in idx
+        ]
+        order_key = [
+            float(pairs[j]["params"].get("order", 0) or 0)
+            for j in range(len(pairs))
+        ]
+        perm = sorted(range(len(pairs)), key=lambda j: order_key[j])
+
+        result = pairs[perm[0]]
+        for j in perm[1:]:
+            nxt = pairs[j]
+            result = result["guide"].merge(
+                result["params"], nxt["guide"], nxt["params"]
+            )
+        return result
+
+    def get_custom(self, position: Optional[str] = None) -> "Guides":
+        """Return only the ``GuideCustom`` entries as a new ``Guides``.
+
+        Mirrors R ``Guides$get_custom`` (guides-.R:240-250).
+
+        Parameters
+        ----------
+        position : str, optional
+            Unused by R; accepted for forward-compatibility when a
+            caller wants to filter customs by position.
+
+        Returns
+        -------
+        Guides
+            A fresh ``Guides`` container holding only the ``GuideCustom``
+            entries from ``self``.  When none match, returns an empty
+            ``Guides``.
+        """
+        guides_list = (
+            list(self.guides.values())
+            if isinstance(self.guides, dict)
+            else self.guides
+        )
+        mask = [isinstance(g, GuideCustom) for g in guides_list]
+        n_custom = sum(mask)
+        if n_custom < 1:
+            return Guides()
+
+        custom = Guides()
+        custom.guides = [g for g, m in zip(guides_list, mask) if m]
+        # R: custom$params <- lapply(custom$guides, `[[`, "params")
+        custom.params = [dict(getattr(g, "params", {})) for g in custom.guides]
+        if self.aesthetics:
+            custom.aesthetics = [
+                a for a, m in zip(self.aesthetics, mask) if m
+            ]
+        else:
+            custom.aesthetics = [""] * n_custom
+
+        if position is not None:
+            # Optional forward-compatibility filter.
+            keep = []
+            for p in custom.params:
+                pos = p.get("position") if isinstance(p, dict) else None
+                if isinstance(pos, (list, tuple, np.ndarray)):
+                    pos = pos[0] if len(pos) > 0 else None
+                keep.append(pos == position)
+            custom.guides = [g for g, k in zip(custom.guides, keep) if k]
+            custom.params = [p for p, k in zip(custom.params, keep) if k]
+            custom.aesthetics = [
+                a for a, k in zip(custom.aesthetics, keep) if k
+            ]
+        return custom
+
+    def package_box(
+        self,
+        grobs: List[Any],
+        position: str,
+        theme: Any,
+        direction: Optional[str] = None,
+    ) -> Any:
+        """Arrange guide grobs into a single guide-box gtable.
+
+        Mirrors R ``Guides$package_box`` (guides-.R:592-757).
+
+        For ``position`` in ``("top", "bottom")`` the legends are laid
+        out in a single row (horizontal); otherwise they are stacked
+        into a column (vertical).  Spacing is taken from theme
+        entries ``legend.spacing.x`` / ``legend.spacing.y`` and the
+        outer box padding from ``legend.box.margin``.  A
+        ``legend.box.background`` rectangle is inserted at the bottom
+        of the z-stack.
+
+        Parameters
+        ----------
+        grobs : list
+            Rendered guide grobs (one per guide at this position).
+        position : str
+            Position of the guide-box; drives default direction.
+        theme : Theme or dict
+            Plot theme.  ``legend.box.*`` entries are consulted.
+        direction : str, optional
+            Override direction; when ``None`` it is derived from
+            ``position`` (R behaviour).
+
+        Returns
+        -------
+        Gtable
+            The packaged guide-box (``name="guide-box"``).
+        """
+        from gtable_py import (
+            Gtable,
+            gtable_add_col_space,
+            gtable_add_grob,
+            gtable_add_padding,
+            gtable_add_row_space,
+            gtable_col,
+            gtable_row,
+        )
+        from grid_py import Unit
+
+        # Filter zero grobs (R uses is_zero()).
+        def _is_zero(g: Any) -> bool:
+            if g is None:
+                return True
+            cls = getattr(g, "_grid_class", "")
+            name = getattr(g, "_name", getattr(g, "name", ""))
+            return cls == "null" or (
+                isinstance(name, str)
+                and ("zero" in name.lower() or name == "NULL")
+            )
+
+        grobs = [g for g in (grobs or []) if not _is_zero(g)]
+        if not grobs:
+            return Gtable(name="guide-box")
+
+        if direction is None:
+            direction = (
+                "horizontal" if position in ("top", "bottom") else "vertical"
+            )
+
+        # Read theme values via calc_element when available, else bare dict.
+        def _theme_get(key: str, default: Any = None) -> Any:
+            if theme is None:
+                return default
+            if hasattr(theme, "__getitem__"):
+                try:
+                    v = theme[key]
+                    if v is not None:
+                        return v
+                except (KeyError, TypeError):
+                    pass
+            return default
+
+        def _calc(key: str, default: Any = None) -> Any:
+            try:
+                from ggplot2_py.theme_elements import calc_element
+                v = calc_element(key, theme) if theme is not None else None
+                if v is not None:
+                    return v
+            except Exception:
+                pass
+            return _theme_get(key, default)
+
+        def _unit_to_cm(u: Any, fallback_cm: float = 0.0) -> float:
+            if u is None:
+                return fallback_cm
+            if isinstance(u, (int, float)):
+                return float(u)
+            try:
+                from grid_py import convert_unit
+                cm = convert_unit(u, "cm", valueOnly=True)
+                return float(np.sum(cm))
+            except Exception:
+                return fallback_cm
+
+        # R: box spacing defaults
+        spacing_x_cm = _unit_to_cm(
+            _calc("legend.spacing.x") or _calc("legend.spacing"),
+            fallback_cm=0.2,
+        )
+        spacing_y_cm = _unit_to_cm(
+            _calc("legend.spacing.y") or _calc("legend.spacing"),
+            fallback_cm=0.2,
+        )
+
+        # Measure each grob. The R code uses the raw widths/heights
+        # units; we resolve them to cm via the gtable helpers.
+        widths_cm: List[float] = []
+        heights_cm: List[float] = []
+        for g in grobs:
+            w_u = getattr(g, "widths", None) or getattr(g, "_widths", None)
+            h_u = getattr(g, "heights", None) or getattr(g, "_heights", None)
+            widths_cm.append(_unit_to_cm(w_u))
+            heights_cm.append(_unit_to_cm(h_u))
+
+        if direction == "horizontal":
+            total_height = max(heights_cm) if heights_cm else 0.0
+            guides = gtable_row(
+                name="guides",
+                grobs=grobs,
+                height=Unit([total_height], ["cm"]),
+                widths=Unit(widths_cm, ["cm"] * len(widths_cm)),
+            )
+            guides = gtable_add_col_space(guides, Unit([spacing_x_cm], ["cm"]))
+        else:
+            total_width = max(widths_cm) if widths_cm else 0.0
+            guides = gtable_col(
+                name="guides",
+                grobs=grobs,
+                width=Unit([total_width], ["cm"]),
+                heights=Unit(heights_cm, ["cm"] * len(heights_cm)),
+            )
+            guides = gtable_add_row_space(guides, Unit([spacing_y_cm], ["cm"]))
+
+        # Outer margin (legend.box.margin). R default: margin()
+        box_margin = _calc("legend.box.margin")
+        if box_margin is not None:
+            # margin elements are expected to be a 4-unit vector;
+            # fall back to zero padding if we cannot interpret it.
+            try:
+                guides = gtable_add_padding(guides, box_margin)
+            except Exception:
+                pass
+
+        # Background rectangle (legend.box.background).
+        bg = _calc("legend.box.background")
+        if bg is not None:
+            try:
+                from ggplot2_py.theme_elements import element_grob
+                bg_grob = element_grob(bg)
+                if bg_grob is not None:
+                    guides = gtable_add_grob(
+                        guides,
+                        bg_grob,
+                        t=1, l=1, b=-1, r=-1,
+                        z=-np.inf,
+                        clip="off",
+                        name="legend.box.background",
+                    )
+            except Exception:
+                pass
+
+        guides.name = "guide-box"
+        return guides
+
     # -- Building ------------------------------------------------------------
 
     def setup(
@@ -2871,6 +3181,10 @@ class Guides:
     def assemble(self, theme: Any) -> Any:
         """Assemble all guides into positioned guide boxes.
 
+        Mirrors R ``Guides$assemble`` (guides-.R:474-568): draw each
+        guide, group by position, then package each group into a
+        guide-box via ``package_box``.
+
         Parameters
         ----------
         theme : Theme
@@ -2879,7 +3193,7 @@ class Guides:
         Returns
         -------
         dict
-            Mapping of position -> grob/gtable.
+            Mapping of position -> gtable (one per position).
         """
         if not self.guides:
             return None
@@ -2901,7 +3215,19 @@ class Guides:
             positions.append(pos)
 
         grobs = self.draw(theme, positions)
-        return {pos: grob for pos, grob in zip(positions, grobs)}
+
+        # Group by position and package each group via ``package_box``
+        # (mirrors the vec_group_loc + package_box loop in R).
+        groups: Dict[str, List[Any]] = {}
+        for pos, g in zip(positions, grobs):
+            if g is None:
+                continue
+            groups.setdefault(pos, []).append(g)
+
+        out: Dict[str, Any] = {}
+        for pos, group_grobs in groups.items():
+            out[pos] = self.package_box(group_grobs, pos, theme)
+        return out
 
 
 # ============================================================================
