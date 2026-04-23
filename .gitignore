@@ -29,3 +29,4 @@ Thumbs.db
 site/
 .cache/
 .ipynb_checkpoints/
+validation/

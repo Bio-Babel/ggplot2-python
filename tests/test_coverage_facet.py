@@ -228,6 +228,16 @@ class TestWrapLayout:
 # Base Facet
 # ---------------------------------------------------------------------------
 
+
+class _ScaleStub:
+    # Stand-in for a position scale: R's Facet$init_scales (facet-.R:225-234)
+    # calls x_scale$clone() once per SCALE_X level, so the prototype must be
+    # clone-able. Each clone() returns a fresh instance so tests can verify
+    # per-panel independence (the invariant behind commit 06cfc03).
+    def clone(self):
+        return _ScaleStub()
+
+
 class TestFacetBase:
     def test_setup_params(self):
         f = Facet()
@@ -254,22 +264,32 @@ class TestFacetBase:
     def test_init_scales_x(self):
         f = Facet()
         layout = pd.DataFrame({"SCALE_X": [1], "SCALE_Y": [1]})
-        result = f.init_scales(layout, x_scale="mock_x")
+        proto = _ScaleStub()
+        result = f.init_scales(layout, x_scale=proto)
         assert "x" in result
         assert len(result["x"]) == 1
+        assert result["x"][0] is not proto
 
     def test_init_scales_y(self):
         f = Facet()
         layout = pd.DataFrame({"SCALE_X": [1], "SCALE_Y": [1]})
-        result = f.init_scales(layout, y_scale="mock_y")
+        proto = _ScaleStub()
+        result = f.init_scales(layout, y_scale=proto)
         assert "y" in result
+        assert len(result["y"]) == 1
+        assert result["y"][0] is not proto
 
     def test_init_scales_both(self):
         f = Facet()
         layout = pd.DataFrame({"SCALE_X": [1, 2], "SCALE_Y": [1, 2]})
-        result = f.init_scales(layout, x_scale="mock_x", y_scale="mock_y")
+        proto_x = _ScaleStub()
+        proto_y = _ScaleStub()
+        result = f.init_scales(layout, x_scale=proto_x, y_scale=proto_y)
         assert len(result["x"]) == 2
         assert len(result["y"]) == 2
+        # R parity: each panel gets an independent clone, never an alias.
+        assert result["x"][0] is not result["x"][1]
+        assert result["y"][0] is not result["y"][1]
 
     def test_finish_data(self):
         f = Facet()
