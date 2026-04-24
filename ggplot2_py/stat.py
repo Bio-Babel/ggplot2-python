@@ -481,9 +481,12 @@ def _bin_breaks_width(
     shift = np.floor((x_range[0] - boundary) / width)
     origin = boundary + shift * width
     max_x = x_range[1] + (1 - 1e-08) * width
-    brks = np.arange(origin, max_x + width, width)
-    # Trim to not overshoot excessively
-    brks = brks[brks <= max_x + width]
+    # Mirror R's ``seq(origin, max_x, width)``: include values ``<= max_x``.
+    # Compute the integer count ``k`` such that origin + k*width <= max_x,
+    # then generate ``origin + (0..k) * width``. This avoids np.arange's
+    # half-open endpoint behavior producing an extra break vs R.
+    k = int(np.floor((max_x - origin) / width + 1e-10))
+    brks = origin + np.arange(k + 1) * width
     if len(brks) < 2:
         brks = np.array([brks[0], brks[0] + width])
     return _Bins(brks, closed)
@@ -524,6 +527,14 @@ def _bin_breaks_bins(
         if center is None:
             if boundary is None:
                 boundary = x_range[0] - width / 2
+        # If ``x_range`` coincides with boundary we should
+        # use exact ``bins`` instead of ``bins - 1`` to prevent misalignments.
+        # Faithful port of R bin.R:110-114.
+        if boundary is not None:
+            x_mod = np.mod(np.asarray(x_range, dtype=float), width)
+            b_mod = np.mod(float(boundary), width)
+            if np.any(x_mod == b_mod):
+                width = rng / bins
     return _bin_breaks_width(x_range, width, center=center, boundary=boundary, closed=closed)
 
 
@@ -5537,9 +5548,10 @@ class StatEllipse(Stat):
         data : pd.DataFrame
         scales : dict-like
         type : str
-            ``"norm"`` or ``"euclid"``. R ggplot2 also supports ``"t"`` via
-            ``MASS::cov.trob``; that iterative robust estimator is not ported
-            and ``type='t'`` raises :class:`NotImplementedError`.
+            ``"t"`` (default), ``"norm"``, or ``"euclid"``. ``"t"`` uses the
+            robust covariance estimate from :func:`_cov_trob` (the ported
+            ``MASS::cov.trob``); ``"norm"`` uses the empirical mean / cov;
+            ``"euclid"`` uses the ``chi2(2)`` radius. All three match R.
         level : float
         segments : int
         na_rm : bool

@@ -49,6 +49,9 @@ __all__ = [
     "layer",
     "layer_sf",
     "is_layer",
+    "add_group",
+    "has_groups",
+    "NO_GROUP",
 ]
 
 
@@ -706,27 +709,31 @@ class Layer(GGProto):
 # Group detection helper
 # ---------------------------------------------------------------------------
 
-def _add_group(data: pd.DataFrame) -> pd.DataFrame:
-    """Infer a ``group`` column from discrete aesthetics.
+# Sentinel for "no explicit group". Mirrors R ``grouping.R::NO_GROUP``
+# (must be < 1 to distinguish from ``plyr::id()`` return values).
+NO_GROUP: int = -1
 
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Data that may or may not contain a group column.
 
-    Returns
-    -------
-    pd.DataFrame
-        Data with a ``group`` column.
+def add_group(data: pd.DataFrame) -> pd.DataFrame:
+    """Ensure *data* has a ``group`` column.
+
+    Port of R ``add_group`` (grouping.R:11-29): if ``group`` is absent,
+    build it from the interaction of all discrete (object / category /
+    bool) columns, excluding ``label`` and ``PANEL``. If no discrete
+    columns exist, all rows are assigned :data:`NO_GROUP`.
     """
+    if data is None or len(data) == 0:
+        return data
+
     if "group" in data.columns:
         return data
 
-    # Identify discrete columns (object, category, bool)
+    # Identify discrete columns (object, category, bool). R excludes
+    # ``label`` and ``PANEL`` explicitly; we mirror that.
     disc_cols = [
         c
         for c in data.columns
-        if c != "PANEL"
+        if c not in ("label", "PANEL")
         and (
             data[c].dtype == object
             or hasattr(data[c], "cat")
@@ -734,7 +741,6 @@ def _add_group(data: pd.DataFrame) -> pd.DataFrame:
         )
     ]
     if disc_cols:
-        # Create interaction of all discrete columns
         if len(disc_cols) == 1:
             groups = pd.Categorical(data[disc_cols[0]]).codes
         else:
@@ -746,8 +752,25 @@ def _add_group(data: pd.DataFrame) -> pd.DataFrame:
         data["group"] = groups
     else:
         data = data.copy()
-        data["group"] = -1  # single group sentinel
+        data["group"] = NO_GROUP
     return data
+
+
+def has_groups(data: pd.DataFrame) -> bool:
+    """Return True when *data* has a real (non-sentinel) grouping.
+
+    Port of R ``has_groups`` (grouping.R:34-40). Mirrors the R check that
+    uses only the first row of ``data$group``: if the first element
+    differs from :data:`NO_GROUP`, a group was assigned.
+    """
+    if data is None or "group" not in data.columns or len(data) == 0:
+        return False
+    return bool(data["group"].iloc[0] != NO_GROUP)
+
+
+# Back-compat: ``_add_group`` was the private name used internally before
+# this helper was promoted; keep an alias so existing callers still work.
+_add_group = add_group
 
 
 # ---------------------------------------------------------------------------

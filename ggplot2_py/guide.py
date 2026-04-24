@@ -58,6 +58,8 @@ __all__ = [
     "guide_bins",
     "guide_colourbar",
     "guide_colorbar",
+    "guide_old_colourbar",
+    "guide_old_colorbar",
     "guide_coloursteps",
     "guide_colorsteps",
     "guide_custom",
@@ -3210,6 +3212,29 @@ def guide_colourbar(
 # Alias
 guide_colorbar = guide_colourbar
 """Alias for :func:`guide_colourbar`."""
+
+
+def guide_old_colourbar(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated forwarder to :func:`guide_colourbar`.
+
+    Mirrors R's legacy ``guide_old_colourbar`` entry point from
+    ``guide-old.R``. Calls :func:`guide_colourbar` with the same arguments
+    and emits a ``FutureWarning`` to nudge callers toward the new guide
+    system (ported as :class:`GuideColourbar` / :func:`guide_colourbar`).
+    """
+    import warnings as _warnings
+
+    _warnings.warn(
+        "guide_old_colourbar() is deprecated; use guide_colourbar() instead.",
+        FutureWarning,
+        stacklevel=2,
+    )
+    return guide_colourbar(*args, **kwargs)
+
+
+# American-spelling alias for symmetry with guide_colorbar.
+guide_old_colorbar = guide_old_colourbar
+"""Alias for :func:`guide_old_colourbar`."""
 
 
 def guide_coloursteps(

@@ -41,6 +41,19 @@ class GGProtoMeta(type):
     def __repr__(cls) -> str:
         return f"<ggproto class: {cls.__name__}>"
 
+    def __dir__(cls) -> list:
+        """Enable tab-completion on classes used as singletons.
+
+        Mirrors the instance ``__dir__`` (R ``.DollarNames.ggproto``):
+        returns the union of the class's own names and its bases',
+        excluding ``super``.
+        """
+        base = set(super().__dir__())
+        for c in cls.__mro__:
+            base.update(c.__dict__.keys())
+        base.discard("super")
+        return sorted(base)
+
 
 class GGProto(metaclass=GGProtoMeta):
     """Base class for ggplot2's proto-based objects.
@@ -108,6 +121,43 @@ class GGProto(metaclass=GGProtoMeta):
             if nargs > 0 and varnames[0] == "self":
                 return types.MethodType(value, self)
         return value
+
+    def __dir__(self) -> list:
+        """Return the list of accessible member names.
+
+        Port of R's ``.DollarNames.ggproto`` (ggproto.R:146-158), which
+        returns the union of the object's own names and its parents',
+        excluding ``super``. Enables tab-completion of ``obj.<tab>`` and
+        ``g$<tab>`` parity with R.
+        """
+        # Start with the standard default to include everything Python adds
+        # (dunder methods, descriptors) — R's DollarNames does not expose
+        # these but Python users expect them for IDE/tooling.
+        base = set(super().__dir__())
+        # Collect all attribute names from this class and its MRO, excluding
+        # the prototype plumbing ``super`` that R explicitly drops.
+        for cls in type(self).__mro__:
+            base.update(cls.__dict__.keys())
+        base.discard("super")
+        return sorted(base)
+
+    def to_list(self) -> Dict[str, Any]:
+        """Return a dict of all public members (R: ``as.list.ggproto``).
+
+        Port of R's ``as.list.ggproto`` semantics: returns a named mapping
+        of every accessible field and method, including inherited ones.
+        Callables are returned as bound method references (not invoked).
+        """
+        out: Dict[str, Any] = {}
+        for name in dir(self):
+            if name.startswith("_"):
+                continue
+            if name == "super":
+                continue
+            # Use object.__getattribute__ base path for consistency, but
+            # rely on the auto-binding in __getattribute__ for methods.
+            out[name] = getattr(self, name)
+        return out
 
 
 # ---------------------------------------------------------------------------

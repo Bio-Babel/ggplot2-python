@@ -539,6 +539,8 @@ from ggplot2_py.guide import (
     guide_bins,
     guide_colourbar,
     guide_colorbar,
+    guide_old_colourbar,
+    guide_old_colorbar,
     guide_coloursteps,
     guide_colorsteps,
     guide_custom,
@@ -820,6 +822,7 @@ __all__ = [
     "GuideAxisTheta", "GuideBins", "GuideColourbar", "GuideColoursteps",
     "GuideCustom", "GuideLegend", "GuideNone",
     "guide_axis", "guide_legend", "guide_colourbar", "guide_colorbar",
+    "guide_old_colourbar", "guide_old_colorbar",
     "guide_coloursteps", "guide_colorsteps", "guide_bins",
     "guide_custom", "guide_none", "guides", "is_guide",
     # Themes

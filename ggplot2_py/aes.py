@@ -513,6 +513,10 @@ def standardise_aes_names(aes_names: Iterable[str]) -> List[str]:
 def rename_aes(mapping: Mapping) -> Mapping:
     """Return a copy of *mapping* with all keys standardised.
 
+    Port of R ``rename_aes`` (aes.R:193-201): standardises every key of
+    an aesthetic mapping and warns when collapsing duplicates (e.g. when
+    both ``color`` and ``colour`` are supplied).
+
     Parameters
     ----------
     mapping : Mapping
@@ -528,9 +532,20 @@ def rename_aes(mapping: Mapping) -> Mapping:
     >>> rename_aes(Mapping(color="class"))
     aes(colour='class')
     """
-    return Mapping(
-        {_standardise_single(k): v for k, v in mapping.items()}
-    )
+    items = [(_standardise_single(k), v) for k, v in mapping.items()]
+    # R warns on duplicated names after standardisation.
+    seen: Dict[str, int] = {}
+    for k, _ in items:
+        seen[k] = seen.get(k, 0) + 1
+    dupes = sorted({k for k, c in seen.items() if c > 1})
+    if dupes:
+        from ggplot2_py._compat import cli_warn as _cli_warn
+        _cli_warn(
+            "Duplicated aesthetics after name standardisation: "
+            + ", ".join(dupes)
+        )
+    # Later entry wins (dict semantics) — matches R's ``names(x) <- ...``.
+    return Mapping(dict(items))
 
 
 # ---------------------------------------------------------------------------

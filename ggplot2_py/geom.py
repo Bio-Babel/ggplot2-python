@@ -168,6 +168,7 @@ __all__ = [
     # Utility
     "is_geom",
     "translate_shape_string",
+    "check_aesthetics",
 ]
 
 
@@ -423,6 +424,35 @@ def is_geom(x: Any) -> bool:
     if isinstance(x, type):
         return issubclass(x, Geom)
     return isinstance(x, Geom)
+
+
+def check_aesthetics(x: Mapping, n: int) -> None:
+    """Validate that all aesthetics have length 1 or ``n``.
+
+    Port of R ``check_aesthetics`` (geom-.R:517-529). Raises a
+    :class:`ValueError` naming the offending aesthetics if any have a
+    length that is neither ``1`` nor ``n``.
+
+    Parameters
+    ----------
+    x : Mapping
+        Aesthetic name -> value dict (or ``aes`` mapping).
+    n : int
+        Expected data length.
+    """
+    bad: List[str] = []
+    for name, value in dict(x).items():
+        try:
+            length = len(value)
+        except TypeError:
+            length = 1
+        if length != 1 and length != n:
+            bad.append(name)
+    if bad:
+        raise ValueError(
+            f"Aesthetics must be either length 1 or the same as the data ({n}). "
+            f"Fix the following mappings: {', '.join(bad)}."
+        )
 
 
 # ===========================================================================

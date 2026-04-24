@@ -47,6 +47,7 @@ __all__ = [
     "coord_munch",
     "is_coord",
     "is_Coord",
+    "sf_transform_xy",
 ]
 
 
@@ -1366,6 +1367,15 @@ def _sf_transform_xy(
     out["x"] = new_x
     out["y"] = new_y
     return out
+
+
+# Public alias — R exports ``sf_transform_xy`` from ``coord-sf.R``.
+sf_transform_xy = _sf_transform_xy
+sf_transform_xy.__doc__ = (
+    "Public alias for :func:`_sf_transform_xy`. Ports R's ``sf_transform_xy`` "
+    "(coord-sf.R:392-413). Projects the ``x`` / ``y`` columns of *data* from "
+    "``source_crs`` to ``target_crs`` using :mod:`pyproj`."
+)
 
 
 def _sf_rescale01(geom: Any, x_range: Sequence[float], y_range: Sequence[float]) -> Any:

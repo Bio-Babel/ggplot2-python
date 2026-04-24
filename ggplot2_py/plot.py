@@ -389,7 +389,14 @@ class GGPlot:
     fig_dpi: int = 150
 
     def _repr_png_(self) -> Optional[bytes]:
-        """Render the plot as PNG bytes for Jupyter notebook display."""
+        """Render the plot as PNG bytes for Jupyter notebook display.
+
+        R's ``print.ggplot`` raises rendering errors; here we surface them
+        via :func:`cli_warn` (with the traceback) rather than silently
+        swallowing. Returning ``None`` is required by the Jupyter display
+        protocol so the next ``_repr_*_`` can be tried, but the warning
+        ensures the failure is visible for debugging.
+        """
         from grid_py import grid_draw, grid_newpage
 
         try:
@@ -407,7 +414,15 @@ class GGPlot:
             if renderer is not None:
                 return renderer.to_png_bytes()
             return None
-        except Exception:
+        except (KeyboardInterrupt, SystemExit):
+            # Never swallow these: user / runtime signals.
+            raise
+        except Exception as exc:  # noqa: BLE001 — Jupyter _repr_* must not raise
+            import traceback as _tb
+            cli_warn(
+                "Failed to render ggplot via _repr_png_: "
+                f"{type(exc).__name__}: {exc}\n{_tb.format_exc()}"
+            )
             return None
 
     def summary(self) -> str:
@@ -729,15 +744,13 @@ def _build_ggplot(plot):
 
     plot = plot._clone()
 
-    # Ensure at least one layer
+    # Ensure at least one layer. ``geom_blank`` is an in-package constructor,
+    # not an optional dependency, so any ImportError here is a real bug and
+    # must propagate (matches R's ``ggplot_build`` which unconditionally
+    # appends ``geom_blank()`` when ``plot$layers`` is empty).
     if len(plot.layers) == 0:
-        # Add a blank layer
-        try:
-            from ggplot2_py.geom import geom_blank
-            blank = geom_blank()
-            plot.layers.append(blank)
-        except ImportError:
-            pass
+        from ggplot2_py.geom import geom_blank
+        plot.layers.append(geom_blank())
 
     layers = plot.layers
     data: List[Optional[pd.DataFrame]] = [None] * len(layers)

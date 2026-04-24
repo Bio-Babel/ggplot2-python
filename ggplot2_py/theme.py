@@ -38,7 +38,21 @@ __all__ = [
     "reset_theme_settings",
     "update_theme",
     "replace_theme",
+    "combine_elements",
+    "from_theme",
 ]
+
+
+def from_theme(x: Any) -> Any:
+    """Identity forwarder matching R's ``from_theme`` (aes-delayed-eval.R:210-214).
+
+    In R this function is a passthrough that also tags an expression as
+    "evaluate at theme-resolution time" via its environment. Python uses
+    the :class:`FromTheme` marker class (``ggplot2_py.geom.FromTheme``)
+    for the typed-marker variant; this function mirrors the R public
+    entry point for compatibility (identity return).
+    """
+    return x
 
 
 # ---------------------------------------------------------------------------
