@@ -248,9 +248,23 @@ def _ggplot_gtable_impl(data):
         plot_table, plot.scales, labels, theme, layers=plot.layers,
         guides=plot.guides,
     )
+    # R parity post-pass: ``table_add_legends`` in R (plot-render.R:70-73)
+    # always emits all five guide-box cells (``right`` / ``left`` /
+    # ``top`` / ``bottom`` / ``inside``), holding a zeroGrob when no
+    # legend occupies the slot. ``_table_add_legends`` has many early
+    # returns that skip this emission; backfill any missing slots here
+    # so downstream consumers (patchwork's ``add_guides``) can detect
+    # the modern 3.5+ layout by ``len(guide-box-*) == 5``.
+    plot_table = _ensure_five_guide_box_slots(plot_table)
 
     # Title / subtitle / caption / tag annotations
     plot_table = _table_add_titles(plot_table, labels, theme)
+    # Port of R's ``table_add_tag`` (plot-render.R:46, 228-340). Emits
+    # a ``tag`` layout row so downstream consumers (patchwork's
+    # ``recurse_tags`` → ``labs(tag=...)``) get the per-plot tag cell
+    # R's API contract promises. Runs unconditionally — R always
+    # allocates the tag margin slot even when no label is set.
+    plot_table = _table_add_tag(plot_table, labels.get("tag"), theme)
 
     # Add plot margin (R: table_add_background, plot-render.R:342-345)
     # R: margin <- calc_element("plot.margin", theme) %||% margin()
@@ -298,6 +312,89 @@ def _safe_colour(colour: Any) -> str:
         return s
     except (ValueError, TypeError):
         return "grey50"
+
+
+def _ensure_five_guide_box_slots(table: Any) -> Any:
+    """Ensure every rendered ggplotGrob carries five guide-box cells.
+
+    Port of R ``table_add_legends`` behaviour (plot-render.R:70-134):
+    R unconditionally emits ``guide-box-left`` / ``-right`` / ``-top``
+    / ``-bottom`` / ``-inside`` with zeroGrob placeholders when no legend
+    occupies the slot. ``_table_add_legends`` in this module has many
+    early-return paths (no scales, ``legend.position="none"``, etc.) so
+    this post-pass backfills missing slots. Downstream consumers —
+    notably patchwork's ``add_guides`` — key off ``len(guide-box-*) == 5``
+    to dispatch to the modern ggplot2 ≥ 3.5 layout branch.
+    """
+    if not hasattr(table, "_widths"):
+        return table
+
+    names = list(table.layout.get("name", []))
+    present = set()
+    for n in names:
+        if n.startswith("guide-box-"):
+            present.add(n.split("guide-box-", 1)[1])
+    missing = {"right", "left", "top", "bottom", "inside"} - present
+    if not missing:
+        return table
+
+    from grid_py import Unit, null_grob
+    from gtable_py import (
+        gtable_add_cols,
+        gtable_add_grob,
+        gtable_add_rows,
+    )
+
+    # Find the panel span once; it's stable across our zero-sized
+    # insertions on the outer frame.
+    place = find_panel(table)
+
+    if "right" in missing:
+        table = gtable_add_cols(table, Unit([0.0], ["pt"]), pos=-1)
+        table = gtable_add_cols(table, Unit([0.0], ["pt"]), pos=-1)
+        ncol_t = len(table._widths)
+        table = gtable_add_grob(
+            table, null_grob(),
+            t=place["t"], b=place["b"], l=ncol_t,
+            clip="off", name="guide-box-right",
+        )
+    if "left" in missing:
+        table = gtable_add_cols(table, Unit([0.0], ["pt"]), pos=0)
+        table = gtable_add_cols(table, Unit([0.0], ["pt"]), pos=0)
+        place = find_panel(table)
+        table = gtable_add_grob(
+            table, null_grob(),
+            t=place["t"], b=place["b"], l=1,
+            clip="off", name="guide-box-left",
+        )
+    if "bottom" in missing:
+        table = gtable_add_rows(table, Unit([0.0], ["pt"]), pos=-1)
+        table = gtable_add_rows(table, Unit([0.0], ["pt"]), pos=-1)
+        nrow_t = len(table._heights)
+        place = find_panel(table)
+        table = gtable_add_grob(
+            table, null_grob(),
+            t=nrow_t, b=nrow_t, l=place["l"], r=place["r"],
+            clip="off", name="guide-box-bottom",
+        )
+    if "top" in missing:
+        table = gtable_add_rows(table, Unit([0.0], ["pt"]), pos=0)
+        table = gtable_add_rows(table, Unit([0.0], ["pt"]), pos=0)
+        place = find_panel(table)
+        table = gtable_add_grob(
+            table, null_grob(),
+            t=1, b=1, l=place["l"], r=place["r"],
+            clip="off", name="guide-box-top",
+        )
+    if "inside" in missing:
+        place = find_panel(table)
+        table = gtable_add_grob(
+            table, null_grob(),
+            t=place["t"], b=place["b"],
+            l=place["l"], r=place["r"],
+            clip="off", name="guide-box-inside",
+        )
+    return table
 
 
 def _table_add_legends(
@@ -859,8 +956,13 @@ def _table_add_legends(
         legend_gtables.append(legend_gt)
         legend_positions.append(entry_pos)
 
-    if not legend_gtables:
-        return table
+    # R parity note (plot-render.R:70-73): ``table_add_legends``
+    # unconditionally emits all five guide-box cells (left, right, top,
+    # bottom, inside) — when no legend exists for a position, the cell
+    # holds a zeroGrob and the spacing row/col is zero-sized. Downstream
+    # patchwork's ``add_guides`` detects the modern 3.5+ layout by
+    # counting ``guide-box-*`` == 5. Fall through with an empty
+    # ``legend_gtables`` so the placement loop below still fires.
 
     # ------------------------------------------------------------------
     # 6. Package legends into per-position guide boxes — R parity with
@@ -889,6 +991,12 @@ def _table_add_legends(
     #    right, left, bottom, top boxes at the plot-table extrema and
     #    the "inside" box at the panel cell.
     # ------------------------------------------------------------------
+    # For every direction that has no legend, fall back to a
+    # ``null_grob`` placeholder with zero-sized spacing + slot — matches
+    # R's ``table_add_legends`` (plot-render.R:70-134) which always
+    # emits all four outer cells.
+    from grid_py import null_grob as _null_grob
+
     # Right legend ---------------------------------------------------------
     if "right" in packaged_boxes:
         box = packaged_boxes["right"]
@@ -899,6 +1007,15 @@ def _table_add_legends(
         ncol_t = len(table._widths)
         table = gtable_add_grob(
             table, box, t=place["t"], b=place["b"], l=ncol_t,
+            clip="off", name="guide-box-right",
+        )
+    else:
+        place = find_panel(table)
+        table = gtable_add_cols(table, unit([0], "cm"), pos=-1)
+        table = gtable_add_cols(table, unit([0], "cm"), pos=-1)
+        ncol_t = len(table._widths)
+        table = gtable_add_grob(
+            table, _null_grob(), t=place["t"], b=place["b"], l=ncol_t,
             clip="off", name="guide-box-right",
         )
 
@@ -917,6 +1034,14 @@ def _table_add_legends(
             table, box, t=place["t"], b=place["b"], l=1,
             clip="off", name="guide-box-left",
         )
+    else:
+        place = find_panel(table)
+        table = gtable_add_cols(table, unit([0], "cm"), pos=0)
+        table = gtable_add_cols(table, unit([0], "cm"), pos=0)
+        table = gtable_add_grob(
+            table, _null_grob(), t=place["t"], b=place["b"], l=1,
+            clip="off", name="guide-box-left",
+        )
 
     # Bottom legend --------------------------------------------------------
     if "bottom" in packaged_boxes:
@@ -928,6 +1053,15 @@ def _table_add_legends(
         nrow_t = len(table._heights)
         table = gtable_add_grob(
             table, box, t=nrow_t, b=nrow_t, l=place["l"], r=place["r"],
+            clip="off", name="guide-box-bottom",
+        )
+    else:
+        place = find_panel(table)
+        table = gtable_add_rows(table, unit([0], "cm"), pos=-1)
+        table = gtable_add_rows(table, unit([0], "cm"), pos=-1)
+        nrow_t = len(table._heights)
+        table = gtable_add_grob(
+            table, _null_grob(), t=nrow_t, b=nrow_t, l=place["l"], r=place["r"],
             clip="off", name="guide-box-bottom",
         )
 
@@ -945,6 +1079,14 @@ def _table_add_legends(
             table, box, t=1, b=1, l=place["l"], r=place["r"],
             clip="off", name="guide-box-top",
         )
+    else:
+        place = find_panel(table)
+        table = gtable_add_rows(table, unit([0], "cm"), pos=0)
+        table = gtable_add_rows(table, unit([0], "cm"), pos=0)
+        table = gtable_add_grob(
+            table, _null_grob(), t=1, b=1, l=place["l"], r=place["r"],
+            clip="off", name="guide-box-top",
+        )
 
     # Inside legend --------------------------------------------------------
     # R uses ``legend.position.inside`` / ``legend.justification.inside``
@@ -957,6 +1099,18 @@ def _table_add_legends(
         place = find_panel(table)
         table = gtable_add_grob(
             table, box,
+            t=place["t"], b=place["b"],
+            l=place["l"], r=place["r"],
+            clip="off", name="guide-box-inside",
+        )
+    else:
+        # R parity: ``guide-box-inside`` is always emitted so
+        # ``len(guide-box-*) == 5`` signals the modern layout to
+        # patchwork's ``add_guides``. The null placeholder occupies the
+        # panel cell but carries no grob content.
+        place = find_panel(table)
+        table = gtable_add_grob(
+            table, _null_grob(),
             t=place["t"], b=place["b"],
             l=place["l"], r=place["r"],
             clip="off", name="guide-box-inside",
@@ -1056,6 +1210,150 @@ def _table_add_titles(table: Any, labels: Dict[str, Any], theme: Any) -> Any:
         )
 
     return table
+
+
+def _table_add_tag(table: Any, label: Any, theme: Any) -> Any:
+    """Emit a ``tag`` layout row per R's ``table_add_tag``.
+
+    Ports ``plot-render.R:228-340`` verbatim. The function has four
+    behaviourally distinct paths driven by theme elements:
+
+    1. Zero-padding on all four sides is added *unconditionally* via
+       ``gtable_add_padding(table, unit(0, "pt"))`` (R:230). This gives
+       the tag a stable margin slot even when the plot carries no tag.
+    2. Early exit if ``label`` is missing or ``plot.tag`` is blank.
+    3. Resolve ``plot.tag.position`` (one of the 8 corner / side
+       keywords, or a numeric c(x, y)) and ``plot.tag.location``
+       (``"margin"`` / ``"plot"`` / ``"panel"``).
+    4. Render the tag grob, compute placement, call
+       ``gtable_add_grob(..., name="tag", clip="off")``.
+
+    Downstream in patchwork, ``recurse_tags`` emits
+    ``p + labs(tag=...)`` per patch; rendering that patch through
+    ``ggplotGrob`` hits this function, which is what makes the
+    per-patch ``tag`` row visible to composition-level collectors.
+    """
+    from grid_py import Unit, grob_height, grob_width, unit_c
+    from gtable_py import gtable_add_grob, gtable_add_padding
+    from ggplot2_py.theme_elements import (
+        ElementBlank,
+        calc_element,
+        element_render,
+    )
+
+    if not hasattr(table, "_widths"):
+        return table
+
+    # R:230 — always-on zero-pt padding on all four sides.
+    table = gtable_add_padding(table, Unit([0.0], ["pt"]))
+
+    # R:233-234 — no label: early exit (table keeps the zero padding).
+    if label is None:
+        return table
+    if isinstance(label, str) and label == "":
+        return table
+
+    # R:236-239 — resolve plot.tag; blank element means "don't draw".
+    try:
+        element = calc_element("plot.tag", theme)
+    except Exception:
+        return table
+    if element is None or isinstance(element, ElementBlank):
+        return table
+
+    # R:242-243 — resolve position + location. Defaults:
+    #   position = "topleft"
+    #   location = "margin" for keyword positions, "plot" for numeric.
+    try:
+        position = calc_element("plot.tag.position", theme)
+    except Exception:
+        position = None
+    if position is None:
+        position = "topleft"
+
+    try:
+        location = calc_element("plot.tag.location", theme)
+    except Exception:
+        location = None
+    is_numeric_pos = (
+        isinstance(position, (list, tuple))
+        and len(position) == 2
+        and all(isinstance(v, (int, float)) for v in position)
+    )
+    if location is None:
+        location = "plot" if is_numeric_pos else "margin"
+
+    # R:259-272 — derive top/left/right/bottom booleans from keyword.
+    if is_numeric_pos:
+        top = left = right = bottom = False
+    else:
+        valid_positions = (
+            "topleft", "top", "topright", "left",
+            "right", "bottomleft", "bottom", "bottomright",
+        )
+        pos_str = position if isinstance(position, str) else "topleft"
+        if pos_str not in valid_positions:
+            pos_str = "topleft"
+        top    = pos_str in ("topleft",    "top",    "topright")
+        left   = pos_str in ("topleft",    "left",   "bottomleft")
+        right  = pos_str in ("topright",   "right",  "bottomright")
+        bottom = pos_str in ("bottomleft", "bottom", "bottomright")
+
+    # R:275-277 — render tag and measure.
+    tag = element_render(
+        theme, "plot.tag", label=str(label),
+        margin_x=True, margin_y=True,
+    )
+    height = grob_height(tag)
+    width  = grob_width(tag)
+
+    # R:279-314 — "plot" / "panel" location: re-render with manual
+    # (x, y) anchor. For "plot" we return immediately placing at the
+    # full outer span; "panel" falls through to the common placement.
+    if location in ("plot", "panel"):
+        if location == "plot":
+            n_rows = len(table._heights)
+            n_cols = len(table._widths)
+            return gtable_add_grob(
+                table, tag,
+                name="tag", clip="off",
+                t=1, b=n_rows, l=1, r=n_cols,
+            )
+        # location == "panel" — use find_panel for placement.
+        place = find_panel(table)
+        t_ = place["t"]; l_ = place["l"]
+        b_ = place["b"]; r_ = place["r"]
+    else:
+        # R:320-328 — "margin" location: resize the four padding cells
+        # so the tag occupies its half of the corner. Native Unit
+        # slicing (grid_py.Unit.__getitem__, R port of [.unit) carries
+        # the per-entry grob references in ``data`` through every
+        # operation, so the title / xlab / ylab lazy ``grobheight``
+        # entries retain their grob link across the head/tail splice.
+        n_col = len(table._widths)
+        n_row = len(table._heights)
+        if top:
+            # R: table$heights <- unit.c(height, table$heights[-1])
+            table.heights = unit_c(height, table._heights[1:])
+        if left:
+            table.widths = unit_c(width, table._widths[1:])
+        if right:
+            table.widths = unit_c(table._widths[:-1], width)
+        if bottom:
+            table.heights = unit_c(table._heights[:-1], height)
+        t_, l_, b_, r_ = 1, 1, n_row, n_col
+
+    # R:331-334 — shrink the placement to the correct edge/corner.
+    if top:    b_ = t_
+    if left:   r_ = l_
+    if right:  l_ = r_
+    if bottom: t_ = b_
+
+    return gtable_add_grob(
+        table, tag,
+        name="tag", clip="off",
+        t=t_, l=l_, b=b_, r=r_,
+    )
 
 
 # ---------------------------------------------------------------------------
