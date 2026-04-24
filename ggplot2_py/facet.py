@@ -1057,10 +1057,24 @@ class Facet(GGProto):
         labels: Dict[str, Any],
         params: Dict[str, Any],
     ) -> Any:
-        """Add axis title labels (xlab/ylab) to the panel table.
+        """Attach x/y axis titles to the panels table.
 
-        Mirrors R's ``Facet$draw_labels``: adds a bottom row for the
-        x-axis title and a left column for the y-axis title.
+        Ports R's ``Facet$draw_labels`` (ggplot2/R/facet-.R:824-850)
+        verbatim: unconditionally adds a top row + bottom row for the
+        x-axis titles and a left col + right col for the y-axis titles,
+        then places each label grob with the directional name R uses
+        (``xlab-t`` / ``xlab-b`` / ``ylab-l`` / ``ylab-r``). Downstream
+        consumers such as patchwork's ``collect_axis_titles`` key off
+        those names. Empty (null) grobs still take up a zero-sized
+        row/column so the layout shape is stable.
+
+        Note on ordering: R's ``labels$x`` is ``list(top, bottom)``
+        (R's ``c("top", "bottom")[i]`` in ``Layout$render_labels``).
+        ``ggplot2_py``'s ``render_labels`` currently returns the pair
+        as ``[primary, secondary]`` — primary is bottom, secondary is
+        top — so we swap when dispatching: ``pair[1]`` → top,
+        ``pair[0]`` → bottom. Same mapping for y: ``pair[0]`` → left
+        (primary), ``pair[1]`` → right (secondary).
 
         Parameters
         ----------
@@ -1070,46 +1084,67 @@ class Facet(GGProto):
             two-element list ``[primary, secondary]``.
         """
         from gtable_py import gtable_add_grob, gtable_add_rows, gtable_add_cols
-        from grid_py import Unit as unit, text_grob, Gpar, null_grob
-
-        from grid_py import grob_height, grob_width
+        from grid_py import grob_height, grob_width, null_grob
 
         gt = panels
 
-        # --- x-axis title (bottom) ---
-        x_label = None
-        if "x" in labels:
-            pair = labels["x"]
-            if isinstance(pair, list) and len(pair) > 0:
-                x_label = pair[0]  # primary
+        def _pair_for(axis: str, index: int) -> Any:
+            pair = labels.get(axis)
+            if isinstance(pair, list) and len(pair) > index:
+                v = pair[index]
+                if v is not None:
+                    return v
+            return null_grob()
 
-        if x_label is not None and not _is_null_grob(x_label):
-            # R: gtable_add_rows(table, grobHeight(xlab), pos=-1)
-            xlab_h = grob_height(x_label)
-            gt = gtable_add_rows(gt, xlab_h, pos=-1)
-            nrow = len(gt._heights)
-            ncol = len(gt._widths)
-            gt = gtable_add_grob(
-                gt, x_label, t=nrow, l=1, r=ncol,
-                clip="off", name="xlab",
-            )
+        # x-axis: top = secondary (pair[1]), bottom = primary (pair[0]).
+        x_top    = _pair_for("x", 1)
+        x_bottom = _pair_for("x", 0)
 
-        # --- y-axis title (left) ---
-        y_label = None
-        if "y" in labels:
-            pair = labels["y"]
-            if isinstance(pair, list) and len(pair) > 0:
-                y_label = pair[0]  # primary
+        # Add top row and place xlab-t.
+        gt = gtable_add_rows(gt, grob_height(x_top), pos=0)
+        # Panel column span uses find_panel; after the row insertion the
+        # panel row has shifted down by 1, so find_panel on the new gt
+        # is reliable for column coordinates.
+        from .plot_render import find_panel as _find_panel
+        pdim = _find_panel(gt)
+        gt = gtable_add_grob(
+            gt, x_top,
+            t=1, l=pdim["l"], b=1, r=pdim["r"],
+            clip="off", name="xlab-t",
+        )
 
-        if y_label is not None and not _is_null_grob(y_label):
-            # R: gtable_add_cols(table, grobWidth(ylab), pos=0)
-            ylab_w = grob_width(y_label)
-            gt = gtable_add_cols(gt, ylab_w, pos=0)
-            nrow = len(gt._heights)
-            gt = gtable_add_grob(
-                gt, y_label, t=1, b=nrow, l=1,
-                clip="off", name="ylab",
-            )
+        # Add bottom row and place xlab-b.
+        gt = gtable_add_rows(gt, grob_height(x_bottom), pos=-1)
+        nrow = len(gt._heights)
+        pdim = _find_panel(gt)
+        gt = gtable_add_grob(
+            gt, x_bottom,
+            t=nrow, l=pdim["l"], b=nrow, r=pdim["r"],
+            clip="off", name="xlab-b",
+        )
+
+        # y-axis: left = primary (pair[0]), right = secondary (pair[1]).
+        y_left  = _pair_for("y", 0)
+        y_right = _pair_for("y", 1)
+
+        # Left col.
+        gt = gtable_add_cols(gt, grob_width(y_left), pos=0)
+        pdim = _find_panel(gt)
+        gt = gtable_add_grob(
+            gt, y_left,
+            t=pdim["t"], l=1, b=pdim["b"], r=1,
+            clip="off", name="ylab-l",
+        )
+
+        # Right col.
+        gt = gtable_add_cols(gt, grob_width(y_right), pos=-1)
+        ncol = len(gt._widths)
+        pdim = _find_panel(gt)
+        gt = gtable_add_grob(
+            gt, y_right,
+            t=pdim["t"], l=ncol, b=pdim["b"], r=ncol,
+            clip="off", name="ylab-r",
+        )
 
         return gt
 

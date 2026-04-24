@@ -302,9 +302,32 @@ class TestFacetBase:
         assert f.vars() == []
 
     def test_draw_labels(self):
+        # Facet.draw_labels ports R's Facet$draw_labels (facet-.R:824-850):
+        # unconditionally emits xlab-t, xlab-b, ylab-l, ylab-r on the
+        # panels gtable so downstream consumers (patchwork's
+        # collect_axis_titles) can find axis titles by directional name.
+        from grid_py import Unit, rect_grob, null_grob
+        from gtable_py import Gtable, gtable_add_grob
+        from ggplot2_py.theme import theme_get
+
+        panels = Gtable(
+            widths=Unit([1.0], ["null"]),
+            heights=Unit([1.0], ["null"]),
+        )
+        panels = gtable_add_grob(panels, rect_grob(), t=1, l=1, name="panel-1-1")
+
         f = Facet()
-        result = f.draw_labels("panels", pd.DataFrame(), [], [], [], None, None, None, {}, {})
-        assert result == "panels"
+        labels = {"x": [null_grob(), null_grob()],
+                  "y": [null_grob(), null_grob()]}
+        result = f.draw_labels(
+            panels, pd.DataFrame(), [], [], [], None, None, theme_get(),
+            labels, {},
+        )
+        names = list(result.layout["name"])
+        assert "xlab-t" in names
+        assert "xlab-b" in names
+        assert "ylab-l" in names
+        assert "ylab-r" in names
 
 
 # ---------------------------------------------------------------------------
