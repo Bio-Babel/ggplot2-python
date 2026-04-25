@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 from functools import singledispatch
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -266,25 +266,31 @@ def _ggplot_gtable_impl(data):
     # allocates the tag margin slot even when no label is set.
     plot_table = _table_add_tag(plot_table, labels.get("tag"), theme)
 
-    # Add plot margin (R: table_add_background, plot-render.R:342-345)
-    # R: margin <- calc_element("plot.margin", theme) %||% margin()
-    #    table  <- gtable_add_padding(table, margin)
-    # Margin.unit preserves the original unit type (default "pt").
+    # R: ``table_add_background`` (plot-render.R:342-357) — first add
+    # the plot margin via ``gtable_add_padding`` then drop the
+    # ``plot.background`` element_grob into the full table at z=-Inf so
+    # it sits behind everything else.
     if hasattr(plot_table, "_widths"):
-        from gtable_py import gtable_add_padding
-        from grid_py import Unit
-        from ggplot2_py.theme_elements import Margin, ElementBlank
-        try:
-            from ggplot2_py.theme_elements import calc_element as _calc_el
-            margin = _calc_el("plot.margin", theme)
-            if margin is None or isinstance(margin, ElementBlank):
-                margin = Margin(5.5, 5.5, 5.5, 5.5, unit="pt")
-            elif not isinstance(margin, Margin):
-                margin = Margin(5.5, 5.5, 5.5, 5.5, unit="pt")
-            plot_table = gtable_add_padding(plot_table, margin.unit)
-        except Exception:
-            plot_table = gtable_add_padding(
-                plot_table, Unit([0.2, 0.2, 0.2, 0.2], "cm"),
+        from gtable_py import gtable_add_padding, gtable_add_grob
+        from ggplot2_py.theme_elements import (
+            Margin, ElementBlank, calc_element as _calc_el,
+            element_grob, is_theme_element,
+        )
+
+        margin = _calc_el("plot.margin", theme)
+        if not isinstance(margin, Margin):
+            margin = Margin(5.5, 5.5, 5.5, 5.5, unit="pt")
+        plot_table = gtable_add_padding(plot_table, margin.unit)
+
+        background = _calc_el("plot.background", theme)
+        if background is not None and not isinstance(background, ElementBlank):
+            bg_grob = element_grob(background)
+            plot_table = gtable_add_grob(
+                plot_table, bg_grob,
+                t=1, l=1,
+                b=len(plot_table._heights),
+                r=len(plot_table._widths),
+                clip="off", name="background", z=float("-inf"),
             )
 
     # Add alt-text attribute
@@ -1089,14 +1095,73 @@ def _table_add_legends(
         )
 
     # Inside legend --------------------------------------------------------
-    # R uses ``legend.position.inside`` / ``legend.justification.inside``
-    # to place the inside box at the panel cell without altering the plot
-    # gtable's row/column count.  The semantics of inside placement rely
-    # on viewport justification within ``Guides$package_box`` which is
-    # only partially wired in the Python port — see TODO below.
+    # R guides-.R:621-625 + 716-720 — for ``position == "inside"``,
+    # ``Guides$package_box`` wraps the guide-box gtable in a viewport at
+    # ``legend.position.inside`` (NPC anchor point inside the panel) with
+    # ``legend.justification.inside`` (which corner of the box anchors).
+    # We replicate the same: build a viewport on the box, then drop it
+    # into the panel cell.
     if "inside" in packaged_boxes:
         box = packaged_boxes["inside"]
         place = find_panel(table)
+
+        from ggplot2_py.theme_elements import calc_element as _calc_el
+        from grid_py import Viewport as _Viewport, Unit as _Unit, edit_grob as _edit_grob
+
+        # ``legend.justification.inside`` falls back to
+        # ``legend.justification`` (R guides-.R:618-619).  Default in both
+        # is c(0.5, 0.5) (centre).
+        just_inside = (
+            _calc_el("legend.justification.inside", theme)
+            or _calc_el("legend.justification", theme)
+            or (0.5, 0.5)
+        )
+        # ``legend.position.inside`` falls back to the justification when
+        # not set (R guides-.R:623).
+        pos_inside = _calc_el("legend.position.inside", theme) or just_inside
+
+        def _just_to_xy(j: Any) -> Tuple[float, float]:
+            """Coerce justification to (xjust, yjust) in [0,1] like R's
+            ``valid.just`` (utilities-grid.R)."""
+            named = {"left": 0.0, "centre": 0.5, "center": 0.5, "right": 1.0,
+                     "bottom": 0.0, "middle": 0.5, "top": 1.0}
+            if isinstance(j, str):
+                v = named.get(j, 0.5)
+                return (v, v)
+            try:
+                jx, jy = j[0], j[1]
+            except Exception:
+                return (0.5, 0.5)
+            jx = named.get(jx, jx) if isinstance(jx, str) else float(jx)
+            jy = named.get(jy, jy) if isinstance(jy, str) else float(jy)
+            return (float(jx), float(jy))
+
+        xjust, yjust = _just_to_xy(just_inside)
+        try:
+            xpos, ypos = float(pos_inside[0]), float(pos_inside[1])
+        except (TypeError, IndexError, ValueError):
+            xpos, ypos = xjust, yjust
+
+        # Use the box's measured size so the viewport doesn't expand to
+        # fill the panel cell — matching R's ``height = vp_height``,
+        # ``width = total_width`` from package_box (guides-.R:716-720).
+        try:
+            box_w_cm = max(_gtable_total_cm(box.widths), 0.0) or None
+            box_h_cm = max(_gtable_total_cm(box.heights), 0.0) or None
+        except Exception:
+            box_w_cm = box_h_cm = None
+        vp_kwargs: Dict[str, Any] = dict(
+            x=_Unit([xpos], "npc"),
+            y=_Unit([ypos], "npc"),
+            just=(xjust, yjust),
+        )
+        if box_w_cm is not None:
+            vp_kwargs["width"] = _Unit([box_w_cm], "cm")
+        if box_h_cm is not None:
+            vp_kwargs["height"] = _Unit([box_h_cm], "cm")
+
+        box = _edit_grob(box, vp=_Viewport(**vp_kwargs))
+
         table = gtable_add_grob(
             table, box,
             t=place["t"], b=place["b"],
@@ -1106,28 +1171,15 @@ def _table_add_legends(
     else:
         # R parity: ``guide-box-inside`` is always emitted so
         # ``len(guide-box-*) == 5`` signals the modern layout to
-        # patchwork's ``add_guides``. The null placeholder occupies the
-        # panel cell but carries no grob content.
+        # patchwork's ``add_guides``. A null placeholder renders nothing
+        # visible — no warning needed, because the user never asked for
+        # an inside legend in the first place.
         place = find_panel(table)
         table = gtable_add_grob(
             table, _null_grob(),
             t=place["t"], b=place["b"],
             l=place["l"], r=place["r"],
             clip="off", name="guide-box-inside",
-        )
-        # TODO: ``legend.position.inside`` + ``legend.justification.inside``
-        # viewport resolution is deferred — Python places the inside
-        # guide-box at the panel cell only, not at a user-supplied
-        # ``c(x, y)`` coordinate.  Matches R's gtable placement but
-        # without the viewport-based x/y justification.
-        from ggplot2_py._compat import cli_warn
-
-        cli_warn(
-            "Inside legend placement uses panel-cell geometry only. "
-            "`legend.position.inside = c(x, y)` and "
-            "`legend.justification.inside` are not yet wired through "
-            "the viewport pipeline — the guide-box will appear at the "
-            "panel centre."
         )
 
     return table
@@ -1165,49 +1217,56 @@ def _table_add_titles(table: Any, labels: Dict[str, Any], theme: Any) -> Any:
 
     ncol = len(table._widths)
 
+    # R always adds title/subtitle/caption rows even when the label is
+    # NULL — element_render returns a zeroGrob and the row gets a 0-cm
+    # height (plot-render.R:147-225). Downstream consumers (patchwork,
+    # collect_axis_titles) rely on those rows existing for layout
+    # stability, so we mirror the unconditional emission.
+
+    def _label_or_none(key: str) -> Any:
+        v = labels.get(key)
+        if v is None:
+            return None
+        v = str(v)
+        return v if v else None
+
     # --- Caption (bottom) --- (R: plot-render.R:193-224)
-    caption = labels.get("caption")
-    if caption:
-        caption_grob = element_render(
-            theme, "plot.caption", label=str(caption),
-            margin_y=True, margin_x=True,
-        )
-        caption_height = grob_height(caption_grob)
-        table = gtable_add_rows(table, caption_height, pos=-1)
-        nrow = len(table._heights)
-        table = gtable_add_grob(
-            table, caption_grob,
-            t=nrow, l=1, r=ncol, clip="off", name="caption",
-        )
+    caption_grob = element_render(
+        theme, "plot.caption", label=_label_or_none("caption"),
+        margin_y=True, margin_x=True,
+    )
+    caption_height = grob_height(caption_grob)
+    table = gtable_add_rows(table, caption_height, pos=-1)
+    nrow = len(table._heights)
+    table = gtable_add_grob(
+        table, caption_grob,
+        t=nrow, l=1, r=ncol, clip="off", name="caption",
+    )
 
     # --- Subtitle (top, added first so title goes above) ---
     # (R: plot-render.R:157-161, 182-184)
-    subtitle = labels.get("subtitle")
-    if subtitle:
-        subtitle_grob = element_render(
-            theme, "plot.subtitle", label=str(subtitle),
-            margin_y=True, margin_x=True,
-        )
-        subtitle_height = grob_height(subtitle_grob)
-        table = gtable_add_rows(table, subtitle_height, pos=0)
-        table = gtable_add_grob(
-            table, subtitle_grob,
-            t=1, l=1, r=ncol, clip="off", name="subtitle",
-        )
+    subtitle_grob = element_render(
+        theme, "plot.subtitle", label=_label_or_none("subtitle"),
+        margin_y=True, margin_x=True,
+    )
+    subtitle_height = grob_height(subtitle_grob)
+    table = gtable_add_rows(table, subtitle_height, pos=0)
+    table = gtable_add_grob(
+        table, subtitle_grob,
+        t=1, l=1, r=ncol, clip="off", name="subtitle",
+    )
 
     # --- Title (top) --- (R: plot-render.R:150-154, 186-188)
-    title = labels.get("title")
-    if title:
-        title_grob = element_render(
-            theme, "plot.title", label=str(title),
-            margin_y=True, margin_x=True,
-        )
-        title_height = grob_height(title_grob)
-        table = gtable_add_rows(table, title_height, pos=0)
-        table = gtable_add_grob(
-            table, title_grob,
-            t=1, l=1, r=ncol, clip="off", name="title",
-        )
+    title_grob = element_render(
+        theme, "plot.title", label=_label_or_none("title"),
+        margin_y=True, margin_x=True,
+    )
+    title_height = grob_height(title_grob)
+    table = gtable_add_rows(table, title_height, pos=0)
+    table = gtable_add_grob(
+        table, title_grob,
+        t=1, l=1, r=ncol, clip="off", name="title",
+    )
 
     return table
 

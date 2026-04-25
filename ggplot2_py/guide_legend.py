@@ -893,14 +893,18 @@ def package_legend_box(
     legends: List[Gtable],
     position: str = "right",
     spacing_cm: float = 0.2,
+    background_grob: Any = None,
 ) -> Gtable:
-    """Combine multiple legends into a single guide-box Gtable.
+    """Combine legends into a single guide-box Gtable.
 
-    Mirrors ``Guides$package_box`` (guides-.R:592-757).
-
-    For ``position="right"`` or ``"left"`` (vertical), legends are stacked
-    in a ``gtable_col``.  For ``"top"`` / ``"bottom"`` (horizontal), they
-    are placed side by side in a ``gtable_row``.
+    Port of R's ``Guides$package_box`` (guides-.R:592-757). Always wraps
+    the input legends through ``gtable_row`` / ``gtable_col`` named
+    ``"guides"`` so every layout cell carries the ``"guides"`` tag —
+    R's convention that downstream consumers (patchwork's ``add_guides``
+    collection step) key off. After the row/col is built, an extra
+    ``"legend.box.background"`` grob is appended (zeroGrob if no
+    ``legend.box.background`` element was supplied), and the table is
+    renamed to ``"guide-box"``.
 
     Parameters
     ----------
@@ -910,57 +914,61 @@ def package_legend_box(
         Legend box position relative to the plot.
     spacing_cm : float
         Spacing between legends in cm.
-
-    Returns
-    -------
-    Gtable
-        Combined guide-box.
+    background_grob : Grob, optional
+        Element grob for ``legend.box.background``. Defaults to a
+        ``null_grob`` (mirrors R's ``element_blank`` fallback).
     """
+    from grid_py import null_grob as _null_grob
+    from gtable_py import gtable_row, gtable_add_col_space
+
     if not legends:
         return Gtable(name="guide-box")
-
-    if len(legends) == 1:
-        legends[0].name = "guide-box"
-        return legends[0]
 
     direction = "horizontal" if position in ("top", "bottom") else "vertical"
 
     if direction == "vertical":
-        # Stack vertically
-        # Compute common width = max of all legends
         max_width_cm = 0.0
-        heights_cm = []
+        heights_cm: List[float] = []
         for lg in legends:
-            w = _gtable_total_cm(lg.widths)
-            h = _gtable_total_cm(lg.heights)
-            max_width_cm = max(max_width_cm, w)
-            heights_cm.append(h)
-
+            max_width_cm = max(max_width_cm, _gtable_total_cm(lg.widths))
+            heights_cm.append(_gtable_total_cm(lg.heights))
         guides = gtable_col(
             name="guides",
             grobs=legends,
             width=Unit(max_width_cm, "cm"),
             heights=Unit(heights_cm, "cm"),
         )
-        guides = gtable_add_row_space(guides, Unit(spacing_cm, "cm"))
+        if len(legends) > 1:
+            guides = gtable_add_row_space(guides, Unit(spacing_cm, "cm"))
     else:
-        # Place side by side
         max_height_cm = 0.0
-        widths_cm = []
+        widths_cm: List[float] = []
         for lg in legends:
-            w = _gtable_total_cm(lg.widths)
-            h = _gtable_total_cm(lg.heights)
-            max_height_cm = max(max_height_cm, h)
-            widths_cm.append(w)
-
-        from gtable_py import gtable_row, gtable_add_col_space
+            max_height_cm = max(max_height_cm, _gtable_total_cm(lg.heights))
+            widths_cm.append(_gtable_total_cm(lg.widths))
         guides = gtable_row(
             name="guides",
             grobs=legends,
             height=Unit(max_height_cm, "cm"),
             widths=Unit(widths_cm, "cm"),
         )
-        guides = gtable_add_col_space(guides, Unit(spacing_cm, "cm"))
+        if len(legends) > 1:
+            guides = gtable_add_col_space(guides, Unit(spacing_cm, "cm"))
+
+    # R guides-.R:737-744 — append ``legend.box.background`` covering the
+    # whole table at z = -Inf. ``element_blank`` resolves to zeroGrob;
+    # we accept either an explicit grob from the caller or fall back to
+    # ``null_grob()``.
+    bg = background_grob if background_grob is not None else _null_grob()
+    guides = gtable_add_grob(
+        guides, bg,
+        t=1, l=1,
+        b=len(guides._heights),
+        r=len(guides._widths),
+        clip="off",
+        name="legend.box.background",
+        z=float("-inf"),
+    )
 
     guides.name = "guide-box"
     return guides
