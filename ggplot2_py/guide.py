@@ -3477,17 +3477,24 @@ def guide_axis_logticks(
     if isinstance(cap, bool):
         cap = "both" if cap else "none"
 
+    # R guide-axis-logticks.R:129-143 — ``new_guide()`` is called with
+    # the underscore-cased internal names (``prescale_base``,
+    # ``negative_small``, ``short_theme``); the dotted user-facing names
+    # (``prescale.base``, ``negative.small``, ``short.theme``) are
+    # translated *into* underscores at the wrapper boundary.  The Python
+    # port previously inverted this direction, dispatching dotted names
+    # to ``new_guide()`` whose ``GuideAxisLogticks.params`` dict only
+    # knows the underscore form — so every call (including the no-arg
+    # default) tripped the unknown-argument warning.
     return new_guide(
         title=title,
         theme=theme,
         long=long,
         mid=mid,
         short=short,
-        **{
-            "prescale.base": prescale_base,
-            "negative.small": negative_small,
-            "short.theme": short_theme,
-        },
+        prescale_base=prescale_base,
+        negative_small=negative_small,
+        short_theme=short_theme,
         expanded=expanded,
         cap=cap,
         order=order,

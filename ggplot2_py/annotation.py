@@ -390,38 +390,29 @@ def annotation_logticks(
     if color is not None:
         colour = color
 
-    from grid_py import Unit
-
-    if short is None:
-        short = Unit(0.1, "cm")
-    if mid is None:
-        mid = Unit(0.2, "cm")
-    if long is None:
-        long = Unit(0.3, "cm")
+    # R annotation-logticks.R:88-90 — defaults are Unit(0.1, "cm") /
+    # Unit(0.2, "cm") / Unit(0.3, "cm").  GeomLogticks.draw_panel works in
+    # cm internally (matching R's ``convertUnit(x, "cm", valueOnly=TRUE)``
+    # at annotation-logticks.R:148-150), so coerce Unit -> cm scalar here.
+    from grid_py import Unit, convert_height
+    def _to_cm(v: Any, default_cm: float) -> float:
+        if v is None:
+            return default_cm
+        if isinstance(v, Unit):
+            return float(np.sum(convert_height(v, "cm", valueOnly=True)))
+        return float(v)
+    short_cm = _to_cm(short, 0.1)
+    mid_cm   = _to_cm(mid,   0.2)
+    long_cm  = _to_cm(long,  0.3)
 
     from ggplot2_py.layer import layer
     from ggplot2_py.stat import StatIdentity
     from ggplot2_py.position import PositionIdentity
-    from ggplot2_py.geom import Geom
+    from ggplot2_py.geom import GeomLogticks
 
-    class GeomLogticks(Geom):
-        """Internal geom for annotation_logticks."""
-
-        _class_name = "GeomLogticks"
-        extra_params = []
-
-        @staticmethod
-        def handle_na(data: Any, params: Any) -> Any:
-            return data
-
-        @staticmethod
-        def draw_panel(data: Any, panel_params: Any, coord: Any,
-                       **params: Any) -> Any:
-            from grid_py import GTree, GList, segments_grob, Unit as U
-
-            # Stub: return an empty gTree
-            return GTree(children=GList())
-
+    # R annotation-logticks.R:104 — ``data = dummy_data()``, a one-row
+    # frame whose only role is to carry the fixed aesthetics through to
+    # draw_panel via the layer's data slot.
     dummy = pd.DataFrame({"x": [0], "y": [0]})
 
     return layer(
@@ -437,9 +428,9 @@ def annotation_logticks(
             "sides": sides,
             "outside": outside,
             "scaled": scaled,
-            "short": short,
-            "mid": mid,
-            "long": long,
+            "short": short_cm,
+            "mid": mid_cm,
+            "long": long_cm,
             "colour": colour,
             "linewidth": linewidth,
             "linetype": linetype,

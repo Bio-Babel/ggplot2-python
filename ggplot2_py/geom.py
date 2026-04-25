@@ -3264,6 +3264,10 @@ def _calc_logticks(
     pd.DataFrame
         Columns: ``value``, ``start``, ``end``.
     """
+    # Cast base to float so ``base ** powers`` works on negative integer
+    # powers (NumPy raises ``Integers to negative integer powers are not
+    # allowed`` for ``int ** int<0``; R's ``^`` has no such restriction).
+    base = float(base)
     ticks_per_base = int(base) - 1
     reps = maxpow - minpow
 
@@ -3370,19 +3374,33 @@ class GeomLogticks(Geom):
                     if outside:
                         xticks["end"] = -xticks["end"]
 
-                    if "b" in sides and len(xticks) > 0:
-                        ticks_grobs.append(segments_grob(
-                            x0=xticks["x"].values, y0=np.zeros(len(xticks)),
-                            x1=xticks["x"].values, y1=xticks["end"].values * 0.02,
-                            gp=gp, name="logtick_x_b",
-                        ))
+                    n = len(xticks)
+                    if n > 0:
+                        # R annotation-logticks.R:177-189 — ``x`` uses
+                        # ``unit(..., "native")`` (the panel viewport's
+                        # post-coord-transform [0,1] axis ≡ npc); ``y``
+                        # uses ``unit(..., "cm")`` so the tick *length*
+                        # is absolute (3 mm) rather than panel-relative.
+                        x_unit = Unit(xticks["x"].astype(float).tolist(), "npc")
+                        start_cm = Unit(xticks["start"].astype(float).tolist(), "cm")
+                        end_cm = Unit(xticks["end"].astype(float).tolist(), "cm")
+                        ones_npc = Unit([1.0] * n, "npc")
 
-                    if "t" in sides and len(xticks) > 0:
-                        ticks_grobs.append(segments_grob(
-                            x0=xticks["x"].values, y0=np.ones(len(xticks)),
-                            x1=xticks["x"].values, y1=1.0 - xticks["end"].values * 0.02,
-                            gp=gp, name="logtick_x_t",
-                        ))
+                        if "b" in sides:
+                            ticks_grobs.append(segments_grob(
+                                x0=x_unit, x1=x_unit,
+                                y0=start_cm, y1=end_cm,
+                                gp=gp, name="logtick_x_b",
+                            ))
+
+                        if "t" in sides:
+                            # ``y = unit(1, "npc") - unit(start/end, "cm")``
+                            ticks_grobs.append(segments_grob(
+                                x0=x_unit, x1=x_unit,
+                                y0=ones_npc - start_cm,
+                                y1=ones_npc - end_cm,
+                                gp=gp, name="logtick_x_t",
+                            ))
 
         # Y-axis ticks (left / right)
         if ("l" in sides or "r" in sides) and y_range is not None:
@@ -3405,23 +3423,29 @@ class GeomLogticks(Geom):
                     if outside:
                         yticks["end"] = -yticks["end"]
 
-                    if "l" in sides and len(yticks) > 0:
-                        ticks_grobs.append(segments_grob(
-                            x0=np.zeros(len(yticks)),
-                            y0=yticks["y"].values,
-                            x1=yticks["end"].values * 0.02,
-                            y1=yticks["y"].values,
-                            gp=gp, name="logtick_y_l",
-                        ))
+                    n = len(yticks)
+                    if n > 0:
+                        # R annotation-logticks.R:215-227 — mirror image of
+                        # the x-axis case: ``y`` is npc, tick length is cm.
+                        y_unit = Unit(yticks["y"].astype(float).tolist(), "npc")
+                        start_cm = Unit(yticks["start"].astype(float).tolist(), "cm")
+                        end_cm = Unit(yticks["end"].astype(float).tolist(), "cm")
+                        ones_npc = Unit([1.0] * n, "npc")
 
-                    if "r" in sides and len(yticks) > 0:
-                        ticks_grobs.append(segments_grob(
-                            x0=np.ones(len(yticks)),
-                            y0=yticks["y"].values,
-                            x1=1.0 - yticks["end"].values * 0.02,
-                            y1=yticks["y"].values,
-                            gp=gp, name="logtick_y_r",
-                        ))
+                        if "l" in sides:
+                            ticks_grobs.append(segments_grob(
+                                y0=y_unit, y1=y_unit,
+                                x0=start_cm, x1=end_cm,
+                                gp=gp, name="logtick_y_l",
+                            ))
+
+                        if "r" in sides:
+                            ticks_grobs.append(segments_grob(
+                                y0=y_unit, y1=y_unit,
+                                x0=ones_npc - start_cm,
+                                x1=ones_npc - end_cm,
+                                gp=gp, name="logtick_y_r",
+                            ))
 
         if not ticks_grobs:
             return null_grob()

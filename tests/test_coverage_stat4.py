@@ -22,11 +22,23 @@ class TestStatSummaryFunctions:
         built = ggplot_build(p)
 
     def test_summary_numpy_func(self):
-        """Cover line 857-858: string resolves to numpy function."""
-        from ggplot2_py.stat import stat_summary
+        """Cover the numpy-function resolution branch of _make_summary_fun
+        (``hasattr(np, f) → getattr(np, f)``).  ``fun_y`` was the
+        ggplot2 ≤3.2 spelling and is silently dropped in 3.3+, so passing
+        it would never exercise the resolver — use ``fun`` (current name)
+        and assert the resolver actually returned ``np.mean``.
+        """
+        from ggplot2_py.stat import stat_summary, _make_summary_fun
+        # First check the resolver directly: "mean" must resolve to np.mean.
+        summarise = _make_summary_fun(fun="mean")
+        out = summarise(pd.DataFrame({"y": [1.0, 3.0]}))
+        assert out["y"].iloc[0] == 2.0
+        # Then the integration call uses the same resolver path through
+        # stat_summary, so a build round-trip must also succeed.
         df = pd.DataFrame({"x": [1, 1, 2, 2], "y": [1, 3, 2, 4]})
-        p = ggplot(df, aes("x", "y")) + stat_summary(fun_y="mean")
+        p = ggplot(df, aes("x", "y")) + stat_summary(fun="mean")
         built = ggplot_build(p)
+        assert built is not None
 
 
 # ===========================================================================
