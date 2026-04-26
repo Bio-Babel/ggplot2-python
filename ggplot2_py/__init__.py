@@ -7,7 +7,7 @@ approach to creating statistical visualizations.
 
 from __future__ import annotations
 
-__version__ = "4.0.2.9000.post1"
+__version__ = "4.0.2.9000.post3"
 __r_commit__ = "c02c05a"
 
 # ---------------------------------------------------------------------------
