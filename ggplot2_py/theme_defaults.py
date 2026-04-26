@@ -24,6 +24,7 @@ from ggplot2_py.theme_elements import (
     margin_auto,
     rel,
 )
+from ggplot2_py._compat import NA
 from ggplot2_py.theme import Theme, theme, theme_replace_op
 
 __all__ = [
@@ -298,7 +299,7 @@ def theme_grey(
         ),
 
         # Legend
-        legend_background=element_rect(colour=None),
+        legend_background=element_rect(colour=NA),
         legend_spacing=rel(2),
         legend_spacing_x=None,
         legend_spacing_y=None,
@@ -322,7 +323,7 @@ def theme_grey(
         # Panel
         panel_background=element_rect(
             fill=_col_mix(ink, paper, 0.92),
-            colour=None,
+            colour=NA,
         ),
         panel_border=element_blank(),
         panel_grid=element_line(colour=paper),
@@ -335,7 +336,7 @@ def theme_grey(
         # Strip
         strip_background=element_rect(
             fill=_col_mix(ink, paper, 0.85),
-            colour=None,
+            colour=NA,
         ),
         strip_clip="on",
         strip_text=element_text(
@@ -442,7 +443,7 @@ def theme_bw(
     )
     override = theme(
         complete=True,
-        panel_background=element_rect(fill=paper, colour=None),
+        panel_background=element_rect(fill=paper, colour=NA),
         panel_border=element_rect(colour=_col_mix(ink, paper, 0.2)),
         panel_grid=element_line(colour=_col_mix(ink, paper, 0.92)),
         panel_grid_minor=element_line(linewidth=rel(0.5)),
@@ -576,7 +577,7 @@ def theme_light(
     )
     override = theme(
         complete=True,
-        panel_background=element_rect(fill=paper, colour=None),
+        panel_background=element_rect(fill=paper, colour=NA),
         panel_border=element_rect(
             colour=_col_mix(ink, paper, 0.702),
             linewidth=rel(1),
@@ -590,7 +591,7 @@ def theme_light(
         ),
         strip_background=element_rect(
             fill=_col_mix(ink, paper, 0.702),
-            colour=None,
+            colour=NA,
         ),
         strip_text=element_text(
             colour=paper,
@@ -656,7 +657,7 @@ def theme_dark(
         complete=True,
         panel_background=element_rect(
             fill=_col_mix(ink, paper, 0.499),
-            colour=None,
+            colour=NA,
         ),
         panel_grid=element_line(colour=_col_mix(ink, paper, 0.42)),
         panel_grid_major=element_line(linewidth=rel(0.5)),
@@ -667,7 +668,7 @@ def theme_dark(
         ),
         strip_background=element_rect(
             fill=_col_mix(ink, paper, 0.15),
-            colour=None,
+            colour=NA,
         ),
         strip_text=element_text(
             colour=_col_mix(ink, paper, 0.899),
@@ -739,7 +740,7 @@ def theme_minimal(
         panel_background=element_blank(),
         panel_border=element_blank(),
         strip_background=element_blank(),
-        plot_background=element_rect(fill=paper, colour=None),
+        plot_background=element_rect(fill=paper, colour=NA),
     )
     return theme_replace_op(base, override)
 
@@ -859,7 +860,7 @@ def theme_void(
         line=element_blank(),
         rect=element_rect(
             fill=paper,
-            colour=None,
+            colour=NA,
             linewidth=0,
             linetype=1,
             linejoin="round",
@@ -1115,7 +1116,7 @@ def theme_test(
         ),
 
         # Legend
-        legend_background=element_rect(colour=None),
+        legend_background=element_rect(colour=NA),
         legend_spacing=rel(2),
         legend_spacing_x=None,
         legend_spacing_y=None,
@@ -1139,7 +1140,7 @@ def theme_test(
         legend_box_spacing=rel(2),
 
         # Panel
-        panel_background=element_rect(fill=paper, colour=None),
+        panel_background=element_rect(fill=paper, colour=NA),
         panel_border=element_rect(colour=_col_mix(ink, paper, 0.2)),
         panel_grid_major=element_blank(),
         panel_grid_minor=element_blank(),

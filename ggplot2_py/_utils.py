@@ -33,6 +33,12 @@ __all__ = [
     "width_cm",
     "height_cm",
     "stapled_to_list",
+    "cut_interval",
+    "cut_number",
+    "cut_width",
+    "transform_position",
+    "fill_alpha",
+    "pattern_alpha",
 ]
 
 T = TypeVar("T")
@@ -594,3 +600,172 @@ def stapled_to_list(x: Any) -> list:
     if x is None:
         return []
     return [x]
+
+
+# ---------------------------------------------------------------------------
+# Discretisation (utilities-break.R)
+# ---------------------------------------------------------------------------
+
+def _cut_breaks(x: Any, equal: str, nbins: Optional[int],
+                binwidth: Optional[float]) -> np.ndarray:
+    """Compute cut boundaries.  Mirrors R's ``utilities-break.R::breaks``."""
+    if equal not in ("numbers", "width"):
+        raise ValueError("equal must be 'numbers' or 'width'")
+    if (nbins is not None) == (binwidth is not None):
+        raise ValueError("Specify exactly one of `n` and `width`.")
+    arr = np.asarray(x, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if len(arr) == 0:
+        return np.array([])
+    rng = (arr.min(), arr.max())
+    if equal == "width":
+        if binwidth is not None:
+            from scales import fullseq
+            return np.asarray(fullseq(rng, binwidth))
+        return np.linspace(rng[0], rng[1], int(nbins) + 1)
+    # equal == "numbers"
+    if binwidth is not None:
+        probs = np.arange(0.0, 1.0 + 1e-12, binwidth)
+    else:
+        probs = np.linspace(0.0, 1.0, int(nbins) + 1)
+    return np.quantile(arr, probs)
+
+
+def cut_interval(x: Any, n: Optional[int] = None,
+                 length: Optional[float] = None, **kwargs: Any) -> Any:
+    """Discretise *x* into *n* equal-range bins (or bins of *length*).
+
+    Mirrors R ``cut_interval`` (utilities-break.R:26-31).
+    """
+    if (n is None) == (length is None):
+        raise ValueError("Specify exactly one of `n` and `length`.")
+    breaks = _cut_breaks(x, "width", nbins=n, binwidth=length)
+    return pd.cut(np.asarray(x, dtype=float), bins=breaks,
+                  include_lowest=True, **kwargs)
+
+
+def cut_number(x: Any, n: Optional[int] = None, **kwargs: Any) -> Any:
+    """Discretise *x* into *n* bins each holding ~equal counts.
+
+    Mirrors R ``cut_number`` (utilities-break.R:35-40).
+    """
+    if n is None:
+        raise ValueError("`n` must be supplied.")
+    breaks = _cut_breaks(x, "numbers", nbins=n, binwidth=None)
+    if len(np.unique(breaks)) != len(breaks):
+        raise ValueError(f"Insufficient data values to produce {n} bins.")
+    return pd.cut(np.asarray(x, dtype=float), bins=breaks,
+                  include_lowest=True, **kwargs)
+
+
+def cut_width(x: Any, width: float,
+              center: Optional[float] = None,
+              boundary: Optional[float] = None,
+              closed: str = "right", **kwargs: Any) -> Any:
+    """Discretise *x* into bins of fixed *width*.
+
+    Mirrors R ``cut_width`` (utilities-break.R:55-90) — including the
+    boundary / center alignment and the 1e-8 ``max`` correction so an
+    integer multiple of width doesn't spawn an extra empty bin.
+    """
+    if closed not in ("right", "left"):
+        raise ValueError("`closed` must be 'right' or 'left'.")
+    if boundary is not None and center is not None:
+        raise ValueError("Only one of `boundary` and `center` may be specified.")
+    arr = np.asarray(x, dtype=float)
+    finite = arr[np.isfinite(arr)]
+    if len(finite) == 0:
+        return arr
+    width_f = float(width)
+    if boundary is None:
+        boundary = (center - width_f / 2.0) if center is not None else width_f / 2.0
+    boundary_f = float(boundary)
+    rng_min, rng_max = float(finite.min()), float(finite.max())
+    min_x = boundary_f + np.floor((rng_min - boundary_f) / width_f) * width_f
+    max_x = rng_max + (1 - 1e-8) * width_f
+    # R: ``seq(min_x, max_x, width)`` — fixed step, never overshoots.
+    n_steps = int(np.floor((max_x - min_x) / width_f + 1e-9))
+    breaks = min_x + np.arange(n_steps + 1) * width_f
+    return pd.cut(arr, bins=breaks, include_lowest=True,
+                  right=(closed == "right"), **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Position transformer (position-.R:277-292)
+# ---------------------------------------------------------------------------
+
+def transform_position(df: pd.DataFrame,
+                       trans_x: Optional[Any] = None,
+                       trans_y: Optional[Any] = None,
+                       *args: Any, **kwargs: Any) -> pd.DataFrame:
+    """Apply *trans_x* / *trans_y* to all x- / y-family aesthetics in *df*.
+
+    Mirrors R ``transform_position``.  Position aesthetics (x, xmin,
+    xmax, xend, xintercept, ...) all receive the same transformation,
+    keeping derived columns consistent with the primary axis.
+    """
+    from ggplot2_py.aes import X_AES, Y_AES
+
+    out = df.copy()
+    cols = list(out.columns)
+    if trans_x is not None:
+        for c in cols:
+            if c in X_AES:
+                out[c] = trans_x(out[c], *args, **kwargs)
+    if trans_y is not None:
+        for c in cols:
+            if c in Y_AES:
+                out[c] = trans_y(out[c], *args, **kwargs)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Alpha helpers (utilities-patterns.R)
+# ---------------------------------------------------------------------------
+
+def fill_alpha(fill: Any, alpha: Any) -> Any:
+    """Apply *alpha* to *fill* — colour strings get ``scales::alpha``,
+    pattern fills (gradient / pattern objects) get ``pattern_alpha``.
+
+    Mirrors R ``fill_alpha`` (utilities-patterns.R:25-72).
+    """
+    if fill is None:
+        return None
+    # GridPattern-likes (LinearGradient, RadialGradient, Pattern)
+    if hasattr(fill, "colours") or type(fill).__name__ in (
+        "LinearGradient", "RadialGradient", "Pattern"
+    ):
+        return pattern_alpha(fill, alpha)
+    if isinstance(fill, (list, tuple, np.ndarray)) and len(fill) > 0 and (
+        hasattr(fill[0], "colours") or type(fill[0]).__name__ in (
+            "LinearGradient", "RadialGradient", "Pattern"
+        )
+    ):
+        if np.isscalar(alpha):
+            return [pattern_alpha(f, alpha) for f in fill]
+        return [pattern_alpha(f, a) for f, a in zip(fill, alpha)]
+    # Plain colour vector
+    from scales import alpha as _scales_alpha
+    return _scales_alpha(fill, alpha)
+
+
+def pattern_alpha(x: Any, alpha: Any) -> Any:
+    """Apply *alpha* to a grid pattern's colour stops.
+
+    Mirrors R ``pattern_alpha`` (utilities-patterns.R:74-118).  Operates
+    on ``LinearGradient`` / ``RadialGradient`` / ``Pattern`` objects by
+    re-running ``alpha`` over their internal colour list.
+    """
+    if x is None:
+        return None
+    # Plain colour vector path — fall through to scales.alpha
+    if not hasattr(x, "colours"):
+        from scales import alpha as _scales_alpha
+        return _scales_alpha(x, alpha)
+    # GridPattern path — clone with alpha-scaled colours
+    from scales import alpha as _scales_alpha
+    new_colours = list(_scales_alpha(x.colours, alpha))
+    cloned = type(x).__new__(type(x))
+    cloned.__dict__.update(x.__dict__)
+    cloned.colours = new_colours
+    return cloned

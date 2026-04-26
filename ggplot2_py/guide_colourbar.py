@@ -22,6 +22,7 @@ from grid_py import (
     Gpar,
     Unit,
     Viewport,
+    linear_gradient,
     null_grob,
     raster_grob,
     rect_grob,
@@ -265,27 +266,29 @@ def build_colourbar_decor(
     decor: Dict[str, Any],
     direction: str = "vertical",
     display: str = "raster",
+    reverse: bool = False,
 ) -> Dict[str, Any]:
     """Build the colour bar grob.
 
     Mirrors ``GuideColourbar$build_decor`` (guide-colorbar.R:360-413).
 
-    Supports two display modes:
+    Supports all three display modes from R:
     - ``"raster"``: a single ``raster_grob`` with interpolated colours
       (default, matches R's default)
     - ``"rectangles"``: individual ``rect_grob`` for each colour bin
-
-    The ``"gradient"`` mode (using ``linearGradient``) is deferred pending
-    grid_py gradient support.
+    - ``"gradient"``: a single ``rect_grob`` filled with a real
+      ``LinearGradient`` (vector-clean SVG / PDF output via
+      ``grid_py.linear_gradient``)
 
     Parameters
     ----------
     decor : dict
-        From :func:`extract_colourbar_decor`.
+        From :func:`extract_colourbar_decor`.  Must carry
+        ``"colour"`` and (for ``"gradient"``) ``"value"``.
     direction : str
         ``"vertical"`` or ``"horizontal"``.
     display : str
-        ``"raster"`` or ``"rectangles"``.
+        ``"raster"``, ``"rectangles"``, or ``"gradient"``.
 
     Returns
     -------
@@ -341,8 +344,51 @@ def build_colourbar_decor(
                 gp=Gpar(col=None, fill=colours),
                 name="colourbar.bar",
             )
+
+    elif display == "gradient":
+        # R: guide-colorbar.R:394-407 — fill one rect with a vector
+        # ``linearGradient`` so SVG / PDF output stays resolution-clean.
+        # R's reverse branch rescales decor$value to ``c(1, 0)`` instead
+        # of ``c(0, 1)``, which (combined with the upstream reversal of
+        # both colour and value in extract_decor) keeps the high-value
+        # colour at the *bottom* of a vertical bar. Mirror that exactly:
+        # if reverse, build descending stops so the parallel colour
+        # vector lines up with R's `linearGradient(colours, stops=...)`.
+        values_arr = np.asarray(decor["value"], dtype=float)
+        vmin, vmax = float(values_arr.min()), float(values_arr.max())
+        if vmax == vmin:
+            stops = np.zeros_like(values_arr)
+        else:
+            stops_norm = (values_arr - vmin) / (vmax - vmin)
+            stops = 1.0 - stops_norm if reverse else stops_norm
+
+        # R: switch(direction,
+        #   horizontal = list(y1 = unit(0.5, "npc"), y2 = unit(0.5, "npc")),
+        #   vertical   = list(x1 = unit(0.5, "npc"), x2 = unit(0.5, "npc")))
+        if direction == "horizontal":
+            position_kwargs = dict(
+                y1=Unit(0.5, "npc"),
+                y2=Unit(0.5, "npc"),
+            )
+        else:
+            position_kwargs = dict(
+                x1=Unit(0.5, "npc"),
+                x2=Unit(0.5, "npc"),
+            )
+
+        gradient = linear_gradient(
+            colours=list(colours),
+            stops=stops.tolist(),
+            **position_kwargs,
+        )
+        bar = rect_grob(
+            gp=Gpar(fill=gradient, col=None),
+            name="colourbar.bar",
+        )
+
     else:
-        # Fallback to raster
+        # Unknown display mode — fall back to raster (R `arg_match0` would
+        # already have raised at the constructor; this keeps render robust).
         return build_colourbar_decor(decor, direction, display="raster")
 
     # Frame around the bar

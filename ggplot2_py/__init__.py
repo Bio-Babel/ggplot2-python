@@ -671,7 +671,18 @@ from ggplot2_py.autoplot import autoplot, autolayer
 # ---------------------------------------------------------------------------
 # Utility re-exports (matching R namespace)
 # ---------------------------------------------------------------------------
-from ggplot2_py._utils import resolution, remove_missing
+from ggplot2_py._utils import (
+    resolution, remove_missing,
+    cut_interval, cut_number, cut_width,
+    transform_position, fill_alpha, pattern_alpha,
+)
+from ggplot2_py._defaults import (
+    update_geom_defaults, update_stat_defaults,
+    reset_geom_defaults, reset_stat_defaults,
+    get_geom_defaults,
+)
+# zeroGrob alias for R parity (ggplot2 imports it from grid)
+from grid_py import null_grob as zeroGrob
 
 # grid re-exports (matching R: importFrom(grid, unit, arrow))
 from grid_py import Unit as unit, arrow
@@ -865,8 +876,13 @@ __all__ = [
     "autoplot", "autolayer",
     # Utilities
     "resolution", "remove_missing",
+    "cut_interval", "cut_number", "cut_width",
+    "transform_position", "fill_alpha", "pattern_alpha",
+    "update_geom_defaults", "update_stat_defaults",
+    "reset_geom_defaults", "reset_stat_defaults",
+    "get_geom_defaults",
     "unit", "arrow", "alpha",
-    "PT", "STROKE",
+    "PT", "STROKE", "zeroGrob",
     # Plugin discovery
     "discover_extensions", "list_extensions",
 ]

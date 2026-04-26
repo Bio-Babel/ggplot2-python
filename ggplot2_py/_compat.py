@@ -32,6 +32,8 @@ __all__ = [
     "Waiver",
     "is_waiver",
     "waiver",
+    "NA",
+    "is_na",
     "caller_arg",
 ]
 
@@ -103,22 +105,24 @@ def cli_inform(
     call: Optional[str] = None,
     **kwargs: Any,
 ) -> None:
-    """Emit an informational message (no-op by default).
+    """Emit an informational message via Python's :mod:`warnings`.
 
-    In interactive sessions this could print; in batch mode it stays silent.
-    Override by monkey-patching if verbose output is desired.
+    Mirrors R ``cli::cli_inform`` / ``rlang::inform`` which always write
+    to stderr regardless of session type. Routing through ``warnings``
+    lets pytest, ``warnings.catch_warnings``, and user filters capture
+    or silence the message — matching the way R lets users wrap
+    ``suppressMessages({...})`` around an expression.
 
     Parameters
     ----------
     message : str
         Informational message.
     call : str, optional
-        Name of the calling function.
+        Name of the calling function (unused; matches R signature).
     **kwargs : Any
         Substitution values for placeholders in *message*.
     """
-    # Intentionally silent – mirrors rlang::inform() in non-interactive R.
-    pass
+    warnings.warn(message, UserWarning, stacklevel=2)
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +438,49 @@ def waiver() -> Waiver:
         The singleton waiver instance.
     """
     return Waiver()
+
+
+# ---------------------------------------------------------------------------
+# NA sentinel (R parity)
+# ---------------------------------------------------------------------------
+#
+# R distinguishes ``NULL`` (unspecified, inherits from parent) from ``NA``
+# (explicitly absent, must NOT inherit). Python collapses both onto
+# ``None`` by default, which silently breaks theme inheritance — e.g.
+# ``element_rect(fill="grey92", colour=NA)`` should keep the missing
+# border on merge, but Python would replace ``None`` with the parent
+# ``rect`` element's ``"black"``. This sentinel preserves R's NA
+# semantics through ``combine_elements``.
+
+class _NA:
+    """Sentinel for R's ``NA`` — explicitly absent, never inherited."""
+
+    _instance: Optional["_NA"] = None
+
+    def __new__(cls) -> "_NA":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "NA"
+
+    def __bool__(self) -> bool:
+        return False
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, _NA)
+
+    def __hash__(self) -> int:
+        return 0
+
+
+NA = _NA()
+
+
+def is_na(x: Any) -> bool:
+    """Return True iff *x* is the singleton :data:`NA` sentinel."""
+    return isinstance(x, _NA)
 
 
 def is_waiver(x: Any) -> bool:

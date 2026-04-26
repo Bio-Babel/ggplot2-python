@@ -517,9 +517,11 @@ def _table_add_legends(
 
         suppressed_aes |= set(getattr(guides, "suppressed_aesthetics", set()) or set())
 
-        guides_dict = getattr(guides, "guides", None)
-        if isinstance(guides_dict, dict):
-            for ak, av in guides_dict.items():
+        guides_field = getattr(guides, "guides", None)
+        if isinstance(guides_field, dict):
+            # Pre-build form: ``{aesthetic: Guide}`` straight from the
+            # user's ``guides(...)`` call.
+            for ak, av in guides_field.items():
                 if av is None:
                     continue
                 if (
@@ -530,6 +532,18 @@ def _table_add_legends(
                     suppressed_aes.add(ak)
                 else:
                     user_guide_by_aes[ak] = av
+        elif isinstance(guides_field, list):
+            # Post-``Guides.train`` form: ``self.guides`` is a parallel
+            # list to ``self.aesthetics``. Zip them so guide-level
+            # parameters (``display``, ``nbin``, ``position``, ...) keep
+            # flowing into the per-aesthetic resolver below.
+            aes_list = getattr(guides, "aesthetics", []) or []
+            for ak, av in zip(aes_list, guides_field):
+                if av is None or isinstance(av, GuideNone):
+                    if av is not None:
+                        suppressed_aes.add(ak)
+                    continue
+                user_guide_by_aes[ak] = av
 
     # ------------------------------------------------------------------
     # Per-entry position resolution. Mirrors R's ``Guides$assemble``
@@ -552,6 +566,24 @@ def _table_add_legends(
             if pos:
                 return pos
         return _default_position
+
+    def _resolve_entry_param(aes_name: str, scale_obj: Any, key: str, default: Any) -> Any:
+        """Pull a guide-level parameter (``display``, ``nbin``, ...).
+
+        Mirrors the resolution order R uses: user-level ``guides()``
+        wins, then ``scale_<aes>_*(guide=...)`` if present.
+        """
+        g_user = user_guide_by_aes.get(aes_name)
+        if g_user is not None and hasattr(g_user, "params"):
+            v = g_user.params.get(key)
+            if v is not None:
+                return v
+        sc_guide = getattr(scale_obj, "guide", None) if scale_obj is not None else None
+        if sc_guide is not None and hasattr(sc_guide, "params"):
+            v = sc_guide.params.get(key)
+            if v is not None:
+                return v
+        return default
 
     for sc in np_scales.scales:
         aes_name = sc.aesthetics[0] if sc.aesthetics else "unknown"
@@ -621,6 +653,12 @@ def _table_add_legends(
             "is_binned": sc.__class__.__name__.startswith("ScaleBinned") or
                          getattr(sc, "guide", None) in ("bins", "coloursteps"),
             "position": _resolve_entry_position(aes_name, sc),
+            # Guide-level colourbar params — needed by the colourbar
+            # render branch below to honour user-set ``display`` /
+            # ``nbin`` / ``reverse`` from ``guide_colourbar(...)``.
+            "display": _resolve_entry_param(aes_name, sc, "display", "raster"),
+            "nbin": _resolve_entry_param(aes_name, sc, "nbin", 300),
+            "reverse": bool(_resolve_entry_param(aes_name, sc, "reverse", False)),
         })
 
     if not raw_entries:
@@ -645,6 +683,9 @@ def _table_add_legends(
                 "is_continuous": entry.get("is_continuous", False),
                 "is_binned": entry.get("is_binned", False),
                 "position": entry.get("position", _default_position),
+                "display": entry.get("display", "raster"),
+                "nbin": entry.get("nbin", 300),
+                "reverse": entry.get("reverse", False),
             }
     entries = list(merged.values())
 
@@ -848,12 +889,20 @@ def _table_add_legends(
         if is_colour_fill and is_continuous and sc is not None:
             title_grob = _build_legend_title_grob(entry["title"])
 
-            # Extract dense colour sequence
-            decor = extract_colourbar_decor(sc, nbin=300)
+            # R parity: ``guide_colourbar(display=, nbin=, reverse=)``
+            # propagate from the user / scale guide via _resolve_entry_param.
+            cb_display = entry.get("display", "raster")
+            cb_nbin = int(entry.get("nbin", 300))
+            cb_reverse = bool(entry.get("reverse", False))
 
-            # Build bar grob (raster mode)
-            bar_parts = build_colourbar_decor(decor, direction="vertical",
-                                              display="raster")
+            decor = extract_colourbar_decor(
+                sc, nbin=cb_nbin, reverse=cb_reverse,
+            )
+
+            bar_parts = build_colourbar_decor(
+                decor, direction="vertical", display=cb_display,
+                reverse=cb_reverse,
+            )
 
             # Build tick labels
             limits = sc.get_limits()

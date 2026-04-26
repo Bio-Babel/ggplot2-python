@@ -1242,7 +1242,13 @@ def combine_elements(e1: Any, e2: Any) -> Any:
             return e2
         return e1
 
-    # Fill None properties of e1 from e2
+    # Fill None properties of e1 from e2.
+    # R parity: ``NA`` (our :class:`_NA` sentinel) is an *explicit*
+    # absence and must never inherit; only true ``None`` (R ``NULL``)
+    # falls back to the parent. The ``is None`` test below intentionally
+    # excludes NA because ``NA is None`` is False — so
+    # ``element_rect(colour=NA)`` keeps NA through the merge instead of
+    # picking up ``"black"`` from the ``rect`` ancestor.
     if isinstance(e1, Element) and isinstance(e2, Element):
         result = copy.copy(e1)
         for attr in e2.__dict__:
@@ -1334,11 +1340,18 @@ def _grob_from_rect(
 
     Mirrors R's ``element_grob(element_rect, ...)`` which converts
     linewidth (mm) → lwd (points) via ``gg_par(lwd = linewidth)``.
+
+    R's ``NA`` colour/fill (``_compat.NA``) means "do not draw"; we
+    forward ``None`` to grid_py so the renderer skips the stroke / fill,
+    matching R's behaviour.
     """
+    from ggplot2_py._compat import is_na
     lwd_mm = linewidth if linewidth is not None else element.linewidth
+    fill_resolved = fill if fill is not None else element.fill
+    col_resolved = colour if colour is not None else element.colour
     gp = Gpar(
-        fill=fill if fill is not None else element.fill,
-        col=colour if colour is not None else element.colour,
+        fill=None if is_na(fill_resolved) else fill_resolved,
+        col=None if is_na(col_resolved) else col_resolved,
         lwd=float(lwd_mm) * _PT if lwd_mm is not None else None,
         lty=linetype if linetype is not None else element.linetype,
     )
@@ -1365,13 +1378,15 @@ def _grob_from_line(
     multi-segment lines — used for panel gridlines); converts
     ``linewidth`` (mm) → ``lwd`` (points) via ``gg_par(lwd = linewidth)``.
     """
+    from ggplot2_py._compat import is_na
     if x is None:
         x = [0, 1]
     if y is None:
         y = [0, 1]
     lwd_mm = linewidth if linewidth is not None else element.linewidth
+    col_resolved = colour if colour is not None else element.colour
     gp = Gpar(
-        col=colour if colour is not None else element.colour,
+        col=None if is_na(col_resolved) else col_resolved,
         lwd=float(lwd_mm) * _PT if lwd_mm is not None else None,
         lty=linetype if linetype is not None else element.linetype,
         lineend=lineend if lineend is not None else element.lineend,
@@ -1474,11 +1489,13 @@ def _grob_from_text(
     """
     if label is None:
         return null_grob()
+    from ggplot2_py._compat import is_na
+    col_resolved = colour if colour is not None else element.colour
     gp = Gpar(
         fontfamily=family if family is not None else element.family,
         fontface=face if face is not None else element.face,
         fontsize=size if size is not None else element.size,
-        col=colour if colour is not None else element.colour,
+        col=None if is_na(col_resolved) else col_resolved,
         lineheight=lineheight if lineheight is not None else element.lineheight,
     )
     hj = hjust if hjust is not None else (element.hjust if element.hjust is not None else 0.5)
