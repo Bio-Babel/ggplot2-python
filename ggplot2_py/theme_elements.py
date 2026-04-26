@@ -1875,6 +1875,26 @@ _ELEMENT_TREE: Dict[str, Dict[str, Any]] = {
     "plot.tag.location": el_def("character"),
     "plot.margin": el_def("margin", "margins"),
 
+    # Palettes — discrete / continuous, per aesthetic.
+    # Mirrors R: theme-elements.R:1011-1025. Used by ScalesList.set_palettes()
+    # to give each scale a default palette before guides train. The
+    # ``fill`` and (in R) ``color`` aliases inherit from the canonical
+    # ``colour`` slot so a single user override propagates.
+    "palette.colour.discrete":     el_def(("character", "function")),
+    "palette.colour.continuous":   el_def(("character", "function")),
+    "palette.fill.discrete":       el_def(("character", "function"), "palette.colour.discrete"),
+    "palette.fill.continuous":     el_def(("character", "function"), "palette.colour.continuous"),
+    "palette.alpha.discrete":      el_def(("character", "numeric", "integer", "function")),
+    "palette.alpha.continuous":    el_def(("character", "numeric", "integer", "function")),
+    "palette.linewidth.discrete":  el_def(("character", "numeric", "integer", "function")),
+    "palette.linewidth.continuous": el_def(("character", "numeric", "integer", "function")),
+    "palette.size.discrete":       el_def(("character", "numeric", "integer", "function")),
+    "palette.size.continuous":     el_def(("character", "numeric", "integer", "function")),
+    "palette.shape.discrete":      el_def(("character", "numeric", "integer", "function")),
+    "palette.shape.continuous":    el_def(("character", "numeric", "integer", "function")),
+    "palette.linetype.discrete":   el_def(("character", "numeric", "integer", "function")),
+    "palette.linetype.continuous": el_def(("character", "numeric", "integer", "function")),
+
     # Aspect ratio
     "aspect.ratio": el_def("numeric"),
 }

@@ -234,8 +234,11 @@ def draw_axis(
                           fallback={"colour": "grey30", "size": 8, "angle": 0,
                                     "hjust": None, "vjust": None})
 
-    # Tick length from theme (R: elements$major_length / minor_length)
-    # R theme default: axis.ticks.length = unit(2.75, "pt")
+    # Tick length from theme (R: elements$major_length / minor_length).
+    # R theme default: ``axis.ticks.length = unit(2.75, "pt")``. We keep
+    # this as a Unit so the panel-size-independent compound expression
+    # ``unit(orth_side, "npc") + sign * unit(2.75, "pt")`` survives all
+    # the way to grid_py's renderer (mirrors R `guide-.R::Guide$build_ticks`).
     tick_length = _resolve_tick_length(theme, aes)
     minor_tick_length = tick_length * 0.5  # R: axis.minor.ticks.length = rel(0.75)
 
@@ -267,21 +270,36 @@ def draw_axis(
     tick_lwd = float(tick_el.get("linewidth", 0.5)) * _PT
     tick_col = tick_el.get("colour", "grey20")
 
+    # Compound-unit endpoints — mirror R `guide-.R::Guide$build_ticks`:
+    #   pos  <- unit(orth_side, "npc")
+    #   tick <- pos + sign * unit(tick_length, "pt")
+    # The `pt` term keeps tick length panel-size-independent; the older
+    # NPC float (computed assuming a 14 cm panel) drifted on any other
+    # panel size.
+    n_breaks = len(breaks)
+
+    def _ticks_endpoint(length_unit: Unit, n: int) -> Unit:
+        # Replicate the scalar tick-length unit n times and combine with
+        # the orth-side npc vector (so the result is parallel to breaks).
+        signed = length_unit * tick_sign
+        signed_vec = unit_c(*([signed] * n))
+        return Unit([orth_side] * n, "npc") + signed_vec
+
     if is_horizontal:
         major_ticks = segments_grob(
-            x0=breaks.tolist(),
-            y0=[orth_side] * len(breaks),
-            x1=breaks.tolist(),
-            y1=[orth_side + tick_sign * tick_length] * len(breaks),
+            x0=Unit(breaks.tolist(), "npc"),
+            y0=Unit([orth_side] * n_breaks, "npc"),
+            x1=Unit(breaks.tolist(), "npc"),
+            y1=_ticks_endpoint(tick_length, n_breaks),
             gp=Gpar(col=tick_col, lwd=tick_lwd),
             name="axis.ticks.major",
         )
     else:
         major_ticks = segments_grob(
-            x0=[orth_side] * len(breaks),
-            y0=breaks.tolist(),
-            x1=[orth_side + tick_sign * tick_length] * len(breaks),
-            y1=breaks.tolist(),
+            x0=Unit([orth_side] * n_breaks, "npc"),
+            y0=Unit(breaks.tolist(), "npc"),
+            x1=_ticks_endpoint(tick_length, n_breaks),
+            y1=Unit(breaks.tolist(), "npc"),
             gp=Gpar(col=tick_col, lwd=tick_lwd),
             name="axis.ticks.major",
         )
@@ -292,22 +310,23 @@ def draw_axis(
     if minor_ticks and minor_positions is not None:
         minor_pos = np.asarray(minor_positions, dtype=float)
         minor_pos = np.array([p for p in minor_pos if p not in breaks])
-        if len(minor_pos) > 0:
+        n_minor = len(minor_pos)
+        if n_minor > 0:
             if is_horizontal:
                 minor_grob = segments_grob(
-                    x0=minor_pos.tolist(),
-                    y0=[orth_side] * len(minor_pos),
-                    x1=minor_pos.tolist(),
-                    y1=[orth_side + tick_sign * minor_tick_length] * len(minor_pos),
+                    x0=Unit(minor_pos.tolist(), "npc"),
+                    y0=Unit([orth_side] * n_minor, "npc"),
+                    x1=Unit(minor_pos.tolist(), "npc"),
+                    y1=_ticks_endpoint(minor_tick_length, n_minor),
                     gp=Gpar(col=tick_col, lwd=tick_lwd * 0.5),
                     name="axis.ticks.minor",
                 )
             else:
                 minor_grob = segments_grob(
-                    x0=[orth_side] * len(minor_pos),
-                    y0=minor_pos.tolist(),
-                    x1=[orth_side + tick_sign * minor_tick_length] * len(minor_pos),
-                    y1=minor_pos.tolist(),
+                    x0=Unit([orth_side] * n_minor, "npc"),
+                    y0=Unit(minor_pos.tolist(), "npc"),
+                    x1=_ticks_endpoint(minor_tick_length, n_minor),
+                    y1=Unit(minor_pos.tolist(), "npc"),
                     gp=Gpar(col=tick_col, lwd=tick_lwd * 0.5),
                     name="axis.ticks.minor",
                 )
@@ -575,41 +594,37 @@ def _is_blank(el: Any) -> bool:
     return getattr(el, "__class__", None).__name__ == "ElementBlank"
 
 
-def _resolve_tick_length(theme: Any, aes: str) -> float:
-    """Get tick length in NPC units from theme.
+def _resolve_tick_length(theme: Any, aes: str) -> Unit:
+    """Get tick length as a :class:`grid_py.Unit` from the theme.
 
-    R: ``axis.ticks.length`` defaults to ``unit(2.75, "pt")``.
-    Returns a float in NPC for positioning (approximate).
-    """
-    from ggplot2_py.theme_elements import calc_element
-    # Try to get the theme's tick length
-    el = None
-    for name in [f"axis.ticks.length.{aes}", "axis.ticks.length"]:
-        el = calc_element(name, theme)
-        if el is not None:
-            break
-    if el is not None and isinstance(el, Unit):
-        # Convert to approximate NPC (assuming ~400pt panel = ~14cm)
-        try:
-            from grid_py import convert_height
-            cm_val = convert_height(el, "cm", valueOnly=True)
-            return float(np.sum(cm_val)) / 14.0  # rough NPC
-        except Exception:
-            pass
-    # Default: 2.75pt ≈ 0.097cm → ~0.007 of a 14cm panel
-    # Use a sensible NPC default
-    return 0.03
+    Mirrors R: ``axis.ticks.length`` defaults to ``unit(2.75, "pt")``.
+    Returning a real Unit (instead of an NPC float) lets the caller
+    combine it with ``Unit(orth_side, "npc")`` to build the panel-size-
+    independent compound expression R uses (``sum(1npc, -2.75points)``,
+    see ``guide-.R::Guide$build_ticks``).
 
+    Parameters
+    ----------
+    theme : Theme
+    aes : str
+        Aesthetic name (``"x"`` or ``"y"``); used to look up
+        ``axis.ticks.length.<aes>`` before falling back to the global
+        ``axis.ticks.length`` (R inheritance order).
 
-def _resolve_tick_length_unit(theme: Any, aes: str) -> Unit:
-    """Get tick length as a proper Unit from theme.
-
-    R: ``axis.ticks.length`` defaults to ``unit(2.75, "pt")``.
+    Returns
+    -------
+    Unit
     """
     from ggplot2_py.theme_elements import calc_element
     for name in [f"axis.ticks.length.{aes}", "axis.ticks.length"]:
         el = calc_element(name, theme)
         if el is not None and isinstance(el, Unit):
             return el
-    # Default: 2.75 pt (R's default)
     return Unit(2.75, "points")
+
+
+# Back-compat alias — older callers (e.g., guide_axis_logticks helpers)
+# may import the explicit *_unit name. Keep both pointing at the same
+# implementation so neither path silently falls back to the old NPC
+# magic-number heuristic.
+_resolve_tick_length_unit = _resolve_tick_length

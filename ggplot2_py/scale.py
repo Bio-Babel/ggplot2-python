@@ -2224,6 +2224,52 @@ class ScalesList:
         new.scales = [s.clone() for s in self.scales]
         return new
 
+    def set_palettes(self, theme: Any) -> None:
+        """Initialise each scale's palette from the theme.
+
+        Mirrors R: ``scales-.R:174-205`` — for every scale that doesn't
+        already carry a user-supplied palette, look up the theme element
+        ``palette.<aesthetic>.<discrete|continuous>``; fall back to
+        ``scale.fallback_palette`` if the theme is silent.  Without this
+        step, a guide that calls ``scale.map()`` before any layer has
+        triggered ``map_df``'s fallback assignment crashes on
+        ``self.palette is None``.
+
+        Parameters
+        ----------
+        theme : Theme
+            Resolved plot theme, after ``complete_theme``.
+        """
+        from ggplot2_py.theme_elements import calc_element
+
+        for scale in self.scales:
+            if scale.palette is not None:
+                continue
+
+            type_ = "discrete" if scale.is_discrete() else "continuous"
+
+            # R: elem <- compact(lapply(elem, calc_element, theme))[1][[1]]
+            # Try every aesthetic this scale carries; first hit wins.
+            elem: Any = None
+            for aes in scale.aesthetics:
+                candidate = calc_element(f"palette.{aes}.{type_}", theme)
+                if candidate is not None:
+                    elem = candidate
+                    break
+
+            # R: elem <- elem %||% fetch_ggproto(scale, "fallback_palette")
+            if elem is None:
+                elem = getattr(scale, "fallback_palette", None)
+
+            palette = _coerce_palette(elem, type_)
+
+            if palette is not None and not callable(palette):
+                cli_warn(
+                    f"Failed to find palette for {scale.aesthetics[0]} scale."
+                )
+
+            scale.palette = palette
+
     def non_position_scales(self) -> "ScalesList":
         """Return a new ScalesList with only non-position scales."""
         new = ScalesList()
@@ -2348,6 +2394,67 @@ def scales_list() -> ScalesList:
     ScalesList
     """
     return ScalesList()
+
+
+def _coerce_palette(elem: Any, type_: str) -> Optional[Callable]:
+    """Mirror R's ``as_discrete_pal`` / ``as_continuous_pal`` dispatch.
+
+    R's S3 method set:
+      - ``function`` -> identity (already a palette callable)
+      - ``character`` (length>1) -> ``pal_manual`` / ``colour_ramp``
+      - ``character`` (length 1) -> name lookup via ``get_palette``
+      - ``DiscretePalette`` / ``ContinuousPalette`` -> resample/interpolate
+        when the requested polarity differs
+
+    Python's ``scales.as_*_pal`` is stricter (no ``function`` method), so
+    we keep callables as-is and only call the coercion helpers for
+    string / list inputs.
+
+    Parameters
+    ----------
+    elem : Any
+        Theme palette value, fallback callable, or ``None``.
+    type_ : str
+        ``"discrete"`` or ``"continuous"``.
+
+    Returns
+    -------
+    Callable or None
+        The coerced palette, or ``None`` if no source was available.
+    """
+    if elem is None:
+        return None
+
+    # Already a palette object or plain callable — match R's identity dispatch.
+    # ``DiscretePalette`` / ``ContinuousPalette`` are callables; only re-coerce
+    # when the polarity disagrees (discrete scale wants a discrete palette).
+    if callable(elem):
+        from scales import (
+            ContinuousPalette,
+            DiscretePalette,
+            as_continuous_pal,
+            as_discrete_pal,
+        )
+        if type_ == "discrete" and isinstance(elem, ContinuousPalette):
+            return as_discrete_pal(elem)
+        if type_ == "continuous" and isinstance(elem, DiscretePalette):
+            return as_continuous_pal(elem)
+        return elem
+
+    if isinstance(elem, str):
+        from scales import as_continuous_pal, as_discrete_pal
+        return as_discrete_pal(elem) if type_ == "discrete" else as_continuous_pal(elem)
+
+    if isinstance(elem, (list, tuple)):
+        from scales import colour_ramp, pal_manual
+        return pal_manual(list(elem)) if type_ == "discrete" else colour_ramp(list(elem))
+
+    if isinstance(elem, np.ndarray):
+        from scales import colour_ramp, pal_manual
+        seq = elem.tolist()
+        return pal_manual(seq) if type_ == "discrete" else colour_ramp(seq)
+
+    return elem
 
 
 def _default_continuous_scale(aes: str) -> Optional[Scale]:

@@ -45,6 +45,9 @@ __all__ = [
     "AfterScale",
     "Stage",
     "AESTHETIC_ALIASES",
+    "ALL_AESTHETICS",
+    "X_AES",
+    "Y_AES",
     "eval_aes_value",
 ]
 
@@ -67,6 +70,35 @@ AESTHETIC_ALIASES: Dict[str, str] = {
     "max":   "ymax",
 }
 """Port of R ``ggplot_global$base_to_ggplot`` (ggplot-global.R:31-44)."""
+
+
+# ---------------------------------------------------------------------------
+# Master aesthetic registry (ggplot-global.R:18-24)
+# ---------------------------------------------------------------------------
+#
+# Used by stats and qplot-style helpers to distinguish "real" aesthetics
+# from arbitrary parameters / book-keeping columns (``PANEL``, internal
+# ``.row`` markers, etc.).  Keep in lockstep with R's
+# ``ggplot_global$all_aesthetics`` so cross-language behaviour matches.
+ALL_AESTHETICS: List[str] = [
+    "adj", "alpha", "angle", "bg", "cex", "col", "color",
+    "colour", "fg", "fill", "group", "hjust", "label", "linetype", "lower",
+    "lty", "lwd", "max", "middle", "min", "pch", "radius", "sample", "shape",
+    "size", "srt", "upper", "vjust", "weight", "width", "x", "xend", "xmax",
+    "xmin", "xintercept", "y", "yend", "ymax", "ymin", "yintercept", "z",
+]
+
+# X / Y position aesthetics (ggplot-global.R:50-54).  Used by the layout
+# code to recognise aesthetics that map to the position scales.
+X_AES: List[str] = [
+    "x", "xmin", "xmax", "xend", "xintercept",
+    "xmin_final", "xmax_final", "xlower", "xmiddle", "xupper", "x0",
+]
+
+Y_AES: List[str] = [
+    "y", "ymin", "ymax", "yend", "yintercept",
+    "ymin_final", "ymax_final", "lower", "middle", "upper", "y0",
+]
 
 # ---------------------------------------------------------------------------
 # Helper classes for deferred / staged aesthetics

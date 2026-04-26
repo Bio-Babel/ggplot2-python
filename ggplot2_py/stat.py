@@ -5697,6 +5697,16 @@ class StatSum(Stat):
     def compute_panel(self, data: pd.DataFrame, scales: Any, **params: Any) -> pd.DataFrame:
         """Count coincident (x, y) points.
 
+        Mirrors R `stat-sum.R:11-20`:
+        ``group_by <- setdiff(intersect(names(data), ggplot_global$all_aesthetics), "weight")``.
+
+        Restricting the grouping to *known* aesthetics (and excluding
+        ``weight``) is what keeps ``count()`` from producing zero-count
+        rows for unobserved combinations — without this filter,
+        bookkeeping columns like the categorical ``PANEL`` cause pandas
+        groupby with ``observed=False`` to fan out the cartesian product
+        across every unique x, y, ... triple.
+
         Parameters
         ----------
         data : pd.DataFrame
@@ -5707,19 +5717,26 @@ class StatSum(Stat):
         pd.DataFrame
             With columns: x, y, n, prop, plus original constant columns.
         """
+        from ggplot2_py.aes import ALL_AESTHETICS
+
         if "weight" not in data.columns:
             data = data.copy()
             data["weight"] = 1
 
-        # Group by all aesthetic columns except weight
-        group_cols = [c for c in data.columns if c != "weight"]
-        grouped = data.groupby(group_cols, sort=False, dropna=False, observed=False)
+        group_cols = [
+            c for c in data.columns
+            if c in ALL_AESTHETICS and c != "weight"
+        ]
+        # ``observed=True`` matches R's ``count()`` (only emit rows for
+        # observed combinations) and is now safe even when categorical
+        # columns (e.g. ``PANEL``, ``group``) sneak into ``group_cols``.
+        grouped = data.groupby(group_cols, sort=False, dropna=False, observed=True)
         counts = grouped["weight"].sum().reset_index()
         counts.rename(columns={"weight": "n"}, inplace=True)
 
         # Compute prop within each group
         if "group" in counts.columns:
-            group_totals = counts.groupby("group")["n"].transform("sum")
+            group_totals = counts.groupby("group", observed=True)["n"].transform("sum")
             counts["prop"] = counts["n"] / group_totals
         else:
             counts["prop"] = counts["n"] / counts["n"].sum()

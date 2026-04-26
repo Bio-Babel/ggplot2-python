@@ -898,13 +898,23 @@ def _table_add_legends(
         # positions were computed by ``arrange_legend_layout`` but only
         # one column width was allocated in the gtable), producing
         # overlapping key + label glyphs per row.
-        # R ``GuideLegend$setup_params`` (``guide-legend.R:286-298``):
-        # horizontal direction defaults to ``nrow = ceiling(n_breaks / 20)``
-        # then ``ncol = ceiling(n_breaks / nrow)``; vertical mirrors the
-        # transpose (ncol first).  ``_entry_direction`` was set above
-        # based on the resolved legend position.
+        # R ``GuideLegend$setup_params`` (``guide-legend.R:289-294``):
+        #
+        #     if (params$direction == "horizontal") {
+        #       params$nrow <- ceiling(n_breaks / 5)
+        #     } else {
+        #       params$ncol <- ceiling(n_breaks / 20)
+        #     }
+        #
+        # The two divisors are intentionally asymmetric: horizontal
+        # legends bias toward MULTIPLE rows (5 keys per row) so the
+        # legend stays compact; vertical legends bias toward MULTIPLE
+        # columns only past 20 keys. The Python port previously used
+        # 20 for both directions, producing single-row horizontal
+        # layouts up to 20 keys — and a legend ~40% taller than R's
+        # because the row height grew per-entry rather than wrapping.
         if _entry_direction == "horizontal":
-            nrow = max(1, math.ceil(n_breaks / 20))
+            nrow = max(1, math.ceil(n_breaks / 5))
             ncol = max(1, math.ceil(n_breaks / nrow))
         else:
             ncol = max(1, math.ceil(n_breaks / 20))
@@ -1106,7 +1116,12 @@ def _table_add_legends(
         place = find_panel(table)
 
         from ggplot2_py.theme_elements import calc_element as _calc_el
-        from grid_py import Viewport as _Viewport, Unit as _Unit, edit_grob as _edit_grob
+        from grid_py import (
+            Viewport as _Viewport,
+            Unit as _Unit,
+            edit_grob as _edit_grob,
+            valid_just as _valid_just,
+        )
 
         # ``legend.justification.inside`` falls back to
         # ``legend.justification`` (R guides-.R:618-619).  Default in both
@@ -1120,23 +1135,13 @@ def _table_add_legends(
         # not set (R guides-.R:623).
         pos_inside = _calc_el("legend.position.inside", theme) or just_inside
 
-        def _just_to_xy(j: Any) -> Tuple[float, float]:
-            """Coerce justification to (xjust, yjust) in [0,1] like R's
-            ``valid.just`` (utilities-grid.R)."""
-            named = {"left": 0.0, "centre": 0.5, "center": 0.5, "right": 1.0,
-                     "bottom": 0.0, "middle": 0.5, "top": 1.0}
-            if isinstance(j, str):
-                v = named.get(j, 0.5)
-                return (v, v)
-            try:
-                jx, jy = j[0], j[1]
-            except Exception:
-                return (0.5, 0.5)
-            jx = named.get(jx, jx) if isinstance(jx, str) else float(jx)
-            jy = named.get(jy, jy) if isinstance(jy, str) else float(jy)
-            return (float(jx), float(jy))
-
-        xjust, yjust = _just_to_xy(just_inside)
+        # R parity: ``grid:::valid.just`` handles both single-string
+        # ("left" → c(0, 0.5)) and two-element ("right", "top") forms;
+        # grid_py.valid_just is its faithful port and is bit-exact across
+        # the 16-case parity matrix in validation/_verify_valid_just.{R,py}.
+        # The previous local helper symmetrised single strings ("left" →
+        # (0, 0)), which silently broke ``legend.justification = "top"``.
+        xjust, yjust = _valid_just(just_inside)
         try:
             xpos, ypos = float(pos_inside[0]), float(pos_inside[1])
         except (TypeError, IndexError, ValueError):
