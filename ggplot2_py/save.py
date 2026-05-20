@@ -8,9 +8,9 @@ formats via Cairo.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
-from ggplot2_py._compat import cli_abort, cli_warn, cli_inform
+from ggplot2_py._compat import cli_abort, cli_inform
 
 __all__ = [
     "ggsave",
@@ -204,7 +204,7 @@ def ggsave(
         If the target directory does not exist and *create_dir* is
         ``False``.
     """
-    from grid_py import grid_draw, grid_newpage, get_state
+    from grid_py import grid_draw, get_state
     from grid_py.renderer import CairoRenderer
 
     # Resolve DPI
@@ -255,6 +255,11 @@ def ggsave(
     if is_ggplot(plot):
         built = ggplot_build(plot)
         gtable = ggplot_gtable(built)
+    elif hasattr(plot, "to_gtable"):
+        # patchwork-python composes plots as a Patchwork object with an
+        # explicit to_gtable() method. Draw that gtable rather than handing
+        # the wrapper to grid_draw(), which cannot render it directly.
+        gtable = plot.to_gtable()
     else:
         gtable = plot
 

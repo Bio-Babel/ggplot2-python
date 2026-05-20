@@ -1,14 +1,14 @@
-# ggplot2_py <a href="https://github.com/R2pyBioinformatics/ggplot2_py"><img src="assets/ggplot2_py_logo.png" align="right" height="138" alt="ggplot2_py logo" /></a>
+# ggplot2-python <a href="https://github.com/Bio-Babel/ggplot2-python"><img src="assets/ggplot2_py_logo.png" align="right" height="138" alt="ggplot2-python logo" /></a>
 
 [![PyPI](https://img.shields.io/pypi/v/ggplot2-python)](https://pypi.org/project/ggplot2-python/)
 
-AI-assisted Python port of the R **ggplot2** package — Create Elegant Data Visualisations Using the Grammar of Graphics.
+AI-assisted port of the python **ggplot2** package — Create Elegant Data Visualisations Using the Grammar of Graphics.
 
 ## Overview
 
-ggplot2_py implements the grammar of graphics in Python, faithfully porting R's ggplot2 using pandas DataFrames as the data container and a Cairo-based rendering backend. It supports 47 geoms, 32 stats, faceting, coordinate systems, themes, guides, and 130+ scales.
+ggplot2-python implements the grammar of graphics in Python, faithfully porting R's ggplot2 using pandas DataFrames as the data container and a Cairo-based rendering backend. It supports 47 geoms, 32 stats, faceting, coordinate systems, themes, guides, and 130+ scales.
 
-Beyond a direct port, ggplot2_py adds **Python-exclusive features** that extend the Grammar of Graphics with Python-native idioms while preserving full orthogonality of GOG components.
+Beyond a direct port, ggplot2-python adds **Python-exclusive features** that extend the Grammar of Graphics with Python-native idioms while preserving full orthogonality of GOG components.
 
 ## Python-Exclusive Features
 
@@ -36,7 +36,7 @@ For a local development:
 
 ```bash
 git clone https://github.com/Bio-Babel/ggplot2-python.git
-cd ggplot2_py
+cd ggplot2-python
 pip install -e ".[dev]"
 ```
 
@@ -151,11 +151,11 @@ ggplot(mpg, aes("displ", "hwy")) + [geom_point(), geom_smooth(), theme_minimal()
 - [Build Hooks](tutorials/build_hooks.ipynb) — intercepting the 16-stage build pipeline
 
 ### Developer Guide
-- [Developer Guide: Extending ggplot2_py](tutorials/developer_guide.ipynb) — comprehensive guide covering ggproto system, custom Stat/Geom creation, Protocol contracts, singledispatch, hooks, auto-registration, context manager, and packaging
+- [Developer Guide: Extending ggplot2-python](tutorials/developer_guide.ipynb) — comprehensive guide covering ggproto system, custom Stat/Geom creation, Protocol contracts, singledispatch, hooks, auto-registration, context manager, and packaging
 
 ## Extension Architecture
 
-ggplot2_py is designed as an **extensible platform**. The following table summarises all extension points:
+ggplot2-python is designed as an **extensible platform**. The following table summarises all extension points:
 
 | Extension point | Mechanism | How to use |
 |----------------|-----------|-----------|
