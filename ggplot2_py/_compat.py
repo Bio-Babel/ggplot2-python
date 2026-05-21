@@ -8,6 +8,8 @@ ggplot2 relies on, adapted for idiomatic Python usage.
 from __future__ import annotations
 
 import importlib
+import logging
+import sys
 import warnings
 from typing import Any, NoReturn, Optional
 
@@ -41,6 +43,40 @@ __all__ = [
 # ---------------------------------------------------------------------------
 # CLI messaging helpers (rlang / cli replacements)
 # ---------------------------------------------------------------------------
+#
+# R distinguishes three output channels:
+#
+#   * ``cli::cli_abort`` — error stream (``stop``)        → Python ``raise``
+#   * ``cli::cli_warn``  — warning stream (``warning``)   → ``warnings.warn(..., UserWarning)``
+#   * ``cli::cli_inform``— message stream (``message``)   → ``logging.INFO``
+#
+# In R these are three separate streams: ``suppressWarnings`` does not
+# silence messages, ``suppressMessages`` does not silence warnings, and
+# the test framework's ``expect_message`` / ``expect_warning`` discriminate
+# between them.  This Python port matches that split — informational
+# output (e.g. ``ggsave``'s "Saving …", ``stat_bin``'s "using bins = 30")
+# routes through the standard :mod:`logging` module at INFO level so
+# pytest does not count it as a warning, ``warnings.catch_warnings``
+# does not capture it, and ``logging.getLogger("ggplot2_py").setLevel(
+# logging.WARNING)`` mirrors R's ``suppressMessages``.
+
+#: Package-level logger.  Library convention says "do not configure the
+#: root logger" — instead we attach a single :class:`logging.StreamHandler`
+#: to *this* logger and set :attr:`Logger.propagate` to ``False``, so the
+#: handler runs even when the user has not called
+#: :func:`logging.basicConfig` and ours never duplicates onto theirs.
+_logger: logging.Logger = logging.getLogger("ggplot2_py")
+if not _logger.handlers:
+    _handler = logging.StreamHandler(stream=sys.stderr)
+    # R's ``message()`` prints the bare message text (no level/timestamp
+    # prefix); mirror that to keep ggplot2_py output indistinguishable
+    # from the R original.
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    _handler.setLevel(logging.INFO)
+    _logger.addHandler(_handler)
+    _logger.setLevel(logging.INFO)
+    _logger.propagate = False
+
 
 def cli_abort(
     message: str,
@@ -81,7 +117,13 @@ def cli_warn(
     call: Optional[str] = None,
     **kwargs: Any,
 ) -> None:
-    """Issue a ``UserWarning`` with a formatted message.
+    """Issue a ``UserWarning`` — R *warning* stream equivalent.
+
+    Counterpart of :func:`cli_inform`: this function targets the
+    Python warning stream (matching R ``cli::cli_warn`` / ``warning()``),
+    while informational output goes through :mod:`logging` at INFO
+    level.  Keeping the two streams separate preserves R's
+    ``suppressWarnings`` / ``suppressMessages`` granularity.
 
     Parameters
     ----------
@@ -105,24 +147,39 @@ def cli_inform(
     call: Optional[str] = None,
     **kwargs: Any,
 ) -> None:
-    """Emit an informational message via Python's :mod:`warnings`.
+    """Emit an informational message at ``logging.INFO`` level.
 
-    Mirrors R ``cli::cli_inform`` / ``rlang::inform`` which always write
-    to stderr regardless of session type. Routing through ``warnings``
-    lets pytest, ``warnings.catch_warnings``, and user filters capture
-    or silence the message — matching the way R lets users wrap
-    ``suppressMessages({...})`` around an expression.
+    R analogue: ``cli::cli_inform`` / ``rlang::inform`` write to R's
+    *message* stream — informational output that is **distinct from**
+    R's *warning* stream (see :func:`cli_warn`).  Python's natural
+    equivalent is the :mod:`logging` module at INFO level:
+
+    * pytest does not count INFO records as warnings (its
+      ``--strict-warnings`` flag and "warnings summary" only track
+      :mod:`warnings`);
+    * ``warnings.catch_warnings`` does not capture them;
+    * the user opt-out parallels R's ``suppressMessages`` —
+      ``logging.getLogger("ggplot2_py").setLevel(logging.WARNING)``
+      silences cli_inform output without affecting cli_warn.
+
+    By default the package logger has a :class:`logging.StreamHandler`
+    attached at INFO level (R-faithful: ``cli_inform`` messages are
+    visible to stderr unless explicitly suppressed).
 
     Parameters
     ----------
     message : str
-        Informational message.
+        Informational message.  May contain ``{name}``-style placeholders.
     call : str, optional
         Name of the calling function (unused; matches R signature).
     **kwargs : Any
         Substitution values for placeholders in *message*.
     """
-    warnings.warn(message, UserWarning, stacklevel=2)
+    try:
+        formatted = message.format(**kwargs) if kwargs else message
+    except (KeyError, IndexError):
+        formatted = message
+    _logger.info(formatted)
 
 
 # ---------------------------------------------------------------------------

@@ -124,42 +124,25 @@ __all__ = [
 # Utility helpers
 # ---------------------------------------------------------------------------
 
-_POSITION_AESTHETICS = frozenset(
-    [
-        "x",
-        "xmin",
-        "xmax",
-        "xend",
-        "xintercept",
-        "xmin_final",
-        "xmax_final",
-        "xlower",
-        "xmiddle",
-        "xupper",
-        "x0",
-        "y",
-        "ymin",
-        "ymax",
-        "yend",
-        "yintercept",
-        "ymin_final",
-        "ymax_final",
-        "ylower",
-        "ymiddle",
-        "yupper",
-        "y0",
-    ]
-)
+# Canonical x/y position aesthetics — R ref: ``ggplot_global$x_aes`` /
+# ``ggplot_global$y_aes`` (``ggplot-global.R:50-54``).  The single
+# source of truth is :data:`ggplot2_py.aes.X_AES` /
+# :data:`ggplot2_py.aes.Y_AES`; the names below are private aliases
+# re-exported so the (pre-existing) ``ggplot2_py.scales`` module
+# continues to import them by their established names.
+#
+# Note R's deliberate asymmetry: ``x_aes`` carries the *prefixed*
+# forms (``xlower``, ``xmiddle``, ``xupper``) while ``y_aes`` carries
+# the *bare* forms (``lower``, ``middle``, ``upper``) — see the
+# comment in ``ggplot-global.R:48-49``: "These two vectors must match
+# in length and position of symmetrical aesthetics".  Boxplot/violin
+# stats emit columns named ``lower``/``middle``/``upper`` (see
+# :class:`ggplot2_py.geom.GeomBoxplot.required_aes`) and the y scale
+# trains on those names directly; collapsing the asymmetry breaks
+# the boxplot train step.
+from ggplot2_py.aes import X_AES as _X_AESTHETICS, Y_AES as _Y_AESTHETICS
 
-_X_AESTHETICS = [
-    "x", "xmin", "xmax", "xend", "xintercept",
-    "xmin_final", "xmax_final", "xlower", "xmiddle", "xupper", "x0",
-]
-
-_Y_AESTHETICS = [
-    "y", "ymin", "ymax", "yend", "yintercept",
-    "ymin_final", "ymax_final", "ylower", "ymiddle", "yupper", "y0",
-]
+_POSITION_AESTHETICS = frozenset(_X_AESTHETICS) | frozenset(_Y_AESTHETICS)
 
 
 def _is_position_aes(aesthetics: Union[str, Sequence[str]]) -> bool:
@@ -2405,34 +2388,60 @@ class ScalesList:
     def add_defaults(self, data: pd.DataFrame, env: Optional[Any] = None) -> None:
         """Add default scales for aesthetics in *data* not yet covered.
 
+        R ref: ``scales-.R:150-161`` (``ScalesList$add_defaults``).
+        Iterates over aesthetics present in *data* but not yet bound to
+        any scale; for each, asks :func:`find_scale` to resolve a
+        constructor through *env* (with the ``ggplot2_py.scales``
+        module as fallback) and appends the result.
+
         Parameters
         ----------
         data : pandas.DataFrame
-            Layer data.
-        env : any, optional
-            Lookup environment (unused in Python port).
+            Layer data (typically post-aesthetic-evaluation).
+        env : PlotEnv or namespace-like, optional
+            Forwarded to :func:`find_scale` so user-injected scale
+            constructors win over the package defaults.
         """
         existing = set(self.input())
         for aes_name in data.columns:
             if aes_name not in existing:
-                sc = find_scale(aes_name, data[aes_name])
+                sc = find_scale(aes_name, data[aes_name], env)
                 if sc is not None:
                     self.add(sc)
 
     def add_missing(self, aesthetics: List[str], env: Optional[Any] = None) -> None:
         """Add missing but required scales.
 
+        R ref: ``scales-.R:165-172`` (``ScalesList$add_missing``)::
+
+            for (aes in aesthetics)
+              self$add(find_global(scale_name, env, mode = "function")())
+
+        The Python port mirrors this exactly: every aesthetic is
+        resolved through :meth:`PlotEnv.lookup`, whose layer chain
+        already terminates in the ``ggplot2_py.scales`` namespace
+        fallback (parallel to R's ``find_global`` falling back to the
+        ggplot2 namespace).  No separate per-aes default-scale
+        helper is consulted — there is exactly one resolution path,
+        matching R.
+
         Parameters
         ----------
         aesthetics : list of str
             Required aesthetic names (typically ``['x', 'y']``).
-        env : any, optional
-            Lookup environment (unused).
+        env : PlotEnv or namespace-like, optional
+            User-pushed lookup layer.  ``None`` is treated as an empty
+            chain — the resolution then comes solely from the
+            ``ggplot2_py.scales`` fallback.
         """
         existing = set(self.input())
+        plot_env = _coerce_to_plot_env(env)
         for aes_name in aesthetics:
-            if aes_name not in existing:
-                sc = _default_continuous_scale(aes_name)
+            if aes_name in existing:
+                continue
+            f = plot_env.lookup(f"scale_{aes_name}_continuous")
+            if f is not None:
+                sc = f()
                 if sc is not None:
                     self.add(sc)
 
@@ -2506,25 +2515,6 @@ def _coerce_palette(elem: Any, type_: str) -> Optional[Callable]:
         return pal_manual(seq) if type_ == "discrete" else colour_ramp(seq)
 
     return elem
-
-
-def _default_continuous_scale(aes: str) -> Optional[Scale]:
-    """Create a default continuous scale for the given aesthetic."""
-    if aes in ("x", "xmin", "xmax", "xend", "xintercept"):
-        return continuous_scale(
-            _X_AESTHETICS,
-            palette=lambda x: x,
-            position="bottom",
-            super_class=ScaleContinuousPosition,
-        )
-    if aes in ("y", "ymin", "ymax", "yend", "yintercept"):
-        return continuous_scale(
-            _Y_AESTHETICS,
-            palette=lambda x: x,
-            position="left",
-            super_class=ScaleContinuousPosition,
-        )
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -2882,9 +2872,10 @@ _NO_DEFAULT_SCALE_AES: frozenset = frozenset({"stroke"})
 def find_scale(aes: str, x: Any, env: Optional[Any] = None) -> Optional[Scale]:
     """Auto-detect an appropriate scale for aesthetic *aes* and data *x*.
 
-    Mirrors R's ``find_scale()`` (ggplot2/R/scales-.R) which only looks
-    up scales for aesthetics that R has registered scale constructors
-    for.  ``stroke`` is intentionally excluded — see
+    Mirrors R's ``find_scale()`` (R ref: ``ggplot2/R/scales-.R``) which
+    walks ``env`` first via ``find_global`` (R ref:
+    ``scale-type.R:39-54``) and falls back to the ``ggplot2``
+    namespace.  ``stroke`` is intentionally excluded — see
     :data:`_NO_DEFAULT_SCALE_AES`.
 
     Parameters
@@ -2893,8 +2884,15 @@ def find_scale(aes: str, x: Any, env: Optional[Any] = None) -> Optional[Scale]:
         Aesthetic name.
     x : array-like
         Data values.
-    env : any, optional
-        Lookup environment (unused).
+    env : PlotEnv or namespace-like, optional
+        User-supplied lookup environment.  When provided, the function
+        looks for ``scale_<aes>_<type>`` in *env* before falling back
+        to ``ggplot2_py.scales``.  This is the extension hook used by
+        e.g. ggnewscale to register scale constructors for
+        dynamically-named aesthetics (R ref:
+        ``ggnewscale/R/rename-aes.R:87-104``).  Accepts a
+        :class:`~ggplot2_py._env.PlotEnv`, a ``dict``, a module, or any
+        attribute-bearing object.
 
     Returns
     -------
@@ -2906,16 +2904,40 @@ def find_scale(aes: str, x: Any, env: Optional[Any] = None) -> Optional[Scale]:
         return None
 
     types = scale_type(x)
+    plot_env = _coerce_to_plot_env(env)
 
+    # Single resolution path — :class:`PlotEnv` walks the user-pushed
+    # layers (when *env* is a bare dict / module, ``_coerce_to_plot_env``
+    # wraps it as a single layer) then falls back to the
+    # ``ggplot2_py.scales`` namespace.  This mirrors R's
+    # ``find_global(name, env, mode = "function")`` exactly
+    # (R ref: ``scale-type.R:39-54``): one chain, one fallback, no
+    # duplicate fallback branch.
     for stype in types:
-        # Try to import from the scales module
         func_name = f"scale_{aes}_{stype}"
-        try:
-            from ggplot2_py import scales as scales_mod
-            func = getattr(scales_mod, func_name, None)
-            if func is not None:
-                return func()
-        except (ImportError, AttributeError):
-            pass
+        f = plot_env.lookup(func_name)
+        if f is not None:
+            return f()
 
     return None
+
+
+def _coerce_to_plot_env(env: Any) -> Any:
+    """Wrap *env* into a :class:`~ggplot2_py._env.PlotEnv`.
+
+    * ``None`` becomes an empty :class:`PlotEnv` — its lookup still
+      consults the ``ggplot2_py.scales`` namespace fallback, mirroring
+      R's ``find_global(name, NULL_chain, mode)`` which always
+      terminates in ``asNamespace("ggplot2")``.
+    * Existing :class:`PlotEnv` instances pass through unchanged.
+    * Any other namespace-shaped value (``dict``, ``ModuleType``,
+      ``SimpleNamespace``, …) is wrapped as a single layer so callers
+      get the same resolution semantics regardless of input shape.
+    """
+    # Late import to avoid cycle (scale.py is imported very early).
+    from ggplot2_py._env import PlotEnv
+    if env is None:
+        return PlotEnv()
+    if isinstance(env, PlotEnv):
+        return env
+    return PlotEnv(env)

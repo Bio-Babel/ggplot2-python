@@ -168,5 +168,10 @@ ggplot2-python is designed as an **extensible platform**. The following table su
 | Custom `+` types | `@update_ggplot.register(MyClass)` | Register any Python class for the `+` operator |
 | Custom plot types | `@ggplot_build.register(MyPlot)` | Override the entire build pipeline |
 | Build hooks | `plot.add_build_hook(timing, stage, fn)` | Intercept data at any pipeline stage |
+| Per-plot `+` hooks | `register_pre_add_hook(plot, hook)` | Per-plot transformer fires on the next `+`; supports stateful, self-removing hooks (R: `+.<dynamic_class>`) |
+| Plot-env constructor injection | `plot.plot_env.push({...})` | Override `find_scale` / `add_defaults` per-plot — install a custom `scale_<aes>_<type>` constructor (R: `find_global`) |
+| Instance-as-parent ggproto | `ggproto("Name", instance, method=fn)` | Clone a Geom/Stat/Scale instance with method overrides (R: `ggproto(NULL, inst, method = fn)`) |
+| Explicit method binding | `bind_method(obj, name, fn)` | Bind an arbitrary callable as a method when its first arg isn't named `self` |
+| Extension toolkit | `from ggplot2_py.extension import …` | Pre-built helpers (`clone_layer`, `rename_aes_in_*`, `protect`, `palette_for_aes`, …) for cross-cutting extensions |
 | Protocol validation | `isinstance(obj, GeomProtocol)` | Verify structural conformance |
 | Scoped defaults | `with ggplot_defaults(theme=...):` | Thread-safe scoped defaults |

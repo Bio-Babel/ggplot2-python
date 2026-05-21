@@ -23,7 +23,10 @@ from ggplot2_py.ggproto import (
     ggproto,
     ggproto_parent,
     is_ggproto,
+    fetch_ggproto,
+    bind_method,
 )
+from ggplot2_py._env import PlotEnv
 
 # ---------------------------------------------------------------------------
 # Aesthetics
@@ -62,6 +65,8 @@ from ggplot2_py.plot import (
     ggplotGrob,
     ggplot_add,
     add_gg,
+    register_pre_add_hook,
+    unregister_pre_add_hook,
     get_last_plot,
     set_last_plot,
     last_plot,
@@ -734,7 +739,8 @@ __all__ = [
     # Version
     "__version__",
     # Core
-    "GGProto", "ggproto", "ggproto_parent", "is_ggproto",
+    "GGProto", "ggproto", "ggproto_parent", "is_ggproto", "fetch_ggproto",
+    "bind_method", "PlotEnv",
     "Waiver", "waiver", "is_waiver",
     # Aesthetics
     "aes", "after_stat", "after_scale", "stage", "vars",
@@ -745,7 +751,9 @@ __all__ = [
     "Layer", "layer", "is_layer",
     # Plot
     "ggplot", "is_ggplot", "ggplot_build", "ggplot_gtable", "ggplotGrob",
-    "ggplot_add", "add_gg", "get_last_plot", "set_last_plot", "last_plot",
+    "ggplot_add", "add_gg",
+    "register_pre_add_hook", "unregister_pre_add_hook",
+    "get_last_plot", "set_last_plot", "last_plot",
     "print_plot", "get_alt_text", "update_ggplot",
     # Introspection
     "get_layer_data", "get_layer_grob", "get_panel_scales",

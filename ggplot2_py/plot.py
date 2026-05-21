@@ -59,6 +59,8 @@ __all__ = [
     "ggplotGrob",
     "ggplot_add",
     "add_gg",
+    "register_pre_add_hook",
+    "unregister_pre_add_hook",
     "get_last_plot",
     "set_last_plot",
     "last_plot",
@@ -261,8 +263,13 @@ class GGPlot:
         Axis / title labels.
     guides : object
         Guides specification.
-    plot_env : object
-        The environment the plot was created in (unused in Python).
+    plot_env : PlotEnv
+        Layered namespace consulted by ``find_scale`` /
+        ``ScalesList.add_defaults`` / ``ScalesList.add_missing`` for
+        user-injected scale or guide constructors.  Mirrors R's
+        ``plot@plot_env`` (R ref: ``plot.R``).  Always coerced to a
+        :class:`~ggplot2_py._env.PlotEnv` at construction; non-PlotEnv
+        inputs (e.g. ``dict``, ``ModuleType``) are wrapped.
     layout : type
         Layout class used during the build.
     """
@@ -277,6 +284,7 @@ class GGPlot:
         # Lazy imports to avoid circular dependencies
         from ggplot2_py.scale import ScalesList
         from ggplot2_py.theme import Theme
+        from ggplot2_py._env import PlotEnv
 
         self.data = data
         self.mapping: Mapping = mapping if mapping is not None else aes()
@@ -290,10 +298,44 @@ class GGPlot:
         self.facet: Any = None  # filled lazily via default
         self.labels: Labels = Labels()
         self.guides: Any = None
-        self.plot_env: Any = plot_env
+        # Coerce ``plot_env`` to a PlotEnv so that extension code can
+        # always call ``plot.plot_env.push(...)`` / ``.lookup(...)``
+        # without worrying about whether the user passed a dict, a
+        # module, or nothing at all.  Mirrors R's coercion: whatever
+        # caller_env() yields, it always behaves as an environment.
+        if plot_env is None:
+            self.plot_env: PlotEnv = PlotEnv()
+        elif isinstance(plot_env, PlotEnv):
+            self.plot_env = plot_env
+        else:
+            self.plot_env = PlotEnv(plot_env)
         self.layout: Any = None  # Layout class reference
         self._meta: Dict[str, Any] = {}
         self._build_hooks: Dict[Tuple[str, str], List[Callable]] = {}
+        # Pre-add hooks: per-plot transformers run inside ``__add__``
+        # right after the defensive clone and *before*
+        # ``ggplot_add()`` dispatch.  Extension entry-point for the
+        # "stateful ``+`` operator" pattern (R's
+        # ``+.<dynamic_class>(e1, e2)`` — R ref:
+        # ``ggnewscale/R/rename-aes.R:135-163``).
+        #
+        # Hook contract::
+        #
+        #     hook(plot: GGPlot, other: Any) -> Any | None
+        #
+        # * Returning the transformed ``other`` (the common case) feeds
+        #   it into the standard singledispatch as if the user had
+        #   typed ``plot + transformed_other`` directly.
+        # * Returning ``None`` short-circuits the rest of the chain
+        #   AND the subsequent ``ggplot_add`` dispatch — the cloned
+        #   plot is returned as-is.  Hook may have mutated it.
+        # * Hooks are responsible for removing themselves when their
+        #   work is done (typical idiom: pop from
+        #   ``plot._pre_add_hooks`` inside the hook itself).
+        #
+        # Multiple hooks run in registration order; each receives the
+        # output of the previous one.
+        self._pre_add_hooks: List[Callable[["GGPlot", Any], Any]] = []
 
         # NOTE: scoped-default application (``ggplot_defaults``) is intentionally
         # NOT done here.  It happens in the :func:`ggplot` factory via
@@ -308,6 +350,13 @@ class GGPlot:
     def _clone(self) -> "GGPlot":
         """Create a shallow copy with a cloned scales list.
 
+        Mirrors R ``plot_clone`` (R ref: ``plot.R:148-152``) which
+        clones only ``scales`` and relies on R's copy-on-modify for
+        the rest.  Python lacks COW so we also list-rewrap ``layers``
+        and copy ``labels``, ``plot_env``, and ``_pre_add_hooks``
+        (when present) to give the clone its own mutation surface
+        without leaking back to the source plot.
+
         Returns
         -------
         GGPlot
@@ -316,6 +365,22 @@ class GGPlot:
         p.scales = self.scales.clone()
         p.layers = list(self.layers)  # shallow copy of list
         p.labels = Labels(self.labels)
+        # PlotEnv is a per-plot lookup chain: extension code may
+        # ``push`` onto the clone, and that push must not leak back
+        # into the source plot's chain.  ``PlotEnv.clone`` shallow-
+        # copies the layer list (R env-chain semantics: chain identity
+        # is per-plot but layer contents are not snapshotted).
+        p.plot_env = self.plot_env.clone()
+        # ``_pre_add_hooks`` is per-plot state: stateful extensions
+        # (e.g. rename_aes-style) install hooks that may transform or
+        # consume the *next* operand; the clone must carry them
+        # forward so the chain survives across ``+``.  Hooks are kept
+        # as object references — they may close over plot-specific
+        # state, but the list itself must be a fresh container so
+        # hooks can pop themselves from one plot without affecting
+        # another.  Defensive ``getattr`` keeps this safe across older
+        # pickled / non-init-path instances.
+        p._pre_add_hooks = list(getattr(self, "_pre_add_hooks", ()))
         return p
 
     # ------------------------------------------------------------------
@@ -369,6 +434,23 @@ class GGPlot:
         if other is None:
             return self
         p = self._clone()
+        # Pre-add hooks (R ref: ``+.<dynamic_class>`` in
+        # ``ggnewscale/R/rename-aes.R:135-163``).  Run on the *clone*
+        # so any in-place mutations to ``p`` (e.g. pushing onto
+        # ``p.plot_env``, popping a self-removing hook) don't leak
+        # back to ``self`` — Python lacks R's copy-on-modify so we
+        # must clone first.  Snapshotting the hook list lets a hook
+        # remove itself from ``p._pre_add_hooks`` without disturbing
+        # iteration order.  A hook returning ``None`` short-circuits
+        # the rest of the chain *and* the singledispatch step: the
+        # plot has already had its turn to mutate, just return it.
+        hooks = getattr(p, "_pre_add_hooks", None)
+        if hooks:
+            for hook in list(hooks):
+                other = hook(p, other)
+                if other is None:
+                    set_last_plot(p)
+                    return p
         p = ggplot_add(other, p)
         set_last_plot(p)
         return p
@@ -400,7 +482,7 @@ class GGPlot:
         if name in (
             "data", "mapping", "layers", "scales", "theme",
             "coordinates", "facet", "labels", "guides", "plot_env",
-            "layout", "_meta", "_build_hooks",
+            "layout", "_meta", "_build_hooks", "_pre_add_hooks",
             # Rendering hints — user can override before notebook display.
             "fig_width", "fig_height", "fig_dpi",
         ):
@@ -1263,6 +1345,89 @@ def add_gg(e1: Any, e2: Any) -> Any:
         )
     else:
         cli_abort(f"Cannot use `+` with {type(e1).__name__}.")
+
+
+# ---------------------------------------------------------------------------
+# Pre-add hook registration helpers (public extension API)
+#
+# These mirror the R idiom of injecting a class into ``class(plot) <- c(...)``
+# and defining a ``+.<class>`` method — see ggnewscale ``rename-aes.R:117-163``.
+# The Python implementation expresses the same shape as a list of pluggable
+# ``(plot, other) -> other`` callables on each plot.
+# ---------------------------------------------------------------------------
+
+def register_pre_add_hook(
+    plot: "GGPlot",
+    hook: Callable[["GGPlot", Any], Any],
+) -> "GGPlot":
+    """Register *hook* to run before the next ``+`` dispatches on *plot*.
+
+    Counterpart to R's ``class(plot) <- c("ggplot_rename_next",
+    class(plot))`` plus ``+.ggplot_rename_next`` definition pattern
+    (R ref: ``ggnewscale/R/rename-aes.R:117-163``).  Extensions
+    typically call this from inside their
+    ``@update_ggplot.register(...)`` handler to "tag" a plot with a
+    transformation that will fire on the *next* ``+``.
+
+    Hook contract::
+
+        hook(plot: GGPlot, other: Any) -> Any | None
+
+    * Return the transformed *other* to continue dispatch with it.
+    * Return ``None`` to short-circuit the chain (the plot has already
+      had a chance to mutate; the rest of the ``+`` step is skipped).
+    * Hooks are responsible for removing themselves when finished — use
+      :func:`unregister_pre_add_hook` from inside the hook to express
+      one-shot semantics.
+
+    Hooks fire in registration order on every subsequent ``+``; they
+    survive ``_clone()`` so the chain holds across the ``a + b + c``
+    pattern.
+
+    Parameters
+    ----------
+    plot : GGPlot
+    hook : callable
+
+    Returns
+    -------
+    GGPlot
+        The same *plot* (for chaining).
+    """
+    if not isinstance(plot, GGPlot):
+        cli_abort(
+            f"register_pre_add_hook(): expected a GGPlot, got "
+            f"{type(plot).__name__}."
+        )
+    if not callable(hook):
+        cli_abort(
+            "register_pre_add_hook(): hook must be callable."
+        )
+    plot._pre_add_hooks.append(hook)
+    return plot
+
+
+def unregister_pre_add_hook(
+    plot: "GGPlot",
+    hook: Callable[["GGPlot", Any], Any],
+) -> bool:
+    """Remove *hook* from *plot*'s pre-add chain.
+
+    Returns ``True`` if a matching hook was found and removed,
+    ``False`` otherwise.  Identity-based match (``is``) so closures
+    aren't accidentally caught by equality.
+
+    Mirrors R's ``class(plot) <- setdiff(class(plot), "ggplot_rename_next")``
+    cleanup move in ``ggnewscale/R/rename-aes.R:138``.
+    """
+    hooks = getattr(plot, "_pre_add_hooks", None)
+    if not hooks:
+        return False
+    for i, h in enumerate(hooks):
+        if h is hook:
+            hooks.pop(i)
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------

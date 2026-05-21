@@ -38,7 +38,6 @@ from ggplot2_py.scale import (
 
 try:
     from ggplot2_py.scale import (
-        _default_continuous_scale,
         _set_sec_axis,
         derive,
         is_derived,

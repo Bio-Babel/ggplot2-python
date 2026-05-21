@@ -31,7 +31,6 @@ from ggplot2_py.scale import (
 
 try:
     from ggplot2_py.scale import (
-        _default_continuous_scale,
         _set_sec_axis,
         derive,
         is_derived,
@@ -505,18 +504,6 @@ class TestFindScale:
 
 @pytest.mark.skipif(not HAS_INTERNALS, reason="internals not exported")
 class TestScaleInternals:
-    def test_default_continuous_scale_x(self):
-        assert _default_continuous_scale("x") is not None
-
-    def test_default_continuous_scale_y(self):
-        assert _default_continuous_scale("y") is not None
-
-    def test_default_continuous_scale_xmin(self):
-        assert _default_continuous_scale("xmin") is not None
-
-    def test_default_continuous_scale_other(self):
-        assert _default_continuous_scale("colour") is None
-
     def test_derive(self):
         assert is_derived(derive())
 
