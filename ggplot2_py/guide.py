@@ -576,9 +576,19 @@ class Guide(GGProto):
             return None
         params["key"] = key
 
-        # Extract decor
+        # Extract decor — R guide-.R::Guide$train passes ``key`` plus
+        # ``!!!params`` so per-subclass extract_decor (notably
+        # GuideColoursteps) can pick up the parsed-bin info attached to
+        # the key via attrs / vec_attrs. Mirror the splat here; unrelated
+        # params are absorbed by the method's ``**kwargs``.
         try:
-            params["decor"] = self.extract_decor(scale, aesthetic=aesthetic)
+            decor_kwargs = {
+                k: v for k, v in params.items()
+                if k not in ("aesthetic", "decor")
+            }
+            params["decor"] = self.extract_decor(
+                scale, aesthetic=aesthetic, **decor_kwargs,
+            )
         except Exception:
             params["decor"] = None
 

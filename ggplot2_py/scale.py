@@ -1380,7 +1380,18 @@ class ScaleBinned(Scale):
         all_breaks = np.unique(np.sort(np.concatenate([limits[:1], np.asarray(breaks), limits[1:]])))
 
         x_arr = np.asarray(self.oob(np.asarray(x, dtype=float), range=limits), dtype=float)
-        x_arr = np.where(~np.isnan(x_arr), x_arr, self.na_value)
+        # R scale-binned.R:97-98 — ``x <- ifelse(!is.na(x), x, self$na.value)``.
+        # R's ``as.numeric(self$na.value)`` silently coerces a non-numeric
+        # colour name like "grey50" to NA, leaving NaN positions untouched
+        # so downstream ``cut`` produces NA bin codes that the palette /
+        # output-OOB mask below substitutes back to ``na_value`` colours.
+        # Mirror that here so colour scales with a string ``na_value``
+        # don't have their numeric input array promoted to ``<U32``.
+        try:
+            na_fill = float(self.na_value)
+        except (TypeError, ValueError):
+            na_fill = float("nan")
+        x_arr = np.where(~np.isnan(x_arr), x_arr, na_fill)
 
         # Rescale breaks
         breaks_resc = self.rescale(all_breaks, limits)
