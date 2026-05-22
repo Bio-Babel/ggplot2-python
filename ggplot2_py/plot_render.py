@@ -585,6 +585,42 @@ def _table_add_legends(
                 return v
         return default
 
+    def _resolve_entry_guide_kind(scale_obj: Any) -> Optional[str]:
+        """Classify the scale's resolved guide for render dispatch.
+
+        Mirrors R's ``Guides$assemble`` (guides-.R): dispatch is driven
+        by the Guide object's class, not the aesthetic name.
+        """
+        if scale_obj is None:
+            return None
+        guide = getattr(scale_obj, "guide", None)
+        if guide is None:
+            return None
+        cls_name = getattr(guide, "_class_name", None)
+        cls_map = {
+            "GuideColoursteps": "coloursteps",
+            "GuideColourbar":   "colourbar",
+            "GuideLegend":      "legend",
+            "GuideBins":        "coloursteps",
+            "GuideNone":        "none",
+            "GuideAxis":        "axis",
+        }
+        if cls_name in cls_map:
+            return cls_map[cls_name]
+        if isinstance(guide, str):
+            str_map = {
+                "colourbar":   "colourbar",
+                "colorbar":    "colourbar",
+                "coloursteps": "coloursteps",
+                "colorsteps":  "coloursteps",
+                "bins":        "coloursteps",
+                "legend":      "legend",
+                "none":        "none",
+                "axis":        "axis",
+            }
+            return str_map.get(guide)
+        return None
+
     for sc in np_scales.scales:
         aes_name = sc.aesthetics[0] if sc.aesthetics else "unknown"
 
@@ -831,20 +867,20 @@ def _table_add_legends(
         if n_breaks == 0:
             continue
 
-        aes_names = list(entry["aes_mapped"].keys())
-        is_colour_fill = any(a in ("colour", "color", "fill") for a in aes_names)
         is_continuous = entry.get("is_continuous", False)
         is_binned = entry.get("is_binned", False)
         sc = entry.get("scale")
         entry_pos = entry.get("position") or _default_position
+        # R parity: dispatch on the scale's guide class, not the aes name.
+        _guide_kind = _resolve_entry_guide_kind(sc)
         # R parity (guides-.R:574-577): direction defaults to "horizontal"
         # for top/bottom, "vertical" for left/right/inside.
         _entry_direction = (
             "horizontal" if entry_pos in ("top", "bottom") else "vertical"
         )
 
-        # --- Coloursteps path: binned colour/fill scale ---
-        if is_colour_fill and is_binned and sc is not None:
+        # --- Coloursteps path ---
+        if (_guide_kind == "coloursteps" or is_binned) and sc is not None and is_continuous:
             title_grob = _build_legend_title_grob(entry["title"])
 
             # Extract stepped colour bins
@@ -885,8 +921,8 @@ def _table_add_legends(
             legend_positions.append(entry_pos)
             continue
 
-        # --- Colourbar path: continuous colour/fill scale ---
-        if is_colour_fill and is_continuous and sc is not None:
+        # --- Colourbar path ---
+        if _guide_kind == "colourbar" and sc is not None and is_continuous:
             title_grob = _build_legend_title_grob(entry["title"])
 
             # R parity: ``guide_colourbar(display=, nbin=, reverse=)``

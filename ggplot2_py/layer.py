@@ -745,14 +745,19 @@ def add_group(data: pd.DataFrame) -> pd.DataFrame:
     ]
     if disc_cols:
         if len(disc_cols) == 1:
-            groups = pd.Categorical(data[disc_cols[0]]).codes
+            codes = pd.Categorical(data[disc_cols[0]]).codes
         else:
             interaction = data[disc_cols].apply(
                 lambda row: "|".join(str(v) for v in row), axis=1
             )
-            groups = pd.Categorical(interaction).codes
+            codes = pd.Categorical(interaction).codes
+        # R ``plyr::id()`` returns 1-based group ids; pd.Categorical.codes
+        # is 0-based with -1 for NaN. Shift non-NaN codes up by one so the
+        # downstream column matches R's ``data$group`` exactly. NaN codes
+        # stay at -1 (the NO_GROUP sentinel both sides reserve).
+        groups = np.where(codes == -1, NO_GROUP, codes + 1)
         data = data.copy()
-        data["group"] = groups
+        data["group"] = groups.astype(int)
     else:
         data = data.copy()
         data["group"] = NO_GROUP

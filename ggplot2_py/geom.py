@@ -1190,15 +1190,12 @@ class GeomTile(GeomRect):
 
     required_aes: Tuple[str, ...] = ("x", "y")
     non_missing_aes: Tuple[str, ...] = ("xmin", "xmax", "ymin", "ymax")
-    # R (geom-tile.R:26-35):
-    #   fill      = from_theme(fill %||% col_mix(ink, paper, 0.2)),
-    #   colour    = from_theme(colour %||% NA),
-    #   linewidth = from_theme(linewidth), linetype = from_theme(linetype)
+    # R geom-tile.R:30-35.
     default_aes: Mapping = Mapping(
         fill=FromTheme("fill", fallback=_mix_ink_paper(0.2)),
         colour=FromTheme("colour"),
-        linewidth=FromTheme("linewidth"),
-        linetype=FromTheme("linetype"),
+        linewidth=FromTheme(lambda g: 0.4 * g.borderwidth),
+        linetype=FromTheme("bordertype"),
         alpha=None,
         width=1,
         height=1,
