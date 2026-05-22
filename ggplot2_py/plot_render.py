@@ -879,84 +879,55 @@ def _table_add_legends(
             "horizontal" if entry_pos in ("top", "bottom") else "vertical"
         )
 
-        # --- Coloursteps path ---
-        if (_guide_kind == "coloursteps" or is_binned) and sc is not None and is_continuous:
-            title_grob = _build_legend_title_grob(entry["title"])
-
-            # Extract stepped colour bins
-            decor = extract_coloursteps_decor(
-                sc, entry["breaks"], even_steps=True,
-            )
-
-            # Build stepped rectangle bar
-            bar_parts = build_coloursteps_decor(decor, direction="vertical")
-
-            # Labels and ticks (same as colourbar)
-            limits = sc.get_limits()
-            cb_labels = build_colourbar_labels(
-                entry["breaks"], entry["labels"], limits,
-                direction="vertical",
-                label_size=label_size, label_colour=_ltext_colour,
-            )
-            ticks = build_colourbar_ticks(
-                entry["breaks"], limits, direction="vertical",
-            )
-
-            label_w_cm = _legend_label_width_cm(entry["labels"], label_size)
-
-            legend_gt = assemble_colourbar(
-                bar_grob=bar_parts["bar"],
-                frame_grob=bar_parts["frame"],
-                ticks_grob=ticks,
-                label_grobs=cb_labels,
-                title_grob=title_grob,
-                direction="vertical",
-                bar_width_cm=KEY_W_CM,
-                bar_height_cm=KEY_H_CM * 5,
-                label_width_cm=label_w_cm,
-                padding_cm=PADDING_CM,
-                bg_colour="white",
+        # --- Colourbar OO path ---
+        # R Guides$assemble (guides-.R:474-495) calls each guide's draw()
+        # method; mirror that by delegating to guide.draw() so colourbar
+        # renders via the OO ggproto pipeline (Guide$draw → setup_params
+        # → setup_elements → build_decor → build_labels → build_ticks →
+        # measure_grobs → assemble_drawing). Coloursteps continues on the
+        # procedural path below pending a fix to GuideColoursteps.extract_key
+        # for the out-of-bounds sentinel ('grey50') handling.
+        if sc is not None and is_continuous and _guide_kind == "colourbar":
+            from ggplot2_py.guide import GuideColourbar as _GCb
+            aes_col = list(entry["aes_mapped"].keys())[0]
+            user_guide = getattr(sc, "guide", None)
+            guide = user_guide if hasattr(user_guide, "_class_name") else _GCb()
+            gparams = dict(guide.params)
+            gparams["direction"] = _entry_direction
+            gparams["display"] = entry.get("display", "raster")
+            gparams["nbin"] = int(entry.get("nbin", 300))
+            gparams["reverse"] = bool(entry.get("reverse", False))
+            gparams["title"] = entry["title"]
+            gparams = guide.train(scale=sc, aesthetic=aes_col, params=gparams)
+            if gparams is None:
+                continue
+            legend_gt = guide.draw(
+                theme=theme,
+                position=entry_pos,
+                direction=_entry_direction,
+                params=gparams,
             )
             legend_gtables.append(legend_gt)
             legend_positions.append(entry_pos)
             continue
 
-        # --- Colourbar path ---
-        if _guide_kind == "colourbar" and sc is not None and is_continuous:
+        # --- Coloursteps path (procedural; OO cut-over deferred) ---
+        if (_guide_kind == "coloursteps" or is_binned) and sc is not None and is_continuous:
             title_grob = _build_legend_title_grob(entry["title"])
-
-            # R parity: ``guide_colourbar(display=, nbin=, reverse=)``
-            # propagate from the user / scale guide via _resolve_entry_param.
-            cb_display = entry.get("display", "raster")
-            cb_nbin = int(entry.get("nbin", 300))
-            cb_reverse = bool(entry.get("reverse", False))
-
-            decor = extract_colourbar_decor(
-                sc, nbin=cb_nbin, reverse=cb_reverse,
+            decor = extract_coloursteps_decor(
+                sc, entry["breaks"], even_steps=True,
             )
-
-            bar_parts = build_colourbar_decor(
-                decor, direction="vertical", display=cb_display,
-                reverse=cb_reverse,
-            )
-
-            # Build tick labels
+            bar_parts = build_coloursteps_decor(decor, direction="vertical")
             limits = sc.get_limits()
             cb_labels = build_colourbar_labels(
                 entry["breaks"], entry["labels"], limits,
                 direction="vertical",
                 label_size=label_size, label_colour=_ltext_colour,
             )
-
-            # Build tick marks
             ticks = build_colourbar_ticks(
                 entry["breaks"], limits, direction="vertical",
             )
-
-            # Estimate label width
             label_w_cm = _legend_label_width_cm(entry["labels"], label_size)
-
-            # Assemble
             legend_gt = assemble_colourbar(
                 bar_grob=bar_parts["bar"],
                 frame_grob=bar_parts["frame"],
