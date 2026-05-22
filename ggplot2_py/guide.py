@@ -92,6 +92,46 @@ _TRBL: List[str] = ["top", "right", "bottom", "left"]
 # Utility helpers
 # ---------------------------------------------------------------------------
 
+def _unit_to_cm(u: Any, axis: str = "height", default: float = 0.5) -> float:
+    """Convert a theme ``Unit`` (or numeric) to centimetres.
+
+    Used by GuideColourbar.assemble_drawing to translate resolved theme
+    key dimensions into the cm values the colourbar assembly expects.
+    """
+    if u is None:
+        return default
+    if isinstance(u, (int, float)):
+        return float(u) if float(u) > 0 else default
+    try:
+        from grid_py import Unit as _Unit, convert_width, convert_height
+        if isinstance(u, _Unit):
+            fn = convert_height if axis == "height" else convert_width
+            cm = float(np.sum(fn(u, "cm", valueOnly=True)))
+            return cm if cm > 0 else default
+    except Exception:
+        pass
+    return default
+
+
+def _label_width_cm(key: Any, label_size: float, default: float = 0.5) -> float:
+    """Maximum width in cm of the labels in *key*'s ``.label`` column."""
+    if key is None or not hasattr(key, "get"):
+        return default
+    labels = key.get(".label")
+    if labels is None or len(labels) == 0:
+        return default
+    try:
+        from grid_py._size import calc_string_metric
+        from grid_py import Gpar
+        max_w = 0.0
+        for l in labels:
+            m = calc_string_metric(str(l), Gpar(fontsize=label_size))
+            max_w = max(max_w, float(m["width"]) * 2.54)
+        return max(max_w, 0.3)
+    except Exception:
+        return default
+
+
 def _hash_object(obj: Any) -> str:
     """Return a deterministic hash string for *obj*.
 
@@ -684,24 +724,28 @@ class Guide(GGProto):
         elements: Optional[Dict[str, str]] = None,
         theme: Any = None,
     ) -> Dict[str, Any]:
-        """Set up theme elements used by this guide.
+        """Resolve string element names through the theme, R Guide$setup_elements.
 
-        Parameters
-        ----------
-        params : dict
-            Guide parameters.
-        elements : dict, optional
-            Element specifications.  Falls back to ``self.elements``.
-        theme : Theme, optional
-            Plot theme.
-
-        Returns
-        -------
-        dict
-            Resolved elements.
+        Each string entry in ``elements`` (e.g. ``"legend.title"``) is
+        replaced by the result of :func:`calc_element` against *theme*;
+        non-string entries are passed through. Then handed to
+        :meth:`override_elements` for per-subclass post-processing.
+        Mirrors ``guide-.R::Guide$setup_elements`` (618-623).
         """
         if elements is None:
             elements = dict(self.elements)
+        if theme is not None:
+            from .theme_elements import calc_element as _calc_el
+            resolved: Dict[str, Any] = {}
+            for key, val in elements.items():
+                if isinstance(val, str):
+                    try:
+                        resolved[key] = _calc_el(val, theme)
+                    except Exception:
+                        resolved[key] = val
+                else:
+                    resolved[key] = val
+            elements = resolved
         return self.override_elements(params, elements, theme)
 
     # -- Build methods -------------------------------------------------------
@@ -1366,6 +1410,203 @@ class GuideLegend(Guide):
                 params["key"] = key.iloc[::-1].reset_index(drop=True)
         return params
 
+    # ------------------------------------------------------------------
+    # Method overrides — R guide-legend.R:286-432.
+    # Base Guide.draw() orchestrates these via self.method() dispatch.
+    # The standalone helpers in guide_legend.py implement the heavy
+    # lifting; these methods bridge into the R-style draw flow.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def setup_params(params: Dict[str, Any]) -> Dict[str, Any]:
+        # R guide-legend.R:286-298
+        import math as _math
+        params = dict(params)
+        direction = params.get("direction", "vertical")
+        if direction not in ("horizontal", "vertical"):
+            cli_abort(
+                f"`direction` must be one of 'horizontal' or 'vertical', got {direction!r}"
+            )
+        key = params.get("key")
+        n_breaks = len(key) if key is not None and hasattr(key, "__len__") else 0
+        ncol, nrow = params.get("ncol"), params.get("nrow")
+        if direction == "horizontal":
+            if nrow is None:
+                nrow = max(1, _math.ceil(n_breaks / 5))
+            if ncol is None:
+                ncol = max(1, _math.ceil(n_breaks / max(nrow, 1)))
+        else:
+            if ncol is None:
+                ncol = max(1, _math.ceil(n_breaks / 20))
+            if nrow is None:
+                nrow = max(1, _math.ceil(n_breaks / max(ncol, 1)))
+        params["nrow"] = nrow
+        params["ncol"] = ncol
+        params["n_breaks"] = n_breaks
+        return params
+
+    def process_layers(
+        self,
+        params: Dict[str, Any],
+        layers: Optional[List[Any]] = None,
+        data: Optional[List[Any]] = None,
+        theme: Any = None,
+    ) -> Optional[Dict[str, Any]]:
+        # R guide-legend.R:219-231 stores per-layer decor on params for build_decor.
+        # Py-side keeps the resolved layers and theme on params so the
+        # delegating build_decor can call the procedural build_legend_decor.
+        params = dict(params)
+        params["_layers"] = list(layers) if layers else []
+        params["_theme"] = theme
+        return params
+
+    @staticmethod
+    def build_title(label: Any, elements: Dict[str, Any], params: Dict[str, Any]) -> Any:
+        # R guide-legend.R: title rendered via legend.title element_grob
+        if label is None or is_waiver(label):
+            return None
+        try:
+            from .theme_elements import element_render
+            return element_render(
+                {"text": elements.get("theme.title")},
+                "text",
+                label=str(label),
+                margin_x=True,
+                margin_y=True,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def build_labels(key: Any, elements: Dict[str, Any], params: Dict[str, Any]) -> Any:
+        # R guide-legend.R:380-394 — delegate to procedural build_legend_labels.
+        from .guide_legend import build_legend_labels
+        if key is None or (hasattr(key, "empty") and key.empty):
+            return []
+        text_el = elements.get("text")
+        label_size = float(getattr(text_el, "size", 6.0) or 6.0)
+        label_colour = getattr(text_el, "colour", "black") or "black"
+        labels = list(key[".label"]) if ".label" in getattr(key, "columns", []) else []
+        entry = {"labels": labels}
+        return build_legend_labels(
+            entry,
+            label_size=label_size,
+            label_colour=label_colour,
+            theme=params.get("_theme"),
+            text_position=elements.get("text_position", "right") if isinstance(
+                elements.get("text_position"), str
+            ) else "right",
+        )
+
+    @staticmethod
+    def build_decor(
+        decor: Any,
+        grobs: Any,
+        elements: Dict[str, Any],
+        params: Dict[str, Any],
+    ) -> Any:
+        # R guide-legend.R:396-431 — delegate to procedural build_legend_decor.
+        from .guide_legend import build_legend_decor
+        from .plot_render import _resolve_draw_key_for_entry
+        key = params.get("key")
+        if key is None or (hasattr(key, "empty") and key.empty):
+            return []
+        aes_col = next(
+            (c for c in getattr(key, "columns", []) if c not in (".value", ".label")),
+            None,
+        )
+        if aes_col is None:
+            return []
+        entry = {
+            "aes_mapped": {aes_col: list(key[aes_col])},
+            "breaks": list(key.get(".value", range(len(key)))),
+            "labels": list(key.get(".label", [""] * len(key))),
+        }
+        key_w_cm = _unit_to_cm(elements.get("key_width"), "width", default=0.5)
+        key_h_cm = _unit_to_cm(elements.get("key_height"), "height", default=0.5)
+        layers = params.get("_layers", []) or []
+        draw_key_fn, matched_layers = _resolve_draw_key_for_entry(entry, layers)
+        return build_legend_decor(
+            entry, draw_key_fn, matched_layers,
+            key_width_cm=key_w_cm, key_height_cm=key_h_cm,
+            theme=params.get("_theme"),
+        )
+
+    @staticmethod
+    def build_ticks(
+        key: Any, elements: Dict[str, Any], params: Dict[str, Any], position: Any = None,
+    ) -> Any:
+        # GuideLegend has no ticks (R guide-legend.R has no build_ticks override).
+        return None
+
+    @staticmethod
+    def measure_grobs(
+        grobs: Dict[str, Any], params: Dict[str, Any], elements: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        # R guide-legend.R:433-499 — delegate to measure_legend_grobs.
+        from .guide_legend import measure_legend_grobs
+        decor = grobs.get("decor", [])
+        labels = grobs.get("labels", [])
+        n_breaks = params.get("n_breaks", len(params.get("key", [])) if params.get("key") is not None else 0)
+        nrow = params.get("nrow", 1)
+        ncol = params.get("ncol", 1)
+        key_w_cm = _unit_to_cm(elements.get("key_width"), "width", default=0.5)
+        key_h_cm = _unit_to_cm(elements.get("key_height"), "height", default=0.5)
+        spacing_x = _unit_to_cm(elements.get("spacing_x"), "width", default=0.1)
+        spacing_y = _unit_to_cm(elements.get("spacing_y"), "height", default=0.1)
+        text_el = elements.get("text")
+        label_size = float(getattr(text_el, "size", 6.0) or 6.0)
+        text_pos = elements.get("text_position", "right") if isinstance(
+            elements.get("text_position"), str
+        ) else "right"
+        return measure_legend_grobs(
+            decor, labels, n_breaks,
+            nrow=nrow, ncol=ncol,
+            key_width_cm=key_w_cm, key_height_cm=key_h_cm,
+            spacing_x=spacing_x, spacing_y=spacing_y,
+            text_position=text_pos, label_size=label_size,
+        )
+
+    @staticmethod
+    def arrange_layout(
+        key: Any, sizes: Dict[str, Any], params: Dict[str, Any], elements: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        # R guide-legend.R:501-531 — delegate to arrange_legend_layout.
+        from .guide_legend import arrange_legend_layout
+        n_breaks = params.get("n_breaks", len(key) if key is not None and hasattr(key, "__len__") else 0)
+        text_pos = elements.get("text_position", "right") if isinstance(
+            elements.get("text_position"), str
+        ) else "right"
+        return arrange_legend_layout(
+            n_breaks,
+            nrow=params.get("nrow", 1),
+            ncol=params.get("ncol", 1),
+            text_position=text_pos,
+        )
+
+    def assemble_drawing(
+        self,
+        grobs: Dict[str, Any],
+        layout: Dict[str, Any],
+        sizes: Dict[str, Any],
+        params: Dict[str, Any],
+        elements: Dict[str, Any],
+    ) -> Any:
+        # R guide-legend.R:533-591 — delegate to assemble_legend.
+        from .guide_legend import assemble_legend
+        decor = grobs.get("decor", [])
+        labels = grobs.get("labels", [])
+        title = grobs.get("title")
+        title_pos = elements.get("title_position", "top") if isinstance(
+            elements.get("title_position"), str
+        ) else "top"
+        return assemble_legend(
+            decor, labels, title, layout, sizes,
+            title_position=title_pos,
+            padding_cm=0.15,
+            bg_colour="white",
+        )
+
 
 # ============================================================================
 # GuideColourbar -- continuous colour bar guide
@@ -1419,6 +1660,278 @@ class GuideColourbar(GuideLegend):
         "text_position": "legend.text.position",
         "title_position": "legend.title.position",
     }
+
+    # ------------------------------------------------------------------
+    # Method overrides — 1:1 port of R guide-colorbar.R:181-422.
+    # The base Guide$draw() (Py: Guide.draw at ~line 937) orchestrates
+    # these via self.method() dispatch.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def extract_key(scale: Any, aesthetic: Optional[str] = None, **kwargs: Any) -> Any:
+        # R guide-colorbar.R:232-242
+        import warnings as _w
+        if hasattr(scale, "is_discrete") and scale.is_discrete():
+            _w.warn("guide_colourbar() needs continuous scales.", UserWarning)
+            return None
+        key = Guide.extract_key(scale, aesthetic, **kwargs)
+        if key is None or (hasattr(key, "shape") and key.shape[0] == 0):
+            return None
+        return key
+
+    @staticmethod
+    def extract_decor(
+        scale: Any,
+        aesthetic: Optional[str] = None,
+        nbin: int = 300,
+        reverse: bool = False,
+        alpha: float = float("nan"),
+        **kwargs: Any,
+    ) -> Any:
+        # R guide-colorbar.R:244-260
+        from .guide_colourbar import extract_colourbar_decor
+        alpha_arg = None if (isinstance(alpha, float) and np.isnan(alpha)) else alpha
+        raw = extract_colourbar_decor(scale, nbin=nbin, alpha=alpha_arg, reverse=reverse)
+        return pd.DataFrame({
+            "colour": raw["colour"],
+            "value": np.asarray(raw["value"], dtype=float),
+        })
+
+    @staticmethod
+    def extract_params(
+        scale: Any,
+        params: Dict[str, Any],
+        title: Any = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        # R guide-colorbar.R:262-273
+        if title is None:
+            title = waiver()
+        scale_name = getattr(scale, "name", None)
+        if is_waiver(params.get("title")):
+            if not is_waiver(title):
+                params["title"] = title
+            elif scale_name is not None and not is_waiver(scale_name):
+                params["title"] = scale_name
+        decor = params.get("decor")
+        if decor is not None and hasattr(decor, "__len__") and len(decor) > 0 \
+                and "value" in getattr(decor, "columns", []):
+            v = decor["value"]
+            limits = [float(v.iloc[0]), float(v.iloc[-1])]
+            display = params.get("display", "raster")
+            nbin = int(params.get("nbin", 300))
+            if display == "gradient":
+                to = (0.0, 1.0)
+            else:
+                to = (0.5 / nbin, (nbin - 0.5) / nbin)
+            key = params.get("key")
+            if key is not None and ".value" in getattr(key, "columns", []):
+                from scales import rescale as _rescale
+                vals = np.asarray(key[".value"], dtype=float)
+                key = key.copy()
+                key[".value"] = _rescale(vals, to=to, from_range=limits)
+                params["key"] = key
+        return params
+
+    def merge(
+        self,
+        params: Dict[str, Any],
+        new_guide: Any,
+        new_params: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        # R guide-colorbar.R:275-280
+        new_key = new_params.get("key")
+        cur_key = params.get("key")
+        if isinstance(new_key, pd.DataFrame) and isinstance(cur_key, pd.DataFrame):
+            extras = new_key.drop(columns=[".label", ".value"], errors="ignore")
+            cur_key = cur_key.copy()
+            for c in extras.columns:
+                cur_key[c] = extras[c].values
+            params["key"] = cur_key
+        cur_aes = params.get("aesthetic") or []
+        new_aes = new_params.get("aesthetic") or []
+        if isinstance(cur_aes, str):
+            cur_aes = [cur_aes]
+        if isinstance(new_aes, str):
+            new_aes = [new_aes]
+        params["aesthetic"] = list(dict.fromkeys(list(cur_aes) + list(new_aes)))
+        return {"guide": self, "params": params}
+
+    @staticmethod
+    def get_layer_key(
+        params: Dict[str, Any],
+        layers: List[Any],
+        data: Optional[List[Any]] = None,
+        theme: Any = None,
+    ) -> Dict[str, Any]:
+        # R guide-colorbar.R:282-284
+        return params
+
+    @staticmethod
+    def setup_params(params: Dict[str, Any]) -> Dict[str, Any]:
+        # R guide-colorbar.R:286-292
+        direction = params.get("direction")
+        if direction not in ("horizontal", "vertical"):
+            cli_abort(
+                f"`direction` must be one of 'horizontal' or 'vertical', got {direction!r}"
+            )
+        return params
+
+    def setup_elements(
+        self,
+        params: Dict[str, Any],
+        elements: Optional[Dict[str, Any]] = None,
+        theme: Any = None,
+    ) -> Dict[str, Any]:
+        # R guide-colorbar.R:294-325
+        if elements is None:
+            elements = dict(self.elements)
+        elements = Guide.setup_elements(self, params, elements, theme)
+        direction = params.get("direction", "vertical")
+        key_attr = "key_width" if direction == "horizontal" else "key_height"
+        key_val = elements.get(key_attr)
+        if key_val is not None:
+            try:
+                elements[key_attr] = key_val * 5
+            except (TypeError, ValueError):
+                pass
+        return elements
+
+    @staticmethod
+    def build_labels(
+        key: Any,
+        elements: Dict[str, Any],
+        params: Dict[str, Any],
+    ) -> Any:
+        # R guide-colorbar.R:327-341
+        from .guide_colourbar import build_colourbar_labels
+        if key is None or (hasattr(key, "empty") and key.empty):
+            return {"labels": None}
+        labels = key.get(".label") if hasattr(key, "get") else None
+        values = key.get(".value") if hasattr(key, "get") else None
+        if labels is None or values is None or len(labels) == 0:
+            return {"labels": None}
+        text_el = elements.get("text")
+        label_size = float(getattr(text_el, "size", 6.0) or 6.0)
+        label_colour = getattr(text_el, "colour", "grey20") or "grey20"
+        grob = build_colourbar_labels(
+            list(values), list(labels),
+            limits=(0.0, 1.0),
+            direction=params.get("direction", "vertical"),
+            label_size=label_size,
+            label_colour=label_colour,
+        )
+        return {"labels": grob}
+
+    @staticmethod
+    def build_ticks(
+        key: Any,
+        elements: Dict[str, Any],
+        params: Dict[str, Any],
+        position: Optional[str] = None,
+    ) -> Any:
+        # R guide-colorbar.R:343-358
+        from .guide_colourbar import build_colourbar_ticks
+        if key is None or (hasattr(key, "empty") and key.empty):
+            return None
+        values = key.get(".value") if hasattr(key, "get") else None
+        if values is None or len(values) == 0:
+            return None
+        draw_lim = params.get("draw_lim", [True, True])
+        return build_colourbar_ticks(
+            list(values),
+            limits=(0.0, 1.0),
+            direction=params.get("direction", "vertical"),
+            draw_lim=tuple(draw_lim) if isinstance(draw_lim, (list, tuple)) else (True, True),
+        )
+
+    @staticmethod
+    def build_decor(
+        decor: Any,
+        grobs: Any,
+        elements: Dict[str, Any],
+        params: Dict[str, Any],
+    ) -> Any:
+        # R guide-colorbar.R:360-413
+        from .guide_colourbar import build_colourbar_decor
+        if hasattr(decor, "columns"):
+            decor_dict = {
+                "colour": list(decor["colour"]) if "colour" in decor.columns else [],
+                "value": np.asarray(decor["value"]) if "value" in decor.columns else None,
+            }
+        else:
+            decor_dict = decor or {"colour": [], "value": None}
+        parts = build_colourbar_decor(
+            decor_dict,
+            direction=params.get("direction", "vertical"),
+            display=params.get("display", "raster"),
+            reverse=bool(params.get("reverse", False)),
+        )
+        return {
+            "bar": parts["bar"],
+            "frame": parts["frame"],
+            "ticks": grobs.get("ticks") if isinstance(grobs, dict) else None,
+        }
+
+    def measure_grobs(
+        self,
+        grobs: Dict[str, Any],
+        params: Dict[str, Any],
+        elements: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        # R guide-colorbar.R:415-421 sets ``params$sizes`` from the
+        # element widths/heights then delegates to GuideLegend's
+        # measure. Py assemble_colourbar sizes the bar directly from
+        # the resolved element values in :meth:`assemble_drawing`, so
+        # no per-key glyph measurement is required here.
+        return {
+            "widths": [elements.get("key_width")],
+            "heights": [elements.get("key_height")],
+        }
+
+    def assemble_drawing(
+        self,
+        grobs: Dict[str, Any],
+        layout: Dict[str, Any],
+        sizes: Dict[str, Any],
+        params: Dict[str, Any],
+        elements: Dict[str, Any],
+    ) -> Any:
+        # R inherits assemble_drawing from GuideLegend (guide-legend.R:533-591);
+        # Py wires through assemble_colourbar which is the procedural
+        # equivalent of GuideColourbar's bar-aware gtable assembly.
+        from .guide_colourbar import assemble_colourbar
+        decor = grobs.get("decor") or {}
+        bar = decor.get("bar")
+        frame = decor.get("frame")
+        ticks = decor.get("ticks")
+        labels = grobs.get("labels")
+        if isinstance(labels, dict):
+            labels = labels.get("labels")
+        if labels is None:
+            labels = []
+        elif not isinstance(labels, list):
+            labels = [labels]
+        title_grob = grobs.get("title")
+        direction = params.get("direction", "vertical")
+        bar_width_cm = _unit_to_cm(elements.get("key_width"), "width", default=0.5)
+        bar_height_cm = _unit_to_cm(elements.get("key_height"), "height", default=2.5)
+        text_el = elements.get("text")
+        label_size = float(getattr(text_el, "size", 6.0) or 6.0)
+        label_w_cm = _label_width_cm(params.get("key"), label_size)
+        return assemble_colourbar(
+            bar_grob=bar,
+            frame_grob=frame,
+            ticks_grob=ticks,
+            label_grobs=labels,
+            title_grob=title_grob,
+            direction=direction,
+            bar_width_cm=bar_width_cm,
+            bar_height_cm=bar_height_cm,
+            label_width_cm=label_w_cm,
+            padding_cm=0.15,
+            bg_colour="white",
+        )
 
 
 # ============================================================================
