@@ -945,85 +945,34 @@ def _table_add_legends(
             legend_positions.append(entry_pos)
             continue
 
-        # --- Legend path: discrete scales ---
-        # Mirror R ``GuideLegend$setup_params`` (``guide-legend.R:286-298``):
-        # vertical direction defaults to ``ncol = ceiling(n_breaks / 20)``,
-        # then ``nrow = ceiling(n_breaks / ncol)``. Previously hardcoded
-        # ``ncol = 1`` caused any legend with more than 20 entries to pile
-        # all wrapped entries into a single physical column (multi-column
-        # positions were computed by ``arrange_legend_layout`` but only
-        # one column width was allocated in the gtable), producing
-        # overlapping key + label glyphs per row.
-        # R ``GuideLegend$setup_params`` (``guide-legend.R:289-294``):
-        #
-        #     if (params$direction == "horizontal") {
-        #       params$nrow <- ceiling(n_breaks / 5)
-        #     } else {
-        #       params$ncol <- ceiling(n_breaks / 20)
-        #     }
-        #
-        # The two divisors are intentionally asymmetric: horizontal
-        # legends bias toward MULTIPLE rows (5 keys per row) so the
-        # legend stays compact; vertical legends bias toward MULTIPLE
-        # columns only past 20 keys. The Python port previously used
-        # 20 for both directions, producing single-row horizontal
-        # layouts up to 20 keys — and a legend ~40% taller than R's
-        # because the row height grew per-entry rather than wrapping.
-        if _entry_direction == "horizontal":
-            nrow = max(1, math.ceil(n_breaks / 5))
-            ncol = max(1, math.ceil(n_breaks / nrow))
-        else:
-            ncol = max(1, math.ceil(n_breaks / 20))
-            nrow = max(1, math.ceil(n_breaks / ncol))
-
-        # Per-entry draw_key: mirror R's ``matched_aes`` /
-        # ``include_layer_in_guide`` so ``geom_segment`` / ``geom_path``
-        # layers that don't map the guide's aesthetic can't hijack the
-        # legend key glyph.
-        entry_draw_key_fn, entry_layers = _resolve_draw_key_for_entry(
-            entry, layers,
-        )
-
-        decor = build_legend_decor(
-            entry, entry_draw_key_fn, entry_layers,
-            key_width_cm=KEY_W_CM, key_height_cm=KEY_H_CM,
+        # --- Legend OO path ---
+        # R Guides$assemble → guide$draw → Guide$draw OO orchestration
+        # (guide-.R:500-534, guides-.R:474-587). GuideLegend's method
+        # overrides (setup_params/setup_elements/build_decor/build_labels/
+        # measure_grobs/arrange_layout/assemble_drawing) live on the
+        # class; we delegate by constructing the params from the
+        # merged entry and calling guide.draw().
+        from ggplot2_py.guide import GuideLegend as _GL
+        aes_col = list(entry["aes_mapped"].keys())[0]
+        user_guide = getattr(sc, "guide", None) if sc is not None else None
+        guide = user_guide if hasattr(user_guide, "_class_name") else _GL()
+        gparams = dict(guide.params)
+        gparams["direction"] = _entry_direction
+        gparams["title"] = entry["title"]
+        gparams["aesthetic"] = aes_col
+        gparams["key"] = pd.DataFrame({
+            aes_col: list(entry["aes_mapped"][aes_col]),
+            ".value": list(entry["breaks"]),
+            ".label": list(entry["labels"]),
+        })
+        if sc is not None:
+            gparams = guide.extract_params(sc, gparams, title=entry["title"])
+        gparams = guide.process_layers(gparams, layers=layers, theme=theme)
+        legend_gt = guide.draw(
             theme=theme,
-        )
-
-        # R (guide-legend.R:433-450): labels are ``titleGrob``s with
-        # the ``legend.text`` element's margin baked in, so
-        # ``width_cm(label)`` includes the left/right margins — this is
-        # what creates the visible gap between each key and its label.
-        # Threading the theme through here gives us that behaviour.
-        label_grobs = build_legend_labels(
-            entry, label_size=label_size, label_colour=_ltext_colour,
-            theme=theme, text_position="right",
-        )
-
-        sizes = measure_legend_grobs(
-            decor, label_grobs, n_breaks,
-            nrow=nrow, ncol=ncol,
-            key_width_cm=KEY_W_CM, key_height_cm=KEY_H_CM,
-            spacing_x=SPACING_X_CM, spacing_y=SPACING_Y_CM,
-            text_position="right",
-            label_size=label_size,
-        )
-
-        layout = arrange_legend_layout(
-            n_breaks, nrow=nrow, ncol=ncol,
-            text_position="right",
-        )
-
-        # Discrete-legend title with R's position_margin gap injection.
-        title_grob = _build_legend_title_grob(entry["title"])
-        _title_position = "top"
-
-        legend_gt = assemble_legend(
-            decor, label_grobs, title_grob,
-            layout, sizes,
-            title_position=_title_position,
-            padding_cm=PADDING_CM,
-            bg_colour="white",
+            position=entry_pos,
+            direction=_entry_direction,
+            params=gparams,
         )
         legend_gtables.append(legend_gt)
         legend_positions.append(entry_pos)
