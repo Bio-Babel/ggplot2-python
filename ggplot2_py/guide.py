@@ -1455,6 +1455,65 @@ class GuideLegend(Guide):
         params["n_breaks"] = n_breaks
         return params
 
+    def setup_elements(
+        self,
+        params: Dict[str, Any],
+        elements: Optional[Dict[str, Any]] = None,
+        theme: Any = None,
+    ) -> Dict[str, Any]:
+        # R guide-legend.R:301-394 — inject the title margin via
+        # ``position_margin(title_position, text_margin, gap)``, where
+        # ``gap = legend.key.spacing`` (theme default half_line / 5.5pt).
+        # Without this the title sits directly on top of the first key
+        # row; R intentionally adds the gap to separate them.
+        if elements is None:
+            elements = dict(self.elements)
+        elements = Guide.setup_elements(self, params, elements, theme)
+        direction = params.get("direction", "vertical")
+        title_el = elements.get("theme.title")
+        if title_el is not None and theme is not None:
+            from .theme_elements import (
+                ElementText as _ElementText,
+                Margin as _Margin,
+                calc_element as _calc_el,
+            )
+            from grid_py import convert_height as _ch
+            gap_unit = _calc_el("legend.key.spacing", theme)
+            gap_pt = 0.0
+            if gap_unit is not None:
+                try:
+                    gap_pt = float(np.sum(_ch(gap_unit, "pt", valueOnly=True)))
+                except Exception:
+                    gap_pt = 0.0
+            text_el = _calc_el("text", theme)
+            text_margin = getattr(text_el, "margin", None)
+            if isinstance(text_margin, _Margin) and text_margin.unit_str == "pt":
+                t, r, b, l = text_margin.t, text_margin.r, text_margin.b, text_margin.l
+            else:
+                t, r, b, l = 0.0, 0.0, 0.0, 0.0
+            if direction == "vertical":
+                b = b + gap_pt
+            else:
+                r = r + gap_pt
+            new_margin = _Margin(t=t, r=r, b=b, l=l, unit="pt")
+            elements["theme.title"] = _ElementText(
+                family=getattr(title_el, "family", None),
+                face=getattr(title_el, "face", None),
+                colour=getattr(title_el, "colour", None),
+                size=getattr(title_el, "size", None),
+                hjust=getattr(title_el, "hjust", None),
+                vjust=getattr(title_el, "vjust", None),
+                angle=getattr(title_el, "angle", None),
+                lineheight=getattr(title_el, "lineheight", None),
+                margin=new_margin,
+            )
+        if direction == "vertical":
+            spacing_y = elements.get("spacing_y")
+            if spacing_y is None:
+                from grid_py import Unit as _Unit
+                elements["spacing_y"] = _Unit(0, "pt")
+        return elements
+
     def process_layers(
         self,
         params: Dict[str, Any],
@@ -1793,10 +1852,13 @@ class GuideColourbar(GuideLegend):
         elements: Optional[Dict[str, Any]] = None,
         theme: Any = None,
     ) -> Dict[str, Any]:
-        # R guide-colorbar.R:294-325
+        # R guide-colorbar.R:294-325 — delegate to GuideLegend.setup_elements
+        # so the title margin injection (R guide-legend.R:329-336) also
+        # applies to colourbars, then apply the 5× key dimension multiplier
+        # on the resolved value.
         if elements is None:
             elements = dict(self.elements)
-        elements = Guide.setup_elements(self, params, elements, theme)
+        elements = GuideLegend.setup_elements(self, params, elements, theme)
         direction = params.get("direction", "vertical")
         key_attr = "key_width" if direction == "horizontal" else "key_height"
         key_val = elements.get(key_attr)
