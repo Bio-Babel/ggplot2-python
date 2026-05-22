@@ -25,6 +25,7 @@ from grid_py import (
     Gpar,
     Unit,
     Viewport,
+    convert_height,
     null_grob,
     rect_grob,
     text_grob,
@@ -1043,27 +1044,16 @@ def _interleave(
 def _gtable_total_cm(unit: Optional[Unit]) -> float:
     """Sum a Unit vector, returning cm as a float.
 
-    Falls back to simple sum of values for "cm" units; returns a
-    reasonable estimate for mixed/null units.
+    Delegates to :func:`grid_py.convert_height` so font-relative units
+    (``"lines"``, ``"char"``, ``"strwidth"``, ``"strheight"``) resolve
+    against the active gp / device — matching R's
+    ``sum(convertHeight(unit, "cm", valueOnly=TRUE))``. The earlier
+    manual unit-name dispatch silently mistook unknown units (including
+    ``"lines"``) for ``"cm"``, inflating per-legend wrap heights by the
+    title row's nominal value (e.g. ``1 line`` → +0.71 cm instead of
+    the resolved 0.29 cm).
     """
     if unit is None or len(unit) == 0:
         return 0.0
-    total = 0.0
-    for i in range(len(unit)):
-        part = unit[i: i + 1]
-        vals = part.values if hasattr(part, "values") else [0.0]
-        units = part.units if hasattr(part, "units") else ["cm"]
-        v = vals[0] if vals else 0.0
-        u = units[0] if units else "cm"
-        if u == "cm":
-            total += v
-        elif u == "mm":
-            total += v / 10.0
-        elif u == "inches":
-            total += v * 2.54
-        elif u == "pt" or u == "points":
-            total += v / 72.27 * 2.54
-        else:
-            # null, npc, etc. — use the numeric value as a rough estimate
-            total += v
-    return total
+    cm = convert_height(unit, "cm", valueOnly=True)
+    return float(np.sum(np.asarray(cm)))
