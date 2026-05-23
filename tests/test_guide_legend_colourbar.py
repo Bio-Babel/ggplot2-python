@@ -1,11 +1,11 @@
 """Tests for the gtable-based legend, colourbar, coloursteps, and labeller systems.
 
 Covers all features implemented in the legend/guide refactor:
-- Legend rendering as independent Gtable (guide_legend.py)
-- Colourbar rendering for continuous scales (guide_colourbar.py)
-- Coloursteps rendering for binned scales (guide_colourbar.py)
+- Legend rendering as independent Gtable (_guide_legend.py)
+- Colourbar rendering for continuous scales (_guide_colourbar.py)
+- Coloursteps rendering for binned scales (_guide_colourbar.py)
 - Labeller functions (labeller.py)
-- GuideAxis pipeline (guide_axis.py)
+- GuideAxis pipeline (_guide_axis.py)
 - Plot split (plot.py / plot_render.py)
 - Scale aliases (scale_linetype_ordinal)
 """
@@ -212,7 +212,7 @@ class TestGuideAxis:
         assert os.path.exists(tmp_png)
 
     def test_draw_axis_function(self):
-        from ggplot2_py.guide_axis import draw_axis
+        from ggplot2_py._guide_axis import draw_axis
         import numpy as np
         breaks = np.array([0.2, 0.4, 0.6, 0.8])
         labels = ["0.2", "0.4", "0.6", "0.8"]

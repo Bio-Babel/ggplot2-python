@@ -1432,7 +1432,7 @@ class GuideLegend(Guide):
     # ------------------------------------------------------------------
     # Method overrides — R guide-legend.R:286-432.
     # Base Guide.draw() orchestrates these via self.method() dispatch.
-    # The standalone helpers in guide_legend.py implement the heavy
+    # The standalone helpers in _guide_legend.py implement the heavy
     # lifting; these methods bridge into the R-style draw flow.
     # ------------------------------------------------------------------
 
@@ -1561,7 +1561,7 @@ class GuideLegend(Guide):
     @staticmethod
     def build_labels(key: Any, elements: Dict[str, Any], params: Dict[str, Any]) -> Any:
         # R guide-legend.R:380-394 — delegate to procedural build_legend_labels.
-        from .guide_legend import build_legend_labels
+        from ._guide_legend import build_legend_labels
         if key is None or (hasattr(key, "empty") and key.empty):
             return []
         text_el = elements.get("text")
@@ -1587,7 +1587,7 @@ class GuideLegend(Guide):
         params: Dict[str, Any],
     ) -> Any:
         # R guide-legend.R:396-431 — delegate to procedural build_legend_decor.
-        from .guide_legend import build_legend_decor
+        from ._guide_legend import build_legend_decor
         from .plot_render import _resolve_draw_key_for_entry
         key = params.get("key")
         if key is None or (hasattr(key, "empty") and key.empty):
@@ -1625,7 +1625,7 @@ class GuideLegend(Guide):
         grobs: Dict[str, Any], params: Dict[str, Any], elements: Dict[str, Any],
     ) -> Dict[str, Any]:
         # R guide-legend.R:433-499 — delegate to measure_legend_grobs.
-        from .guide_legend import measure_legend_grobs
+        from ._guide_legend import measure_legend_grobs
         decor = grobs.get("decor", [])
         labels = grobs.get("labels", [])
         n_breaks = params.get("n_breaks", len(params.get("key", [])) if params.get("key") is not None else 0)
@@ -1653,7 +1653,7 @@ class GuideLegend(Guide):
         key: Any, sizes: Dict[str, Any], params: Dict[str, Any], elements: Dict[str, Any],
     ) -> Dict[str, Any]:
         # R guide-legend.R:501-531 — delegate to arrange_legend_layout.
-        from .guide_legend import arrange_legend_layout
+        from ._guide_legend import arrange_legend_layout
         n_breaks = params.get("n_breaks", len(key) if key is not None and hasattr(key, "__len__") else 0)
         text_pos = elements.get("text_position", "right") if isinstance(
             elements.get("text_position"), str
@@ -1674,7 +1674,7 @@ class GuideLegend(Guide):
         elements: Dict[str, Any],
     ) -> Any:
         # R guide-legend.R:533-591 — delegate to assemble_legend.
-        from .guide_legend import assemble_legend
+        from ._guide_legend import assemble_legend
         decor = grobs.get("decor", [])
         labels = grobs.get("labels", [])
         title = grobs.get("title")
@@ -1770,7 +1770,7 @@ class GuideColourbar(GuideLegend):
         **kwargs: Any,
     ) -> Any:
         # R guide-colorbar.R:244-260
-        from .guide_colourbar import extract_colourbar_decor
+        from ._guide_colourbar import extract_colourbar_decor
         alpha_arg = None if (isinstance(alpha, float) and np.isnan(alpha)) else alpha
         raw = extract_colourbar_decor(scale, nbin=nbin, alpha=alpha_arg, reverse=reverse)
         return pd.DataFrame({
@@ -1890,7 +1890,7 @@ class GuideColourbar(GuideLegend):
         params: Dict[str, Any],
     ) -> Any:
         # R guide-colorbar.R:327-341
-        from .guide_colourbar import build_colourbar_labels
+        from ._guide_colourbar import build_colourbar_labels
         if key is None or (hasattr(key, "empty") and key.empty):
             return {"labels": None}
         labels = key.get(".label") if hasattr(key, "get") else None
@@ -1917,7 +1917,7 @@ class GuideColourbar(GuideLegend):
         position: Optional[str] = None,
     ) -> Any:
         # R guide-colorbar.R:343-358
-        from .guide_colourbar import build_colourbar_ticks
+        from ._guide_colourbar import build_colourbar_ticks
         if key is None or (hasattr(key, "empty") and key.empty):
             return None
         values = key.get(".value") if hasattr(key, "get") else None
@@ -1939,7 +1939,7 @@ class GuideColourbar(GuideLegend):
         params: Dict[str, Any],
     ) -> Any:
         # R guide-colorbar.R:360-413
-        from .guide_colourbar import build_colourbar_decor
+        from ._guide_colourbar import build_colourbar_decor
         if hasattr(decor, "columns"):
             decor_dict = {
                 "colour": list(decor["colour"]) if "colour" in decor.columns else [],
@@ -1986,7 +1986,7 @@ class GuideColourbar(GuideLegend):
         # R inherits assemble_drawing from GuideLegend (guide-legend.R:533-591);
         # Py wires through assemble_colourbar which is the procedural
         # equivalent of GuideColourbar's bar-aware gtable assembly.
-        from .guide_colourbar import assemble_colourbar
+        from ._guide_colourbar import assemble_colourbar
         decor = grobs.get("decor") or {}
         bar = decor.get("bar")
         frame = decor.get("frame")

@@ -80,8 +80,6 @@ class TestNEW6CoordsReexports:
 
 class TestNEW7GuideOldColourbar:
     def test_emits_future_warning(self):
-        # Import directly from the submodule to avoid shadowing by the
-        # ``guide_colourbar.py`` submodule when other tests have loaded it.
         from ggplot2_py.guide import guide_old_colourbar, guide_colourbar
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")

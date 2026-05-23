@@ -1061,7 +1061,7 @@ class CoordCartesian(Coord):
         Mirrors R's ``CoordCartesian$render_axis_h``.
         """
         from grid_py import null_grob
-        from ggplot2_py.guide_axis import draw_axis
+        from ggplot2_py._guide_axis import draw_axis
 
         breaks = panel_params.get("x_major", np.array([]))
         labels = panel_params.get("x_labels", [])
@@ -1086,7 +1086,7 @@ class CoordCartesian(Coord):
         Mirrors R's ``CoordCartesian$render_axis_v``.
         """
         from grid_py import null_grob
-        from ggplot2_py.guide_axis import draw_axis
+        from ggplot2_py._guide_axis import draw_axis
 
         breaks = panel_params.get("y_major", np.array([]))
         labels = panel_params.get("y_labels", [])
@@ -1131,7 +1131,7 @@ def _resolve_element(element_name: str, theme: Any, fallback: dict) -> dict:
 
 
 # NOTE: _render_axis has been removed and replaced by guide_axis.draw_axis.
-# See guide_axis.py and the render_axis_h/render_axis_v methods above.
+# See _guide_axis.py and the render_axis_h/render_axis_v methods above.
 
 
 # ---------------------------------------------------------------------------

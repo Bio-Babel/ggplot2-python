@@ -48,7 +48,7 @@ def _axis_width_cm(ax: Any) -> float:
         return val
     # width_details path
     if hasattr(ax, "width_details"):
-        from ggplot2_py.guide_axis import _width_cm
+        from ggplot2_py._guide_axis import _width_cm
         return _width_cm(ax)
     raise ValueError(f"Cannot measure width of {type(ax).__name__}")
 
@@ -69,7 +69,7 @@ def _axis_height_cm(ax: Any) -> float:
     if val is not None:
         return val
     if hasattr(ax, "height_details"):
-        from ggplot2_py.guide_axis import _height_cm
+        from ggplot2_py._guide_axis import _height_cm
         return _height_cm(ax)
     raise ValueError(f"Cannot measure height of {type(ax).__name__}")
 

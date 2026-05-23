@@ -445,7 +445,7 @@ def _table_add_legends(
     )
     from grid_py import Unit as unit, text_grob, Gpar
 
-    from ggplot2_py.guide_legend import (
+    from ggplot2_py._guide_legend import (
         build_legend_decor,
         build_legend_labels,
         measure_legend_grobs,
@@ -506,7 +506,7 @@ def _table_add_legends(
         GuideLegend as _GL,
         guide_none as _gn,
     )
-    from ggplot2_py.guide_legend import _gtable_total_cm
+    from ggplot2_py._guide_legend import _gtable_total_cm
 
     np_scales = (
         scales_list.non_position_scales()

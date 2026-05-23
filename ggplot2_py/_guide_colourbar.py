@@ -681,7 +681,7 @@ def assemble_colourbar(
             gt = gtable_add_grob(gt, label_tree, t=1, l=1, clip="off", name="labels")
 
     # Add title
-    from ggplot2_py.guide_legend import add_legend_title
+    from ggplot2_py._guide_legend import add_legend_title
     gt = add_legend_title(gt, title_grob, position="top")
 
     # Add padding
