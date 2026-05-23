@@ -592,8 +592,12 @@ class Guide(GGProto):
         except Exception:
             params["decor"] = None
 
-        # Post-process
-        params = self.extract_params(scale, params)
+        # Post-process. R Guide$train forwards ``title`` (and any other
+        # kwargs the container passed in) through to extract_params via
+        # the inject splat — without it, every guide ends up with
+        # params['title'] == waiver(), causing the hash to collide and
+        # unrelated guides to be merged.
+        params = self.extract_params(scale, params, **kwargs)
 
         # Compute hash
         hash_vals = []
@@ -1405,13 +1409,18 @@ class GuideLegend(Guide):
         """
         if title is None:
             title = waiver()
-        # Resolve title
+        # Title resolution mirrors R Scale$make_title (scale-.R): priority
+        # is params$title (user-set via guide(title=)) > scale$name
+        # (user-set via scale_*(name=)) > the auto title threaded through
+        # from labels[aes]. Previously the auto title beat the scale name,
+        # so a scale built with name="u (viridis)" would render with
+        # title="u" (the aes column name) — wrong against R.
         scale_name = getattr(scale, "name", None)
         if is_waiver(params.get("title")):
-            if not is_waiver(title):
-                params["title"] = title
-            elif scale_name is not None:
+            if scale_name is not None and not is_waiver(scale_name):
                 params["title"] = scale_name
+            elif not is_waiver(title):
+                params["title"] = title
 
         # Reverse key order if requested
         if params.get("reverse", False):
@@ -1487,7 +1496,10 @@ class GuideLegend(Guide):
                     gap_pt = 0.0
             text_el = _calc_el("text", theme)
             text_margin = getattr(text_el, "margin", None)
-            if isinstance(text_margin, _Margin) and text_margin.unit_str == "pt":
+            # ``Unit`` normalises ``"pt"`` to ``"points"`` (grid does
+            # the same — see ``_resolve_alias``). Accept both spellings
+            # so the existing pt-only fast path keeps working.
+            if isinstance(text_margin, _Margin) and text_margin.unit_str in ("pt", "points"):
                 t, r, b, l = text_margin.t, text_margin.r, text_margin.b, text_margin.l
             else:
                 t, r, b, l = 0.0, 0.0, 0.0, 0.0
@@ -1773,15 +1785,17 @@ class GuideColourbar(GuideLegend):
         title: Any = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        # R guide-colorbar.R:262-273
+        # R guide-colorbar.R:262-273 — title priority is params$title
+        # (user-set via guide(title=)) > scale$name (user-set via
+        # scale_*(name=)) > the auto title from labels[aes].
         if title is None:
             title = waiver()
         scale_name = getattr(scale, "name", None)
         if is_waiver(params.get("title")):
-            if not is_waiver(title):
-                params["title"] = title
-            elif scale_name is not None and not is_waiver(scale_name):
+            if scale_name is not None and not is_waiver(scale_name):
                 params["title"] = scale_name
+            elif not is_waiver(title):
+                params["title"] = title
         decor = params.get("decor")
         if decor is not None and hasattr(decor, "__len__") and len(decor) > 0 \
                 and "value" in getattr(decor, "columns", []):
@@ -4790,15 +4804,14 @@ class Guides:
             )
             guides = gtable_add_row_space(guides, Unit([spacing_y_cm], ["cm"]))
 
-        # Outer margin (legend.box.margin). R default: margin()
+        # Outer margin (legend.box.margin) — R guides-.R:734,753 calls
+        # ``gtable_add_padding(guides, margin)`` directly because R's
+        # ``margin`` IS-A ``simpleUnit``. The Python ``Margin`` inherits
+        # from ``grid_py.Unit`` for the same reason, so it works without
+        # conversion.
         box_margin = _calc("legend.box.margin")
         if box_margin is not None:
-            # margin elements are expected to be a 4-unit vector;
-            # fall back to zero padding if we cannot interpret it.
-            try:
-                guides = gtable_add_padding(guides, box_margin)
-            except Exception:
-                pass
+            guides = gtable_add_padding(guides, box_margin)
 
         # Background rectangle (legend.box.background).
         bg = _calc("legend.box.background")
@@ -4961,7 +4974,11 @@ class Guides:
         merged_params: List[Dict[str, Any]] = []
         merged_aes: List[str] = []
 
-        for key in sorted(groups.keys()):
+        # R guides-.R:428-430 — ``split`` keeps first-appearance order of
+        # unique hashes, NOT lexicographic. Without this the merged
+        # guides arrive in lexicographic-hash order and a vertically
+        # stacked guide-box renders the wrong legend on top.
+        for key in dict.fromkeys(keys):
             indices = groups[key]
             if len(indices) == 1:
                 idx = indices[0]

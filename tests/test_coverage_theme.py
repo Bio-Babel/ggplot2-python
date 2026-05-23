@@ -112,20 +112,41 @@ class TestMargin:
         assert m.unit_str == "mm"
 
     def test_default_unit(self):
+        # R parity: ``unit(1, "pt")`` normalises to ``"points"`` (see
+        # ``grid::unitType``). ``Margin`` inherits this via ``Unit``'s
+        # alias table, so the default ``"pt"`` round-trips as
+        # ``"points"`` — matching R rather than the original
+        # echo-back behaviour.
         m = margin()
-        assert m.unit_str == "pt"
+        assert m.unit_str == "points"
 
     def test_indexing(self):
+        # R parity (margins.R:8-29): ``margin`` is an S7 subclass of
+        # ``simpleUnit``. ``m[i]`` returns a length-1 ``Unit`` matching
+        # R's ``m[1]`` behaviour. Python users wanting a float should
+        # use the named accessors ``.t/.r/.b/.l`` or ``.values[i]``.
+        from grid_py import Unit
         m = margin(10, 20, 30, 40)
-        assert m[0] == 10.0
-        assert m[3] == 40.0
+        assert isinstance(m[0], Unit)
+        assert m[0]._values[0] == 10.0
+        assert m[3]._values[0] == 40.0
+        # Python sugar — direct float access:
+        assert m.t == 10.0
+        assert m.l == 40.0
+        assert m.values[0] == 10.0
 
     def test_len(self):
         assert len(margin()) == 4
 
     def test_iter(self):
+        # R parity: iterating a unit yields per-element length-1 units.
+        from grid_py import Unit
         m = margin(1, 2, 3, 4)
-        assert list(m) == [1.0, 2.0, 3.0, 4.0]
+        items = list(m)
+        assert all(isinstance(v, Unit) for v in items)
+        assert [v._values[0] for v in items] == [1.0, 2.0, 3.0, 4.0]
+        # Python sugar — bare float vector:
+        assert list(m.values) == [1.0, 2.0, 3.0, 4.0]
 
     def test_repr(self):
         m = margin(1, 2, 3, 4)
@@ -167,6 +188,70 @@ class TestMargin:
         m = margin_part(1)
         assert m.t == 1.0
         assert math.isnan(m.r)
+
+    # ------------------------------------------------------------------
+    # R-parity tests: ``Margin`` IS-A ``Unit`` (margins.R:8-29).
+    # ------------------------------------------------------------------
+
+    def test_margin_is_unit_subclass(self):
+        """``Margin`` must be a real ``Unit`` subclass so it dispatches
+        through ``isinstance`` / ``is_unit`` checks across grid_py and
+        gtable_py — mirrors R's S7 inheritance margin → simpleUnit →
+        unit → unit_v2."""
+        from grid_py import Unit, is_unit
+        m = margin(1, 2, 3, 4, unit="pt")
+        assert isinstance(m, Unit)
+        assert is_unit(m)
+        # Length-4 view (R: ``length(margin(...)) == 4``).
+        assert len(m) == 4
+
+    def test_margin_passes_through_gtable_add_padding(self):
+        """R guides-.R:734,753 calls ``gtable_add_padding(box, margin)``
+        directly. Now that ``Margin`` IS-A ``Unit`` the Python equivalent
+        must work without ``.unit`` extraction."""
+        from grid_py import Unit
+        from gtable_py import gtable_add_padding, Gtable
+        gt = Gtable(widths=Unit([1.0], ["cm"]), heights=Unit([1.0], ["cm"]))
+        padded = gtable_add_padding(gt, margin(10, 20, 30, 40, unit="pt"))
+        # 1×1 cell + 4-sided padding → 3×3 (same as R's
+        # ``dim(gtable_add_padding(gt, margin(...))) == c(3, 3)``).
+        assert padded.shape == (3, 3)
+
+    def test_margin_arithmetic_demotes_to_unit(self):
+        """R parity: ``margin + unit`` and ``margin * scalar`` return a
+        plain ``unit`` (R demotes from margin to its parent class).
+        Anything that goes through ``Unit.copy()`` — ``__neg__``,
+        ``__pos__``, ``__mul__``, ``__truediv__`` — uses the
+        ``Unit.__new__(Unit)`` constructor and therefore demotes."""
+        from grid_py import Unit
+        m = margin(10, 20, 30, 40, "pt")
+        assert type(m + Unit([5], "pt")) is Unit
+        assert type(m - Unit([5], "pt")) is Unit
+        assert type(m * 2) is Unit
+        assert type(m / 2) is Unit
+        assert type(-m) is Unit
+        assert type(+m) is Unit
+
+    def test_margin_copy_preserves_class(self):
+        """``copy.copy``, ``copy.deepcopy`` and ``pickle`` must round-trip
+        as ``Margin`` (Python idiom: copy/pickle preserve class). Note
+        that ``m.copy()`` itself routes through ``Unit.copy()`` which
+        hard-codes ``Unit.__new__(Unit)`` and therefore demotes — that
+        path is what powers the arithmetic-demote behaviour above and
+        must stay un-overridden."""
+        import copy as _copy
+        import pickle
+
+        m = margin(10, 20, 30, 40, "pt")
+        assert type(_copy.copy(m)) is Margin
+        assert type(_copy.deepcopy(m)) is Margin
+        assert type(pickle.loads(pickle.dumps(m))) is Margin
+        # The pickled value must round-trip cleanly.
+        roundtrip = pickle.loads(pickle.dumps(m))
+        assert roundtrip == m
+        # ``m.copy()`` deliberately demotes (R-faithful arithmetic).
+        from grid_py import Unit
+        assert type(m.copy()) is Unit
 
 
 # =====================================================================

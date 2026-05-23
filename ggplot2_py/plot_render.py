@@ -280,7 +280,8 @@ def _ggplot_gtable_impl(data):
         margin = _calc_el("plot.margin", theme)
         if not isinstance(margin, Margin):
             margin = Margin(5.5, 5.5, 5.5, 5.5, unit="pt")
-        plot_table = gtable_add_padding(plot_table, margin.unit)
+        # ``Margin`` IS-A ``Unit``; no ``.unit`` extraction needed.
+        plot_table = gtable_add_padding(plot_table, margin)
 
         background = _calc_el("plot.background", theme)
         if background is not None and not isinstance(background, ElementBlank):
@@ -493,9 +494,20 @@ def _table_add_legends(
         _default_position = "right"
 
     # ------------------------------------------------------------------
-    # 1. Collect raw legend entries from non-position scales
+    # Build per-position guide-boxes via the OO Guides container — R parity
+    # with ``Guides$setup → train → merge → process_layers → assemble``
+    # (guides-.R:331-587). The container resolves user-supplied + scale-
+    # default guides per aesthetic, trains each on its scale, merges by
+    # hash, threads layer info into each guide's params, then routes the
+    # resulting grobs into packaged guide-boxes keyed by position.
     # ------------------------------------------------------------------
-    raw_entries: List[Dict[str, Any]] = []
+    from ggplot2_py.guide import (
+        Guides as _Guides,
+        GuideLegend as _GL,
+        guide_none as _gn,
+    )
+    from ggplot2_py.guide_legend import _gtable_total_cm
+
     np_scales = (
         scales_list.non_position_scales()
         if hasattr(scales_list, "non_position_scales")
@@ -504,479 +516,46 @@ def _table_add_legends(
     if np_scales is None or np_scales.n() == 0:
         return table
 
-    # Build a per-aesthetic user-override map from ``plot.guides``. When
-    # a user passes ``guides(<aes>='none')`` (or ``GuideNone()``) the
-    # corresponding legend must be suppressed — R parity. ``Guides.train``
-    # records the set on ``suppressed_aesthetics`` before dropping the
-    # GuideNone entries, so read from there. Also support the pre-build
-    # dict form for robustness.
-    suppressed_aes: set = set()
-    user_guide_by_aes: Dict[str, Any] = {}
-    if guides is not None:
-        from ggplot2_py.guide import GuideNone
+    scales = list(np_scales.scales)
+    aesthetics = [
+        s.aesthetics[0] for s in scales
+        if getattr(s, "aesthetics", None)
+    ]
 
-        suppressed_aes |= set(getattr(guides, "suppressed_aesthetics", set()) or set())
-
-        guides_field = getattr(guides, "guides", None)
-        if isinstance(guides_field, dict):
-            # Pre-build form: ``{aesthetic: Guide}`` straight from the
-            # user's ``guides(...)`` call.
-            for ak, av in guides_field.items():
-                if av is None:
-                    continue
-                if (
-                    av == "none"
-                    or av is GuideNone
-                    or isinstance(av, GuideNone)
-                ):
-                    suppressed_aes.add(ak)
-                else:
-                    user_guide_by_aes[ak] = av
-        elif isinstance(guides_field, list):
-            # Post-``Guides.train`` form: ``self.guides`` is a parallel
-            # list to ``self.aesthetics``. Zip them so guide-level
-            # parameters (``display``, ``nbin``, ``position``, ...) keep
-            # flowing into the per-aesthetic resolver below.
-            aes_list = getattr(guides, "aesthetics", []) or []
-            for ak, av in zip(aes_list, guides_field):
-                if av is None or isinstance(av, GuideNone):
-                    if av is not None:
-                        suppressed_aes.add(ak)
-                    continue
-                user_guide_by_aes[ak] = av
-
-    # ------------------------------------------------------------------
-    # Per-entry position resolution. Mirrors R's ``Guides$assemble``
-    # (guides-.R:488-493) where each guide's ``params$position[1]`` is
-    # used, falling back to ``default_position``.  For Python we read
-    # ``params["position"]`` on the user-supplied guide object (if any)
-    # or on the scale-attached guide object.
-    # ------------------------------------------------------------------
-    def _resolve_entry_position(aes_name: str, scale_obj: Any) -> str:
-        # User ``guides(<aes>=guide_legend(position=...))`` override.
-        g_user = user_guide_by_aes.get(aes_name)
-        if g_user is not None and hasattr(g_user, "params"):
-            pos = g_user.params.get("position")
-            if pos:
-                return pos
-        # Scale-level ``scale_<aes>_*(guide = guide_legend(position=...))``.
-        sc_guide = getattr(scale_obj, "guide", None) if scale_obj is not None else None
-        if sc_guide is not None and hasattr(sc_guide, "params"):
-            pos = sc_guide.params.get("position")
-            if pos:
-                return pos
-        return _default_position
-
-    def _resolve_entry_param(aes_name: str, scale_obj: Any, key: str, default: Any) -> Any:
-        """Pull a guide-level parameter (``display``, ``nbin``, ...).
-
-        Mirrors the resolution order R uses: user-level ``guides()``
-        wins, then ``scale_<aes>_*(guide=...)`` if present.
-        """
-        g_user = user_guide_by_aes.get(aes_name)
-        if g_user is not None and hasattr(g_user, "params"):
-            v = g_user.params.get(key)
-            if v is not None:
-                return v
-        sc_guide = getattr(scale_obj, "guide", None) if scale_obj is not None else None
-        if sc_guide is not None and hasattr(sc_guide, "params"):
-            v = sc_guide.params.get(key)
-            if v is not None:
-                return v
-        return default
-
-    def _resolve_entry_guide_kind(scale_obj: Any) -> Optional[str]:
-        """Classify the scale's resolved guide for render dispatch.
-
-        Mirrors R's ``Guides$assemble`` (guides-.R): dispatch is driven
-        by the Guide object's class, not the aesthetic name.
-        """
-        if scale_obj is None:
-            return None
-        guide = getattr(scale_obj, "guide", None)
-        if guide is None:
-            return None
-        cls_name = getattr(guide, "_class_name", None)
-        cls_map = {
-            "GuideColoursteps": "coloursteps",
-            "GuideColourbar":   "colourbar",
-            "GuideLegend":      "legend",
-            "GuideBins":        "coloursteps",
-            "GuideNone":        "none",
-            "GuideAxis":        "axis",
-        }
-        if cls_name in cls_map:
-            return cls_map[cls_name]
-        if isinstance(guide, str):
-            str_map = {
-                "colourbar":   "colourbar",
-                "colorbar":    "colourbar",
-                "coloursteps": "coloursteps",
-                "colorsteps":  "coloursteps",
-                "bins":        "coloursteps",
-                "legend":      "legend",
-                "none":        "none",
-                "axis":        "axis",
-            }
-            return str_map.get(guide)
-        return None
-
-    for sc in np_scales.scales:
-        aes_name = sc.aesthetics[0] if sc.aesthetics else "unknown"
-
-        # User asked for no legend for this aesthetic — skip.
-        if aes_name in suppressed_aes or any(
-            a in suppressed_aes for a in (sc.aesthetics or [])
-        ):
-            continue
-
-        breaks = getattr(sc, "get_breaks", lambda: None)()
-        if breaks is None or (hasattr(breaks, "__len__") and len(breaks) == 0):
-            continue
-
-        mapped = breaks
-        if hasattr(sc, "map"):
-            try:
-                mapped = sc.map(breaks)
-            except (TypeError, ValueError):
-                pass
-
-        if hasattr(sc, "get_labels"):
-            try:
-                labs = sc.get_labels(breaks)
-            except (TypeError, ValueError, AttributeError):
-                labs = [str(b) for b in breaks]
-        else:
-            labs = [str(b) for b in breaks]
-
-        # Drop NA/NaN-mapped entries
-        keep: List[int] = []
-        mapped_arr = np.asarray(mapped) if not isinstance(mapped, np.ndarray) else mapped
-        for j in range(len(breaks)):
-            val = mapped_arr[j] if j < len(mapped_arr) else None
-            try:
-                if val is not None and not (isinstance(val, float) and np.isnan(val)):
-                    keep.append(j)
-            except (TypeError, ValueError):
-                keep.append(j)
-        if not keep:
-            continue
-        breaks = [breaks[j] for j in keep]
-        mapped = [mapped_arr[j] for j in keep]
-        labs = [labs[j] for j in keep if j < len(labs)]
-
-        # Scale-level ``name=`` overrides the aesthetic-derived default
-        # (R parity: ``scale.name %||% labels[[aes]]``).
-        scale_title = getattr(sc, "name", None)
-        if scale_title is not None and not (
-            hasattr(scale_title, "__class__")
-            and scale_title.__class__.__name__ == "Waiver"
-        ):
-            title = scale_title
-        else:
-            title = labels.get(aes_name, aes_name)
-            if hasattr(title, "__class__") and title.__class__.__name__ == "Waiver":
-                title = aes_name
-
-        raw_entries.append({
-            "aesthetic": aes_name,
-            "breaks": breaks,
-            "mapped": mapped,
-            "labels": labs,
-            "title": str(title),
-            "scale": sc,
-            "is_continuous": not getattr(sc, "is_discrete", lambda: True)(),
-            "is_binned": sc.__class__.__name__.startswith("ScaleBinned") or
-                         getattr(sc, "guide", None) in ("bins", "coloursteps"),
-            "position": _resolve_entry_position(aes_name, sc),
-            # Guide-level colourbar params — needed by the colourbar
-            # render branch below to honour user-set ``display`` /
-            # ``nbin`` / ``reverse`` from ``guide_colourbar(...)``.
-            "display": _resolve_entry_param(aes_name, sc, "display", "raster"),
-            "nbin": _resolve_entry_param(aes_name, sc, "nbin", 300),
-            "reverse": bool(_resolve_entry_param(aes_name, sc, "reverse", False)),
-        })
-
-    if not raw_entries:
-        return table
-
-    # ------------------------------------------------------------------
-    # 2. Merge entries that share the same title + number of breaks
-    #    (R merges guides whose hash — based on title and breaks — match)
-    # ------------------------------------------------------------------
-    merged: Dict[str, Dict[str, Any]] = {}
-    for entry in raw_entries:
-        key = entry["title"]
-        if key in merged and len(merged[key]["breaks"]) == len(entry["breaks"]):
-            merged[key]["aes_mapped"][entry["aesthetic"]] = entry["mapped"]
-        else:
-            merged[key] = {
-                "title": entry["title"],
-                "breaks": entry["breaks"],
-                "labels": entry["labels"],
-                "aes_mapped": {entry["aesthetic"]: entry["mapped"]},
-                "scale": entry.get("scale"),
-                "is_continuous": entry.get("is_continuous", False),
-                "is_binned": entry.get("is_binned", False),
-                "position": entry.get("position", _default_position),
-                "display": entry.get("display", "raster"),
-                "nbin": entry.get("nbin", 300),
-                "reverse": entry.get("reverse", False),
-            }
-    entries = list(merged.values())
-
-    # ------------------------------------------------------------------
-    # 3. Resolve theme elements (R: calc_element for proper inheritance)
-    #    R always has a complete theme.  If Python's theme is None or
-    #    incomplete, reset the element tree and use theme_grey().
-    # ------------------------------------------------------------------
-    from ggplot2_py.theme_elements import calc_element as _calc_theme_el
-
-    if theme is None:
-        from ggplot2_py.theme_defaults import theme_grey
-        theme = theme_grey()
-
-    _ltitle_raw = _calc_theme_el("legend.title", theme)
-    if _ltitle_raw is None:
-        from ggplot2_py.theme_elements import reset_theme_settings
-        reset_theme_settings()
-        from ggplot2_py.theme_defaults import theme_grey as _tg
-        theme = _tg()
-        _ltitle_raw = _calc_theme_el("legend.title", theme)
-    _ltext_raw = _calc_theme_el("legend.text", theme)
-
-    title_size = float(_ltitle_raw.size)
-    label_size = float(_ltext_raw.size)
-    _ltitle_colour = _ltitle_raw.colour
-    _ltext_colour = _ltext_raw.colour
-
-    # Resolve legend key dimensions from theme
-    # (R: GuideLegend$override_elements → width_cm/height_cm of theme units)
-    from ggplot2_py.theme_elements import calc_element as _calc_el
-    from grid_py import Unit as _Unit, convert_width, convert_height
-
-    def _unit_to_cm(u, axis="height"):
-        """Convert a theme Unit to cm using grid's **device-default** gp.
-
-        Mirrors R's ``convertUnit(u, "cm", valueOnly=TRUE)`` called at
-        gtable-construction time (pre-draw, no viewport active): R's
-        grid falls back to the device default gp (``fontsize=12``,
-        ``lineheight=1.2``).  R's ggplot2 uses this device default —
-        **not** the theme's ``text`` element — when computing static
-        layout sizes such as ``legend.key.width``.  grid_py's
-        ``convert_*`` with no active viewport reproduces the same
-        behaviour, so we just call it directly.
-        """
-        if u is None or not isinstance(u, _Unit):
-            return None
-        fn = convert_height if axis == "height" else convert_width
-        cm = fn(u, "cm", valueOnly=True)
-        val = float(np.sum(cm))
-        return val if val > 0 else None
-
-    key_size = _unit_to_cm(_calc_el("legend.key.size", theme))
-    key_w = _unit_to_cm(_calc_el("legend.key.width", theme), "width")
-    key_h = _unit_to_cm(_calc_el("legend.key.height", theme))
-    spacing_x = _unit_to_cm(_calc_el("legend.key.spacing.x", theme), "width")
-    spacing_y = _unit_to_cm(_calc_el("legend.key.spacing.y", theme))
-    legend_spacing = _unit_to_cm(_calc_el("legend.spacing", theme))
-
-    KEY_W_CM = key_w or key_size
-    KEY_H_CM = key_h or key_size
-    SPACING_X_CM = spacing_x
-    SPACING_Y_CM = spacing_y
-    PADDING_CM = 0.15  # R: legend.margin default padding
-
-    # ------------------------------------------------------------------
-    # 4. ``draw_key`` is now resolved per-entry inside the loop below
-    # (R's ``GuideLegend$process_layers`` filters layers against each
-    # guide's aesthetics via ``matched_aes`` / ``include_layer_in_guide``,
-    # ``guide-legend.R:219-231``). See ``_resolve_draw_key_for_entry``.
-    # ------------------------------------------------------------------
-
-    # ------------------------------------------------------------------
-    # 5. Build each guide as an independent Gtable
-    #    Dispatch: continuous colour/fill → colourbar; else → legend
-    # ------------------------------------------------------------------
-    from ggplot2_py.guide_colourbar import (
-        extract_colourbar_decor,
-        extract_coloursteps_decor,
-        build_colourbar_decor,
-        build_coloursteps_decor,
-        build_colourbar_labels,
-        build_colourbar_ticks,
-        assemble_colourbar,
+    user_guides = guides if isinstance(guides, _Guides) else _Guides()
+    trained = user_guides.setup(
+        scales,
+        aesthetics=aesthetics,
+        default=_GL(),
+        missing=_gn(),
     )
+    trained.train(scales, labels or {})
+    trained.merge()
+    trained.process_layers(layers or [], theme=theme)
+    packaged_boxes = trained.assemble(theme) or {}
+    packaged_boxes = {
+        k: v for k, v in packaged_boxes.items() if v is not None
+    }
 
-    # Helper: build a legend title grob with position_margin injection
-    # (R guide-legend.R:326-334).  Applies equally to discrete-legend
-    # titles and colourbar / coloursteps titles so that all three guide
-    # flavours have the same visible gap between title and body.
-    from ggplot2_py.theme_elements import (
-        element_render as _el_render_t,
-        calc_element as _calc_el_t,
-        Margin as _Margin_t,
-    )
-
-    def _build_legend_title_grob(title_text: str, title_position: str = "top") -> Any:
-        _title_el = _calc_el_t("legend.title", theme)
-        _gap_pt = 0.0
+    # Spacing between panel and legend column — R: ``legend.spacing`` theme.
+    from ggplot2_py.theme_elements import calc_element as _calc_legend_spacing_el
+    legend_spacing = 0.4
+    if theme is not None:
         try:
-            _sp = _calc_el_t("legend.key.spacing.x", theme) or _calc_el_t(
-                "legend.key.spacing", theme
-            )
-            if _sp is not None:
-                _gap_pt = float(np.sum(convert_width(_sp, "pt", valueOnly=True)))
+            ls_el = _calc_legend_spacing_el("legend.spacing", theme)
+            if ls_el is not None:
+                from grid_py import convert_height as _convert_h
+                legend_spacing = float(np.sum(_convert_h(ls_el, "cm", valueOnly=True)))
         except Exception:
-            _gap_pt = 5.5
+            pass
 
-        _bm = getattr(_title_el, "margin", None)
-        if isinstance(_bm, _Margin_t):
-            _mt, _mr, _mb, _ml = float(_bm.t), float(_bm.r), float(_bm.b), float(_bm.l)
-            _mu = _bm.unit_str
-            if _mu != "pt":
-                _gap_val = float(np.sum(convert_width(_Unit(_gap_pt, "pt"), _mu, valueOnly=True)))
-            else:
-                _gap_val = _gap_pt
-        else:
-            _mt = _mr = _mb = _ml = 0.0
-            _mu = "pt"
-            _gap_val = _gap_pt
-
-        if title_position == "top":
-            _mb += _gap_val
-        elif title_position == "bottom":
-            _mt += _gap_val
-        elif title_position == "left":
-            _mr += _gap_val
-        elif title_position == "right":
-            _ml += _gap_val
-
-        return _el_render_t(
-            theme, "legend.title",
-            label=str(title_text),
-            margin=_Margin_t(t=_mt, r=_mr, b=_mb, l=_ml, unit=_mu),
-            margin_x=True, margin_y=True,
-        )
-
-    legend_gtables: List[Any] = []
-    legend_positions: List[str] = []
-
-    for entry in entries:
-        n_breaks = len(entry["breaks"])
-        if n_breaks == 0:
-            continue
-
-        is_continuous = entry.get("is_continuous", False)
-        is_binned = entry.get("is_binned", False)
-        sc = entry.get("scale")
-        entry_pos = entry.get("position") or _default_position
-        # R parity: dispatch on the scale's guide class, not the aes name.
-        _guide_kind = _resolve_entry_guide_kind(sc)
-        # R parity (guides-.R:574-577): direction defaults to "horizontal"
-        # for top/bottom, "vertical" for left/right/inside.
-        _entry_direction = (
-            "horizontal" if entry_pos in ("top", "bottom") else "vertical"
-        )
-
-        # --- Colourbar / Coloursteps OO path ---
-        # R Guides$assemble (guides-.R:474-495) calls each guide's draw()
-        # method; mirror that by delegating to guide.draw() so colour-typed
-        # legends render via the OO ggproto pipeline (Guide$draw →
-        # setup_params → setup_elements → build_decor → build_labels →
-        # build_ticks → measure_grobs → assemble_drawing).
-        if sc is not None and is_continuous and _guide_kind in ("colourbar", "coloursteps"):
-            from ggplot2_py.guide import (
-                GuideColourbar as _GCb,
-                GuideColoursteps as _GCs,
-            )
-            aes_col = list(entry["aes_mapped"].keys())[0]
-            user_guide = getattr(sc, "guide", None)
-            if hasattr(user_guide, "_class_name"):
-                guide = user_guide
-            elif _guide_kind == "coloursteps":
-                guide = _GCs()
-            else:
-                guide = _GCb()
-            gparams = dict(guide.params)
-            gparams["direction"] = _entry_direction
-            gparams["display"] = entry.get("display", "raster")
-            gparams["nbin"] = int(entry.get("nbin", 300))
-            gparams["reverse"] = bool(entry.get("reverse", False))
-            gparams["title"] = entry["title"]
-            gparams = guide.train(scale=sc, aesthetic=aes_col, params=gparams)
-            if gparams is None:
-                continue
-            legend_gt = guide.draw(
-                theme=theme,
-                position=entry_pos,
-                direction=_entry_direction,
-                params=gparams,
-            )
-            legend_gtables.append(legend_gt)
-            legend_positions.append(entry_pos)
-            continue
-
-        # --- Legend OO path ---
-        # R Guides$assemble → guide$draw → Guide$draw OO orchestration
-        # (guide-.R:500-534, guides-.R:474-587). GuideLegend's method
-        # overrides (setup_params/setup_elements/build_decor/build_labels/
-        # measure_grobs/arrange_layout/assemble_drawing) live on the
-        # class; we delegate by constructing the params from the
-        # merged entry and calling guide.draw().
-        from ggplot2_py.guide import GuideLegend as _GL
-        aes_col = list(entry["aes_mapped"].keys())[0]
-        user_guide = getattr(sc, "guide", None) if sc is not None else None
-        guide = user_guide if hasattr(user_guide, "_class_name") else _GL()
-        gparams = dict(guide.params)
-        gparams["direction"] = _entry_direction
-        gparams["title"] = entry["title"]
-        gparams["aesthetic"] = aes_col
-        gparams["key"] = pd.DataFrame({
-            aes_col: list(entry["aes_mapped"][aes_col]),
-            ".value": list(entry["breaks"]),
-            ".label": list(entry["labels"]),
-        })
-        if sc is not None:
-            gparams = guide.extract_params(sc, gparams, title=entry["title"])
-        gparams = guide.process_layers(gparams, layers=layers, theme=theme)
-        legend_gt = guide.draw(
-            theme=theme,
-            position=entry_pos,
-            direction=_entry_direction,
-            params=gparams,
-        )
-        legend_gtables.append(legend_gt)
-        legend_positions.append(entry_pos)
-
-    # R parity note (plot-render.R:70-73): ``table_add_legends``
-    # unconditionally emits all five guide-box cells (left, right, top,
-    # bottom, inside) — when no legend exists for a position, the cell
-    # holds a zeroGrob and the spacing row/col is zero-sized. Downstream
-    # patchwork's ``add_guides`` detects the modern 3.5+ layout by
-    # counting ``guide-box-*`` == 5. Fall through with an empty
-    # ``legend_gtables`` so the placement loop below still fires.
-
-    # ------------------------------------------------------------------
-    # 6. Package legends into per-position guide boxes — R parity with
-    #    ``Guides$assemble`` (``guides-.R:474-568``) which groups drawn
-    #    grobs by position and routes each group through ``package_box``.
-    # ------------------------------------------------------------------
-    from ggplot2_py.guide_legend import _gtable_total_cm
-
-    # Group legend gtables by their resolved position.
-    position_groups: Dict[str, List[Any]] = {}
-    for _gt, _pos in zip(legend_gtables, legend_positions):
-        position_groups.setdefault(_pos, []).append(_gt)
-
-    # Package each position group (``Guides$package_box``,
-    # ``guides-.R:592-757``).  Non-empty R positions get a real gtable;
-    # positions with no guides get a zero placeholder.
-    packaged_boxes: Dict[str, Any] = {}
-    for _pos, _grobs in position_groups.items():
-        packaged_boxes[_pos] = package_legend_box(
-            _grobs, position=_pos, spacing_cm=legend_spacing,
-        )
+    # Local imports used by the placement section below.
+    from gtable_py import (
+        gtable_add_grob,
+        gtable_add_cols,
+        gtable_add_rows,
+    )
+    from grid_py import Unit as unit
 
     # ------------------------------------------------------------------
     # 7. Place packaged guide boxes into the plot table — R parity with

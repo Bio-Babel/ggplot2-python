@@ -158,24 +158,35 @@ def is_rel(x: Any) -> bool:
 # Margin
 # ---------------------------------------------------------------------------
 
-class Margin:
-    """A four-sided margin (top, right, bottom, left) stored as a ``Unit``.
+class Margin(Unit):
+    """A four-sided margin — a length-4 :class:`grid_py.Unit` of
+    ``(top, right, bottom, left)``.
+
+    Mirrors R's ``ggplot2::margin`` (margins.R:8-29) which is an S7
+    subclass of ``simpleUnit``: ``margin → simpleUnit → unit →
+    unit_v2``. A ``Margin`` therefore **IS-A** ``Unit`` and can be
+    passed wherever a ``Unit`` is accepted (``gtable_add_padding``,
+    ``unit_c``, etc.) without conversion.
+
+    R semantics for indexing/iteration are preserved (``m[i]`` returns
+    a length-1 ``Unit``; iterating yields length-1 ``Unit`` per side).
+    Two Python-side sugar accessors are provided for ergonomic float
+    access — neither has an R counterpart:
+
+    * ``.t / .r / .b / .l`` — named scalar accessors returning ``float``
+    * ``.values`` — inherited from ``Unit``; the 4-element
+      ``numpy.ndarray`` of float values
 
     Parameters
     ----------
-    t : float
-        Top margin value.
-    r : float
-        Right margin value.
-    b : float
-        Bottom margin value.
-    l : float
-        Left margin value.
+    t, r, b, l : float
+        Margin values for top / right / bottom / left.
     unit : str
         Unit string (default ``"pt"``).
     """
 
-    __slots__ = ("_values", "_unit_str", "_unit")
+    # All state lives in Unit's slots; nothing extra to declare.
+    __slots__ = ()
 
     def __init__(
         self,
@@ -185,65 +196,110 @@ class Margin:
         l: float = 0.0,
         unit: str = "pt",
     ) -> None:
-        self._values: Tuple[float, float, float, float] = (
-            float(t),
-            float(r),
-            float(b),
-            float(l),
-        )
-        self._unit_str = unit
-        self._unit = Unit(list(self._values), unit)
+        # R margins.R:26-27 — ``u <- unit(c(t,r,b,l), unit); S7::new_object(u)``
+        super().__init__([float(t), float(r), float(b), float(l)], unit)
 
-    # Named accessors
+    # ------------------------------------------------------------------
+    # copy / arithmetic interaction
+    # ------------------------------------------------------------------
+    # ``Unit.copy()`` is hard-coded to construct ``Unit.__new__(Unit)``,
+    # which demotes to a plain ``Unit``. Crucially ``Unit.__neg__``,
+    # ``Unit.__pos__``, ``Unit.__mul__`` and ``Unit.__truediv__`` all
+    # route through ``self.copy()`` — so leaving ``copy`` un-overridden
+    # gives the R-faithful arithmetic-demote behaviour for free
+    # (``-margin``, ``margin * 2`` etc. return ``Unit``, matching R's
+    # ``-m`` / ``m * 2`` which produce a plain ``unit``).
+    #
+    # For ``Margin``-preserving copies we wire up ``__copy__`` /
+    # ``__deepcopy__`` / pickling instead. Those entry points are what
+    # the user-facing ``copy.copy(m)`` / ``copy.deepcopy(m)`` /
+    # ``pickle.dumps(m)`` calls go through.
+    def __copy__(self) -> "Margin":
+        new = Margin.__new__(Margin)
+        new._values = self._values.copy()
+        new._units = list(self._units)
+        new._data = list(self._data)
+        new._is_absolute = self._is_absolute
+        return new
+
+    def __deepcopy__(self, memo) -> "Margin":  # noqa: ANN001
+        # ``_values`` is a numpy array of floats and ``_units`` is a
+        # list of strings — both are atomic for our purposes — so a
+        # shallow copy is sufficient and matches what R's S7 dispatch
+        # does on margin objects.
+        return self.__copy__()
+
+    def __reduce__(self):
+        # Pickle round-trip: rebuild via ``Margin(t, r, b, l, unit)``.
+        return (
+            Margin,
+            (
+                float(self._values[0]),
+                float(self._values[1]),
+                float(self._values[2]),
+                float(self._values[3]),
+                self._units[0],
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Equality: stricter than ``Unit.__eq__`` (which is element-wise via
+    # ``np.allclose`` and tolerates different unit lists). ``Margin``
+    # equality requires identical values AND identical unit (so
+    # ``margin(1,2,3,4,"pt") != margin(1,2,3,4,"mm")``).
+    # ------------------------------------------------------------------
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Margin):
+            return (
+                self._values.tolist() == other._values.tolist()
+                and self._units == other._units
+            )
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((tuple(self._values.tolist()), tuple(self._units)))
+
+    # ------------------------------------------------------------------
+    # Python sugar (no R counterpart) — direct float access by name.
+    # ------------------------------------------------------------------
     @property
     def t(self) -> float:
-        """Top margin."""
-        return self._values[0]
+        """Top margin (float)."""
+        return float(self._values[0])
 
     @property
     def r(self) -> float:
-        """Right margin."""
-        return self._values[1]
+        """Right margin (float)."""
+        return float(self._values[1])
 
     @property
     def b(self) -> float:
-        """Bottom margin."""
-        return self._values[2]
+        """Bottom margin (float)."""
+        return float(self._values[2])
 
     @property
     def l(self) -> float:
-        """Left margin."""
-        return self._values[3]
+        """Left margin (float)."""
+        return float(self._values[3])
 
     @property
     def unit_str(self) -> str:
-        """The unit string."""
-        return self._unit_str
+        """The unit-name string (e.g. ``"pt"``, ``"cm"``)."""
+        return self._units[0]
 
     @property
-    def unit(self) -> Unit:
-        """The underlying ``grid_py.Unit`` object."""
-        return self._unit
-
-    def __getitem__(self, idx: int) -> float:
-        return self._values[idx]
-
-    def __len__(self) -> int:
-        return 4
-
-    def __iter__(self):
-        return iter(self._values)
+    def unit(self) -> "Margin":
+        """Backwards-compat shim — historically callers wrote
+        ``margin.unit`` to extract the embedded ``Unit``. Since
+        ``Margin`` IS-A ``Unit`` now, return ``self``.
+        """
+        return self
 
     def __repr__(self) -> str:
         return (
             f"margin(t={self.t}, r={self.r}, b={self.b}, l={self.l}, "
-            f"unit={self._unit_str!r})"
+            f"unit={self.unit_str!r})"
         )
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, Margin):
-            return self._values == other._values and self._unit_str == other._unit_str
-        return NotImplemented
 
 
 def margin(
@@ -1518,13 +1574,10 @@ def _grob_from_text(
     # --- titleGrob (R: margins.R:88-196) ---------------------------------
     # Resolve the element's margin (R: element_text has a `margin` slot).
     el_margin = margin if margin is not None else getattr(element, "margin", None)
-    if el_margin is None:
-        m_t = m_r = m_b = m_l = Unit(0, "pt")
-    elif isinstance(el_margin, Margin):
-        m_t = Unit(el_margin.t, el_margin.unit_str)
-        m_r = Unit(el_margin.r, el_margin.unit_str)
-        m_b = Unit(el_margin.b, el_margin.unit_str)
-        m_l = Unit(el_margin.l, el_margin.unit_str)
+    if isinstance(el_margin, Margin):
+        # ``Margin`` IS-A length-4 ``Unit`` (top, right, bottom, left).
+        # R margins.R:149-156 uses ``margin[1..4]`` directly.
+        m_t, m_r, m_b, m_l = el_margin[0], el_margin[1], el_margin[2], el_margin[3]
     else:
         m_t = m_r = m_b = m_l = Unit(0, "pt")
 
