@@ -572,7 +572,7 @@ def _table_add_legends(
     # Right legend ---------------------------------------------------------
     if "right" in packaged_boxes:
         box = packaged_boxes["right"]
-        w_cm = max(_gtable_total_cm(box.widths), 1.0)
+        w_cm = max(_gtable_total_cm(box.widths, "width"), 1.0)
         place = find_panel(table)
         table = gtable_add_cols(table, unit([legend_spacing], "cm"), pos=-1)
         table = gtable_add_cols(table, unit([w_cm], "cm"), pos=-1)
@@ -594,7 +594,7 @@ def _table_add_legends(
     # Left legend ----------------------------------------------------------
     if "left" in packaged_boxes:
         box = packaged_boxes["left"]
-        w_cm = max(_gtable_total_cm(box.widths), 1.0)
+        w_cm = max(_gtable_total_cm(box.widths, "width"), 1.0)
         # R inserts spacing at pos=0 first, then the legend column at
         # pos=0 — so the final order left-to-right is [legend, spacing,
         # ...existing...]. The ``find_panel`` call happens BEFORE the
@@ -618,7 +618,7 @@ def _table_add_legends(
     # Bottom legend --------------------------------------------------------
     if "bottom" in packaged_boxes:
         box = packaged_boxes["bottom"]
-        h_cm = max(_gtable_total_cm(box.heights), 0.5)
+        h_cm = max(_gtable_total_cm(box.heights, "height"), 0.5)
         place = find_panel(table)
         table = gtable_add_rows(table, unit([legend_spacing], "cm"), pos=-1)
         table = gtable_add_rows(table, unit([h_cm], "cm"), pos=-1)
@@ -640,7 +640,7 @@ def _table_add_legends(
     # Top legend -----------------------------------------------------------
     if "top" in packaged_boxes:
         box = packaged_boxes["top"]
-        h_cm = max(_gtable_total_cm(box.heights), 0.5)
+        h_cm = max(_gtable_total_cm(box.heights, "height"), 0.5)
         # R: ``table <- gtable_add_rows(table, spacing$top, pos = 0)``
         # then ``gtable_add_rows(table, heights$top, pos = 0)`` — so
         # final ordering top-to-bottom is [legend, spacing, ...existing...].
@@ -707,8 +707,8 @@ def _table_add_legends(
         # fill the panel cell — matching R's ``height = vp_height``,
         # ``width = total_width`` from package_box (guides-.R:716-720).
         try:
-            box_w_cm = max(_gtable_total_cm(box.widths), 0.0) or None
-            box_h_cm = max(_gtable_total_cm(box.heights), 0.0) or None
+            box_w_cm = max(_gtable_total_cm(box.widths, "width"), 0.0) or None
+            box_h_cm = max(_gtable_total_cm(box.heights, "height"), 0.0) or None
         except Exception:
             box_w_cm = box_h_cm = None
         vp_kwargs: Dict[str, Any] = dict(

@@ -26,6 +26,7 @@ from grid_py import (
     Unit,
     Viewport,
     convert_height,
+    convert_width,
     null_grob,
     rect_grob,
     text_grob,
@@ -931,8 +932,8 @@ def package_legend_box(
         max_width_cm = 0.0
         heights_cm: List[float] = []
         for lg in legends:
-            max_width_cm = max(max_width_cm, _gtable_total_cm(lg.widths))
-            heights_cm.append(_gtable_total_cm(lg.heights))
+            max_width_cm = max(max_width_cm, _gtable_total_cm(lg.widths, "width"))
+            heights_cm.append(_gtable_total_cm(lg.heights, "height"))
         guides = gtable_col(
             name="guides",
             grobs=legends,
@@ -945,8 +946,8 @@ def package_legend_box(
         max_height_cm = 0.0
         widths_cm: List[float] = []
         for lg in legends:
-            max_height_cm = max(max_height_cm, _gtable_total_cm(lg.heights))
-            widths_cm.append(_gtable_total_cm(lg.widths))
+            max_height_cm = max(max_height_cm, _gtable_total_cm(lg.heights, "height"))
+            widths_cm.append(_gtable_total_cm(lg.widths, "width"))
         guides = gtable_row(
             name="guides",
             grobs=legends,
@@ -1041,19 +1042,23 @@ def _interleave(
     return result
 
 
-def _gtable_total_cm(unit: Optional[Unit]) -> float:
-    """Sum a Unit vector, returning cm as a float.
+def _gtable_total_cm(unit: Optional[Unit], axis: str = "height") -> float:
+    """Sum a Unit vector along *axis* (``"height"`` or ``"width"``),
+    returning cm as a float.
 
-    Delegates to :func:`grid_py.convert_height` so font-relative units
-    (``"lines"``, ``"char"``, ``"strwidth"``, ``"strheight"``) resolve
-    against the active gp / device — matching R's
-    ``sum(convertHeight(unit, "cm", valueOnly=TRUE))``. The earlier
-    manual unit-name dispatch silently mistook unknown units (including
-    ``"lines"``) for ``"cm"``, inflating per-legend wrap heights by the
-    title row's nominal value (e.g. ``1 line`` → +0.71 cm instead of
-    the resolved 0.29 cm).
+    Delegates to :func:`grid_py.convert_height` / :func:`grid_py.convert_width`
+    so font-relative units (``"lines"``, ``"char"``, ``"strwidth"``,
+    ``"strheight"``) resolve against the active gp / device — matching R's
+    ``sum(convertHeight(unit, "cm", valueOnly=TRUE))`` / ``convertWidth``.
+
+    Axis matters for viewport-relative units (``"npc"``): for a
+    non-square viewport, ``convert_height`` and ``convert_width`` resolve
+    ``unit(0.5, "npc")`` to different cm values. Callers must pass the
+    axis the unit is being measured along — typically ``"width"`` for
+    gtable widths, ``"height"`` for gtable heights.
     """
     if unit is None or len(unit) == 0:
         return 0.0
-    cm = convert_height(unit, "cm", valueOnly=True)
+    fn = convert_width if axis == "width" else convert_height
+    cm = fn(unit, "cm", valueOnly=True)
     return float(np.sum(np.asarray(cm)))

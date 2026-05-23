@@ -581,16 +581,13 @@ class Guide(GGProto):
         # GuideColoursteps) can pick up the parsed-bin info attached to
         # the key via attrs / vec_attrs. Mirror the splat here; unrelated
         # params are absorbed by the method's ``**kwargs``.
-        try:
-            decor_kwargs = {
-                k: v for k, v in params.items()
-                if k not in ("aesthetic", "decor")
-            }
-            params["decor"] = self.extract_decor(
-                scale, aesthetic=aesthetic, **decor_kwargs,
-            )
-        except Exception:
-            params["decor"] = None
+        decor_kwargs = {
+            k: v for k, v in params.items()
+            if k not in ("aesthetic", "decor")
+        }
+        params["decor"] = self.extract_decor(
+            scale, aesthetic=aesthetic, **decor_kwargs,
+        )
 
         # Post-process. R Guide$train forwards ``title`` (and any other
         # kwargs the container passed in) through to extract_params via
@@ -4753,14 +4750,21 @@ class Guides:
                 pass
             return _theme_get(key, default)
 
-        def _unit_to_cm(u: Any, fallback_cm: float = 0.0) -> float:
+        def _unit_to_cm(u: Any, axis: str = "x", fallback_cm: float = 0.0) -> float:
+            """Convert a Unit to cm along *axis* ("x"/"y").
+
+            ``convert_unit``'s ``axisFrom`` selects the viewport axis used
+            to resolve relative units like ``"npc"`` — needed because
+            ``unit(0.5, "npc")`` has different cm values on x vs y axes
+            in non-square viewports.
+            """
             if u is None:
                 return fallback_cm
             if isinstance(u, (int, float)):
                 return float(u)
             try:
                 from grid_py import convert_unit
-                cm = convert_unit(u, "cm", valueOnly=True)
+                cm = convert_unit(u, "cm", axisFrom=axis, valueOnly=True)
                 return float(np.sum(cm))
             except Exception:
                 return fallback_cm
@@ -4768,11 +4772,11 @@ class Guides:
         # R: box spacing defaults
         spacing_x_cm = _unit_to_cm(
             _calc("legend.spacing.x") or _calc("legend.spacing"),
-            fallback_cm=0.2,
+            axis="x", fallback_cm=0.2,
         )
         spacing_y_cm = _unit_to_cm(
             _calc("legend.spacing.y") or _calc("legend.spacing"),
-            fallback_cm=0.2,
+            axis="y", fallback_cm=0.2,
         )
 
         # Measure each grob. The R code uses the raw widths/heights
@@ -4782,8 +4786,8 @@ class Guides:
         for g in grobs:
             w_u = getattr(g, "widths", None) or getattr(g, "_widths", None)
             h_u = getattr(g, "heights", None) or getattr(g, "_heights", None)
-            widths_cm.append(_unit_to_cm(w_u))
-            heights_cm.append(_unit_to_cm(h_u))
+            widths_cm.append(_unit_to_cm(w_u, axis="x"))
+            heights_cm.append(_unit_to_cm(h_u, axis="y"))
 
         if direction == "horizontal":
             total_height = max(heights_cm) if heights_cm else 0.0

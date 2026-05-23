@@ -55,8 +55,8 @@ _PT: float = 72.27 / 25.4
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _unit_to_cm(u: Unit) -> float:
-    """Convert a Unit (possibly compound/sum) to cm.
+def _unit_to_cm(u: Unit, axis: str = "height") -> float:
+    """Convert a Unit (possibly compound/sum) to cm along *axis*.
 
     ``convert_height/width`` can't handle compound ``"sum"`` units
     without a viewport context.  This helper decomposes them into
@@ -70,14 +70,25 @@ def _unit_to_cm(u: Unit) -> float:
 
     The ``data`` element is itself a multi-element Unit with the
     individual operands.
+
+    Parameters
+    ----------
+    u : Unit
+        Unit to convert.
+    axis : {"height", "width"}
+        Axis to measure along — needed for viewport-relative units
+        (``"npc"``) which resolve differently per axis in non-square
+        viewports.  Compound sums propagate the axis to children.
     """
-    from grid_py import convert_height
+    from grid_py import convert_height, convert_width
 
     units = getattr(u, "_units", None)
     values = getattr(u, "_values", None)
     data = getattr(u, "_data", None)
     if units is None or values is None:
         return 0.0
+
+    fn = convert_width if axis == "width" else convert_height
 
     total_cm = 0.0
     n = len(u)
@@ -88,7 +99,7 @@ def _unit_to_cm(u: Unit) -> float:
             # The operands are stored as a multi-element Unit in data[i]
             inner = data[i] if data and i < len(data) else None
             if inner is not None and isinstance(inner, Unit):
-                total_cm += _unit_to_cm(inner)
+                total_cm += _unit_to_cm(inner, axis)
             continue
 
         # Skip context-dependent units we can't resolve statically
@@ -99,7 +110,7 @@ def _unit_to_cm(u: Unit) -> float:
         val = float(values[i]) if i < len(values) else 0.0
         leaf = Unit(val, unit_type)
         try:
-            cm = convert_height(leaf, "cm", valueOnly=True)
+            cm = fn(leaf, "cm", valueOnly=True)
             total_cm += float(np.sum(cm))
         except Exception:
             pass
@@ -125,12 +136,12 @@ def _width_cm(x: Any) -> float:
     # For compound (sum) units, convert_width returns bogus results;
     # decompose and convert leaf-by-leaf instead.
     if _has_sum_unit(u):
-        return _unit_to_cm(u)
+        return _unit_to_cm(u, "width")
     try:
         result = convert_width(u, "cm", valueOnly=True)
         return float(np.sum(result))
     except Exception:
-        return _unit_to_cm(u)
+        return _unit_to_cm(u, "width")
 
 
 def _height_cm(x: Any) -> float:
@@ -143,12 +154,12 @@ def _height_cm(x: Any) -> float:
     else:
         return 0.0
     if _has_sum_unit(u):
-        return _unit_to_cm(u)
+        return _unit_to_cm(u, "height")
     try:
         result = convert_height(u, "cm", valueOnly=True)
         return float(np.sum(result))
     except Exception:
-        return _unit_to_cm(u)
+        return _unit_to_cm(u, "height")
 
 
 # ---------------------------------------------------------------------------
