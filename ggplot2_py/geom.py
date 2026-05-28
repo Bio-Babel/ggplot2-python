@@ -1303,16 +1303,79 @@ class GeomBar(GeomRect):
         return params
 
     def setup_data(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
-        data = data.copy()
-        width = params.get("width") or (data["width"].values if "width" in data.columns else 0.9)
-        just = params.get("just", 0.5)
+        """Compute bar bbox per R's GeomBar (R/geom-bar.R:24-39).
 
-        if isinstance(width, (int, float)):
-            data["width"] = width
-        data["ymin"] = np.minimum(data["y"].values, 0)
-        data["ymax"] = np.maximum(data["y"].values, 0)
+        R's algorithm is precise:
+
+        1. Tag rows with ``flipped_aes`` and ``flip_data(data, flipped)``
+           so all subsequent x/y operations work in the "logical x"
+           coordinate even for horizontal bars.
+        2. ``compute_data_size(data, size=params$width,
+                                 default=default_aes$width=0.9)`` —
+           priority is ``data$width`` (aes mapping or upstream stat
+           output) **first**, then ``params$width``
+           (``geom_col(width=)``), then ``resolution(x) * 0.9``.
+        3. ``transform(... ,
+                        xmin = x - width * just,
+                        xmax = x + width * (1 - just),
+                        width = NULL, just = NULL)`` — strip the
+           ``width`` and ``just`` columns at the end so the GEOM's
+           ``default_aes$width = 0.9`` is what ``use_defaults``
+           subsequently broadcasts back into the layer data (the
+           R-faithful "0.9 reported in layer_data" behaviour).
+        4. Flip back via ``flip_data``.
+
+        The previous port (a) reversed the data-vs-params priority
+        (``params or data``), (b) used Python's ``or`` operator which
+        treats ``width=0`` as missing, (c) never stripped ``width`` /
+        ``just`` (so ``layer_data`` reported the upstream stat's
+        ``width`` instead of the geom default), (d) skipped flip
+        entirely.  All four are fixed here.
+        """
+        from ggplot2_py.stat import _flip_data
+        from ggplot2_py.position import _resolution
+
+        data = data.copy()
+
+        flipped_aes = bool(params.get("flipped_aes", False))
+        data["flipped_aes"] = flipped_aes
+        data = _flip_data(data, flipped_aes)
+
+        # ---- compute_data_size ------------------------------------
+        # R: data$width %||% params$width %||% (resolution(x) * default)
+        # Using explicit ``is not None`` to avoid Python ``or`` mis-
+        # treating zero / empty as missing.
+        params_width = params.get("width")
+        default_w = float(self.default_aes.get("width", 0.9))
+        if "width" in data.columns and not data["width"].isna().all():
+            # data-supplied width (aes mapping or upstream stat) — keep.
+            pass
+        elif params_width is not None:
+            data["width"] = float(params_width)
+        else:
+            x_vals = pd.to_numeric(data["x"], errors="coerce") \
+                       .dropna().to_numpy()
+            if len(np.unique(x_vals)) >= 2:
+                data["width"] = _resolution(x_vals, zero=False) * default_w
+            else:
+                data["width"] = default_w
+
+        just = float(params.get("just") if params.get("just") is not None
+                     else 0.5)
+
+        # ---- transform → xmin / xmax / ymin / ymax ----------------
+        y_vals = pd.to_numeric(data["y"], errors="coerce").to_numpy()
+        data["ymin"] = np.minimum(y_vals, 0.0)
+        data["ymax"] = np.maximum(y_vals, 0.0)
         data["xmin"] = data["x"] - data["width"] * just
-        data["xmax"] = data["x"] + data["width"] * (1 - just)
+        data["xmax"] = data["x"] + data["width"] * (1.0 - just)
+
+        # R: transform(... , width = NULL, just = NULL).  Drop so
+        # ``use_defaults`` re-broadcasts the GEOM default (0.9).
+        data = data.drop(columns=["width"], errors="ignore")
+
+        # Flip back to the original orientation.
+        data = _flip_data(data, flipped_aes)
         return data
 
 

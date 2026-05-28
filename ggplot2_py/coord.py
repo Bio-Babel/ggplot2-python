@@ -980,14 +980,62 @@ class CoordCartesian(Coord):
         x_limits = self.limits.get("x")
         y_limits = self.limits.get("y")
 
-        x_range = _scale_numeric_range(scale_x, [0, 1])
-        y_range = _scale_numeric_range(scale_y, [0, 1])
+        # R coord-.R::view_scales_from_scale (called by coord_cartesian's
+        # setup_panel_params per scale):
+        #   expansion <- default_expansion(scale, expand = expand)
+        #   limits <- scale$get_limits()
+        #   continuous_range <- expand_limits_scale(
+        #       scale, expansion, coord_limits %||% limits
+        #   )
+        #
+        # The earlier port computed the scale's expanded range via
+        # ``_scale_numeric_range`` and then **overwrote** it with the raw
+        # coord limits whenever they were supplied, silently dropping the
+        # expansion.  That broke every ``coord_cartesian(xlim=...)`` /
+        # ``coord_cartesian(ylim=...)`` user — axis ticks ran flush
+        # against the requested bounds, no 5 %  breathing room.
+        #
+        # Mirror R: when coord limits are present, feed them through
+        # ``expand_range4`` with the scale's ``default_expansion``.  When
+        # absent, keep the existing scale-already-expanded range.
+        # ``self.expand`` may be ``bool`` or a 2 / 4-element vector; we
+        # let ``_parse_coord_expand`` normalise to length-4
+        # ``(top, right, bottom, left)`` and then derive per-axis bool
+        # gates (an axis is expanded if EITHER of its sides is on).
+        from ggplot2_py.scale import default_expansion, expand_range4
 
-        # Apply coord limits as zoom
-        if x_limits is not None:
-            x_range = list(x_limits)
-        if y_limits is not None:
-            y_range = list(y_limits)
+        expand_vec = _parse_coord_expand(getattr(self, "expand", True))
+        expand_x = bool(expand_vec[1] or expand_vec[3])  # right || left
+        expand_y = bool(expand_vec[0] or expand_vec[2])  # top   || bottom
+
+        def _coord_range(scale, coord_limits, expand_flag):
+            """Mirror R view_scales_from_scale for one axis.
+
+            ``scale`` is allowed to be ``None`` for legacy test stubs
+            that exercise setup_panel_params without a real scale —
+            in that case there is no expand attribute to consult so
+            we fall back to the raw user limits (or [0, 1] if none).
+            ``default_expansion`` is **not** wrapped in try/except;
+            we gate on ``scale is None`` explicitly so any other
+            failure surfaces loudly (per project principle 4).
+            """
+            if coord_limits is None:
+                return _scale_numeric_range(scale, [0, 1])
+            if scale is None:
+                return list(coord_limits)
+            expansion = default_expansion(scale, expand=expand_flag)
+            # Per-side fall-back to scale's own limits when an axis
+            # bound is NaN (R: ``coord_limits %||% limits``) — lets a
+            # user pin only one side via ``xlim=(2, np.nan)``.
+            base = list(_scale_numeric_range(scale, list(coord_limits)))
+            merged = [
+                float(coord_limits[0]) if np.isfinite(coord_limits[0]) else base[0],
+                float(coord_limits[1]) if np.isfinite(coord_limits[1]) else base[1],
+            ]
+            return list(expand_range4(merged, expansion))
+
+        x_range = _coord_range(scale_x, x_limits, expand_x)
+        y_range = _coord_range(scale_y, y_limits, expand_y)
 
         # Compute breaks and rescale to [0, 1] NPC for grid lines
         x_major = _compute_mapped_breaks(scale_x, x_range)
