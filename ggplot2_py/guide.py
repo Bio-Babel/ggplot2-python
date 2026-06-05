@@ -68,6 +68,8 @@ __all__ = [
     # Guides container
     "guides",
     "Guides",
+    # Registry
+    "register_guide",
     # Helpers
     "new_guide",
     "old_guide",
@@ -169,13 +171,20 @@ def _defaults(target: dict, defaults: dict) -> dict:
 
 
 def _validate_guide(guide: Any) -> Any:
-    """Ensure *guide* is a Guide class/instance.
+    """Ensure *guide* is a Guide instance, resolving string names dynamically.
+
+    Faithful port of R's ``validate_guide`` (``R/guides-.R``): a string is
+    resolved to the corresponding ``guide_<name>()`` constructor and *called*
+    (so default params match), then validated. Resolution is open/extensible --
+    any guide class or registered constructor is referenceable by string,
+    including third-party guides registered via :func:`register_guide` or
+    auto-registered through ``Guide.__init_subclass__``.
 
     Parameters
     ----------
     guide : str or Guide
-        Either a guide shorthand name (e.g. ``"legend"``) or a Guide
-        class / instance.
+        Either a guide shorthand name (e.g. ``"legend"``, ``"stringlegend"``,
+        or ``"pkg::name"``) or a Guide class / instance.
 
     Returns
     -------
@@ -184,8 +193,8 @@ def _validate_guide(guide: Any) -> Any:
 
     Raises
     ------
-    ValueError
-        If *guide* cannot be resolved.
+    Exception
+        Via :func:`cli_abort` if *guide* cannot be resolved.
     """
     if isinstance(guide, str):
         guide = _resolve_guide_name(guide)
@@ -342,38 +351,94 @@ def _is_numeric_breaks(breaks: Any) -> bool:
     return True
 
 
-def _resolve_guide_name(name: str) -> type:
-    """Map a short string name to a Guide class.
+# Spelling-variant aliases (British/American), mirroring the aliases R exports
+# as distinct ``guide_*`` functions. Each maps to the canonical registry key.
+_GUIDE_NAME_ALIASES: Dict[str, str] = {
+    "colorbar": "colourbar",
+    "colorsteps": "coloursteps",
+}
+
+
+def register_guide(name: str, constructor: Any) -> None:
+    """Register a guide so it is resolvable by string in :func:`guides` etc.
+
+    This is the public, R-faithful extension point: it mirrors R, where any
+    exported ``guide_<name>()`` function is found dynamically and *called* by
+    ``validate_guide``. A package registers its constructor here so
+    ``guide="<name>"`` works (and yields R-identical defaults, since the
+    constructor -- not the bare class -- is invoked).
 
     Parameters
     ----------
     name : str
-        Short name, e.g. ``"legend"``, ``"colourbar"``, ``"none"``.
+        The string by which the guide is referenced (e.g. ``"stringlegend"``).
+        Matched case-insensitively, with ``-`` treated as ``_``.
+    constructor : callable or type
+        Preferably the ``guide_<name>`` *constructor function* (called with no
+        arguments at resolution time, matching R's ``guide_<name>()``). A Guide
+        *class* is also accepted and will be instantiated via ``cls()``.
+
+    Notes
+    -----
+    Guide subclasses also auto-register their *class* by name via
+    ``Guide.__init_subclass__`` (``GuideStringlegend -> "stringlegend"``).
+    Calling :func:`register_guide` with the constructor overrides that, which
+    is preferred because the constructor carries the correct default params.
+    """
+    if not isinstance(name, str) or name == "":
+        cli_abort("`name` must be a non-empty string.")
+    if constructor is None or not (callable(constructor)
+                                   or isinstance(constructor, type)):
+        cli_abort("`constructor` must be a guide constructor function or class.")
+    key = name.lower().replace("-", "_")
+    Guide._registry[key] = constructor
+
+
+def _resolve_guide_name(name: str) -> Any:
+    """Resolve a guide string to a Guide class or constructor.
+
+    Faithful to R's ``validate_guide`` resolution order: an explicit spelling
+    alias is canonicalised first, then the (open/extensible) registry is
+    consulted -- which, like R's ``find_global("guide_" + name)``, holds the
+    constructors of all built-in *and* third-party guides. A ``"pkg::name"``
+    form is supported by resolving the bare ``name`` part (Python's import
+    system is the analogue of R's namespace search). If a registered
+    *constructor function* is found it is **called** (R parity: defaults match);
+    a registered *class* is returned for ``_validate_guide`` to instantiate.
+
+    Parameters
+    ----------
+    name : str
+        Short name, e.g. ``"legend"``, ``"colourbar"``, ``"stringlegend"``,
+        or ``"pkg::name"``.
 
     Returns
     -------
-    type
-        The corresponding Guide class.
+    Guide or type
+        The resolved guide instance (when a constructor was registered) or a
+        Guide class (when a bare class was registered, e.g. ``"custom"``).
     """
-    _REGISTRY: Dict[str, type] = {
-        "none": GuideNone,
-        "legend": GuideLegend,
-        "colourbar": GuideColourbar,
-        "colorbar": GuideColourbar,
-        "coloursteps": GuideColoursteps,
-        "colorsteps": GuideColoursteps,
-        "bins": GuideBins,
-        "axis": GuideAxis,
-        "axis_logticks": GuideAxisLogticks,
-        "axis_theta": GuideAxisTheta,
-        "axis_stack": GuideAxisStack,
-        "custom": GuideCustom,
-    }
+    if name == "":
+        cli_abort("A guide name must be a non-empty string.")
+
+    # Support "pkg::name": resolve on the bare name (R strips the namespace
+    # prefix and searches that namespace; here every guide lives in one
+    # registry, so the bare name is what we look up).
+    if "::" in name:
+        name = name.split("::", 1)[1]
+
     key = name.lower().replace("-", "_")
-    cls = _REGISTRY.get(key)
-    if cls is None:
+    key = _GUIDE_NAME_ALIASES.get(key, key)
+
+    found = Guide._registry.get(key)
+    if found is None:
         cli_abort(f"Unknown guide type: {name!r}")
-    return cls
+
+    # A registered constructor function is called (R calls ``guide_<name>()``);
+    # a registered class is returned for _validate_guide to instantiate.
+    if isinstance(found, type):
+        return found
+    return found()
 
 
 # ============================================================================
@@ -399,6 +464,39 @@ class Guide(GGProto):
     """
 
     _class_name: str = "Guide"
+
+    # -- Extensible registry (Python-exclusive, mirrors Geom._registry) -------
+    #
+    # R's ``validate_guide`` resolves a guide string ``"name"`` dynamically via
+    # ``find_global("guide_" + name)`` and *calls* the found constructor, so any
+    # exported ``guide_*`` function is referenceable by string. Python has no
+    # equivalent of a package namespace search, so we mirror that openness with
+    # an explicit registry. Two complementary mechanisms populate it:
+    #
+    #   1. ``Guide.__init_subclass__`` auto-registers every subclass by its
+    #      class name (``GuideLegend -> "legend"``), so a third-party guide
+    #      class is resolvable by string the moment it is defined -- exactly the
+    #      pattern already used by ``Geom``/``Stat``/``Coord``.
+    #   2. :func:`register_guide` lets a package register the ``guide_*``
+    #      *constructor* (preferred, because R calls the constructor so default
+    #      params match). Built-ins register their constructors at module load
+    #      (see the ``register_guide(...)`` block after the constructors), which
+    #      also records spelling aliases (colourbar/colorbar, ...).
+    #
+    # Values may be either a constructor *function* (called with no args) or a
+    # Guide *class* (instantiated via ``cls()``); :func:`_validate_guide`
+    # handles both.
+    _registry: Dict[str, Any] = {}
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Auto-register: GuideLegend -> "legend", GuideColourbar -> "colourbar".
+        name = cls.__name__
+        if name.startswith("Guide") and len(name) > 5:
+            key = name[5:].lower()  # strip "Guide" prefix
+            # setdefault: never let an auto-registered *class* clobber an
+            # explicitly registered *constructor* (which carries R defaults).
+            Guide._registry.setdefault(key, cls)
 
     # -- Fields --------------------------------------------------------------
 
@@ -1530,11 +1628,26 @@ class GuideLegend(Guide):
         data: Optional[List[Any]] = None,
         theme: Any = None,
     ) -> Optional[Dict[str, Any]]:
-        # R guide-legend.R:219-231 stores per-layer decor on params for build_decor.
-        # Py-side keeps the resolved layers and theme on params so the
-        # delegating build_decor can call the procedural build_legend_decor.
+        # R guide-legend.R:219-231 — compute which layers contribute to this
+        # guide (``matched_aes`` + ``include_layer_in_guide``, honouring each
+        # layer's ``show.legend``); if none do, drop the guide entirely
+        # (R returns ``NULL`` when ``!any(include)``).  Only the included
+        # layers are forwarded to ``get_layer_key`` so a layer with
+        # ``show_legend=False`` contributes neither its key/decor nor its
+        # draw_key glyph.  Py-side keeps the resolved layers and theme on
+        # params so the delegating build_decor can call the procedural
+        # build_legend_decor.
+        from .plot_render import (
+            _included_layers_for_guide,
+            _guide_key_aesthetics,
+        )
+        guide_aes = _guide_key_aesthetics(params.get("key"))
+        included = _included_layers_for_guide(guide_aes, layers)
+        if (layers is not None) and (not included):
+            # No layer contributes to this guide → drop it (no legend).
+            return None
         params = dict(params)
-        params["_layers"] = list(layers) if layers else []
+        params["_layers"] = included
         params["_theme"] = theme
         return params
 
@@ -4202,6 +4315,38 @@ def guide_axis_theta(
 
 
 # ============================================================================
+# Built-in guide registration
+# ============================================================================
+#
+# Register the built-in ``guide_*`` *constructors* under their canonical
+# string names, mirroring R where ``validate_guide("legend")`` resolves to and
+# *calls* ``guide_legend()`` (so the resulting defaults match exactly). This
+# also fixes the underscored axis names (``axis_logticks`` etc.) that
+# ``__init_subclass__`` cannot produce (it lower-cases the class name to
+# ``axislogticks``), and it preserves the spelling aliases via
+# ``_GUIDE_NAME_ALIASES``.
+#
+# ``"custom"`` is intentionally left to its auto-registered *class*
+# (``GuideCustom``): R's ``guide_custom()`` requires a ``grob`` argument and so
+# ``validate_guide("custom")`` errors in R, whereas the bare-class form has
+# always resolved here -- we preserve that working behaviour by not registering
+# the (grob-requiring) constructor for it.
+for _name, _ctor in (
+    ("none", guide_none),
+    ("legend", guide_legend),
+    ("colourbar", guide_colourbar),
+    ("coloursteps", guide_coloursteps),
+    ("bins", guide_bins),
+    ("axis", guide_axis),
+    ("axis_logticks", guide_axis_logticks),
+    ("axis_theta", guide_axis_theta),
+    ("axis_stack", guide_axis_stack),
+):
+    register_guide(_name, _ctor)
+del _name, _ctor
+
+
+# ============================================================================
 # Legacy S3 compatibility functions
 # ============================================================================
 
@@ -4407,13 +4552,63 @@ class Guides:
     _is_guides: bool = True
 
     def __init__(self, guide_map: Optional[Dict[str, Any]] = None) -> None:
-        self.guides: Dict[str, Any] = guide_map or {}
+        # ``guides`` is a NAMED, insertion-ordered structure for its whole
+        # lifecycle (R parity: ``Guides$guides`` is a named list throughout).
+        # It is a ``dict`` keyed by aesthetic at the user/setup stage and
+        # re-keyed by ``order_hash`` at ``merge`` (= R's
+        # ``names(self$guides) <- hashes``).  ``params`` / ``aesthetics`` are
+        # kept strictly parallel to ``guides.values()``.  Aesthetic *lookup*
+        # always resolves via ``self.aesthetics`` (= R's
+        # ``match(index, self$aesthetics)``), never via the dict keys, so the
+        # keys stay free to carry hashes after merge.
+        self.guides: Dict[str, Any] = dict(guide_map) if guide_map else {}
         self.params: List[Dict[str, Any]] = []
         self.aesthetics: List[str] = []
         self._missing: GuideNone = guide_none()
+        # Set by ``build()``: marks a fully-resolved (trained/merged/processed)
+        # container so the render stage assembles it directly instead of
+        # re-running ``setup`` on it (which would crash on the list-form and,
+        # for the suppressed case, resurrect a disabled legend).
+        self._built: bool = False
+
+    @staticmethod
+    def _as_guide_list(guides: Any) -> List[Any]:
+        """Return guide objects as a positional list, for any representation.
+
+        ``guides`` may be a dict (named structure) or a bare list (legacy /
+        external).  This is the single accessor every lifecycle method uses so
+        no method ever calls ``.get`` on a list or indexes a dict by position.
+        """
+        if isinstance(guides, dict):
+            return list(guides.values())
+        return list(guides) if guides else []
+
+    @property
+    def _guide_values(self) -> List[Any]:
+        """Positional view of ``self.guides`` regardless of representation."""
+        return self._as_guide_list(self.guides)
+
+    def _set_guides(self, guides: List[Any], keys: List[str]) -> None:
+        """Store ``guides`` as a named, insertion-ordered dict.
+
+        Duplicate keys (e.g. two scales sharing an aesthetic at setup, or two
+        unmerged guides sharing a hash) are disambiguated with a positional
+        suffix so no value is silently dropped — the dict stays parallel to
+        ``params`` / ``aesthetics``.
+        """
+        out: Dict[str, Any] = {}
+        for i, (g, k) in enumerate(zip(guides, keys)):
+            key = str(k)
+            if key in out:
+                key = f"{key}\x00{i}"
+            out[key] = g
+        self.guides = out
 
     def __repr__(self) -> str:
-        keys = list(self.guides.keys())
+        if isinstance(self.guides, dict):
+            keys = list(self.guides.keys())
+        else:
+            keys = list(range(len(self.guides))) if self.guides else []
         return f"<Guides: {keys}>"
 
     # -- Setters -------------------------------------------------------------
@@ -4447,11 +4642,19 @@ class Guides:
                 f"Cannot update {len(self.params)} guide(s) with a list of "
                 f"{len(params)} parameter(s)."
             )
+        # R: empty params -> replace guide with ``guide_none`` (keep params).
+        guide_vals = self._guide_values
+        keys = (
+            list(self.guides.keys())
+            if isinstance(self.guides, dict)
+            else [str(i) for i in range(len(guide_vals))]
+        )
         for i, p in enumerate(params):
             if p is None:
-                self.guides[i] = self._missing
+                guide_vals[i] = self._missing
             else:
                 self.params[i] = p
+        self._set_guides(guide_vals, keys)
 
     def subset_guides(self, mask: List[bool]) -> None:
         """Keep only guides where *mask* is ``True``.
@@ -4462,11 +4665,16 @@ class Guides:
             Boolean mask parallel to ``self.guides``.
         """
         if isinstance(self.guides, dict):
-            keys = list(self.guides.keys())
-            self.guides = {k: v for k, keep in zip(keys, mask)
-                           for v in [self.guides[k]] if keep}
-        elif isinstance(self.guides, list):
-            self.guides = [g for g, keep in zip(self.guides, mask) if keep]
+            items = list(self.guides.items())
+            self.guides = {
+                k: v for (k, v), keep in zip(items, mask) if keep
+            }
+        else:
+            kept = [g for g, keep in zip(self.guides, mask) if keep]
+            self._set_guides(
+                kept,
+                [str(i) for i in range(len(kept))],
+            )
         self.params = [p for p, keep in zip(self.params, mask) if keep]
         self.aesthetics = [a for a, keep in zip(self.aesthetics, mask) if keep]
 
@@ -4485,17 +4693,19 @@ class Guides:
         Guide or None
             The guide, or ``None`` if not found.
         """
+        # R ``get_guide`` resolves a string via ``match(index, self$aesthetics)``
+        # — through the parallel ``aesthetics`` vector once the lifecycle has
+        # populated it.  At the *user* stage (a fresh ``guides()`` container)
+        # ``aesthetics`` is empty and the dict key IS the aesthetic, so fall
+        # back to the dict key.  The dict keys stay free to carry hashes after
+        # ``merge`` because by then ``aesthetics`` is populated and wins.
+        guides_list = self._guide_values
         if isinstance(index, str):
-            if isinstance(self.guides, dict):
-                return self.guides.get(index)
             if index in self.aesthetics:
-                idx = self.aesthetics.index(index)
-                guides_list = list(self.guides.values()) if isinstance(
-                    self.guides, dict) else self.guides
-                return guides_list[idx]
+                return guides_list[self.aesthetics.index(index)]
+            if not self.aesthetics and isinstance(self.guides, dict):
+                return self.guides.get(index)
             return None
-        guides_list = list(self.guides.values()) if isinstance(
-            self.guides, dict) else self.guides
         if 0 <= index < len(guides_list):
             return guides_list[index]
         return None
@@ -4558,11 +4768,7 @@ class Guides:
         if not isinstance(position, str):
             cli_abort("`position` must be a string.")
 
-        guides_list = (
-            list(self.guides.values())
-            if isinstance(self.guides, dict)
-            else self.guides
-        )
+        guides_list = self._guide_values
         params_list = self.params
 
         # Extract each guide's position (first element if multi-valued).
@@ -4624,26 +4830,23 @@ class Guides:
             entries from ``self``.  When none match, returns an empty
             ``Guides``.
         """
-        guides_list = (
-            list(self.guides.values())
-            if isinstance(self.guides, dict)
-            else self.guides
-        )
+        guides_list = self._guide_values
         mask = [isinstance(g, GuideCustom) for g in guides_list]
         n_custom = sum(mask)
         if n_custom < 1:
             return Guides()
 
         custom = Guides()
-        custom.guides = [g for g, m in zip(guides_list, mask) if m]
+        custom_guides = [g for g, m in zip(guides_list, mask) if m]
         # R: custom$params <- lapply(custom$guides, `[[`, "params")
-        custom.params = [dict(getattr(g, "params", {})) for g in custom.guides]
+        custom.params = [dict(getattr(g, "params", {})) for g in custom_guides]
         if self.aesthetics:
             custom.aesthetics = [
                 a for a, m in zip(self.aesthetics, mask) if m
             ]
         else:
             custom.aesthetics = [""] * n_custom
+        custom._set_guides(custom_guides, list(custom.aesthetics))
 
         if position is not None:
             # Optional forward-compatibility filter.
@@ -4653,11 +4856,7 @@ class Guides:
                 if isinstance(pos, (list, tuple, np.ndarray)):
                     pos = pos[0] if len(pos) > 0 else None
                 keep.append(pos == position)
-            custom.guides = [g for g, k in zip(custom.guides, keep) if k]
-            custom.params = [p for p, k in zip(custom.params, keep) if k]
-            custom.aesthetics = [
-                a for a, k in zip(custom.aesthetics, keep) if k
-            ]
+            custom.subset_guides(keep)
         return custom
 
     def package_box(
@@ -4872,10 +5071,21 @@ class Guides:
         if aesthetics is None:
             aesthetics = [getattr(s, "aesthetics", ["unknown"])[0] for s in scales]
 
+        # The user-supplied guide map. ``setup`` may be called on a fresh
+        # user ``Guides`` (``self.guides`` is a dict keyed by aesthetic) — read
+        # it representation-agnostically so we can never ``.get`` a list.
+        if isinstance(self.guides, dict):
+            user_map = self.guides
+        else:
+            user_map = {
+                a: g
+                for a, g in zip(self.aesthetics, self._guide_values)
+            }
+
         new_guides: List[Any] = []
         for idx, scale in enumerate(scales):
             aes_name = aesthetics[idx]
-            guide = self.guides.get(aes_name)
+            guide = user_map.get(aes_name)
 
             # Fallback hierarchy
             if guide is None:
@@ -4903,10 +5113,13 @@ class Guides:
 
             new_guides.append(guide)
 
+        # Child is keyed by aesthetic (R: a named list; names set per scale).
+        # ``params`` / ``aesthetics`` stay parallel to ``guides.values()``.
         child = Guides()
-        child.guides = new_guides
+        child._missing = self._missing
         child.params = [dict(getattr(g, "params", {})) for g in new_guides]
         child.aesthetics = list(aesthetics)
+        child._set_guides(new_guides, list(aesthetics))
         return child
 
     def train(self, scales: List[Any], labels: Dict[str, str]) -> None:
@@ -4919,7 +5132,7 @@ class Guides:
         labels : dict
             Aesthetic -> label mapping.
         """
-        guides_list = list(self.guides) if isinstance(self.guides, dict) else self.guides
+        guides_list = self._guide_values
         new_params: List[Optional[Dict[str, Any]]] = []
         for i, (guide, scale) in enumerate(zip(guides_list, scales)):
             aes = self.aesthetics[i] if i < len(self.aesthetics) else ""
@@ -4931,25 +5144,28 @@ class Guides:
             )
             new_params.append(p)
 
-        # Filter out None (dropped guides)
+        # Filter out None (dropped guides) — keep guides/params/aesthetics
+        # parallel as a named dict (keyed by aesthetic, R parity).
         keep = [p is not None for p in new_params]
+        kept_guides = [g for g, k in zip(guides_list, keep) if k]
         self.params = [p for p in new_params if p is not None]
-        self.guides = [g for g, k in zip(guides_list, keep) if k]
         self.aesthetics = [a for a, k in zip(self.aesthetics, keep) if k]
+        self._set_guides(kept_guides, list(self.aesthetics))
 
         # Record suppressed aesthetics before dropping GuideNone entries.
         # Downstream renderers (``plot_render._table_add_legends``) check
         # this set to skip scale-derived legends for aesthetics the user
         # explicitly blanked via ``guides(<aes>='none')``.
         existing = getattr(self, "suppressed_aesthetics", set()) or set()
+        guide_vals = self._guide_values
         self.suppressed_aesthetics = set(existing) | {
             self.aesthetics[i]
-            for i, g in enumerate(self.guides)
+            for i, g in enumerate(guide_vals)
             if isinstance(g, GuideNone) and i < len(self.aesthetics)
         }
 
         # Drop GuideNone entries
-        keep_none = [not isinstance(g, GuideNone) for g in self.guides]
+        keep_none = [not isinstance(g, GuideNone) for g in guide_vals]
         self.subset_guides(keep_none)
 
     def merge(self) -> None:
@@ -4958,16 +5174,19 @@ class Guides:
         Groups guides by ``{order}_{hash}`` and merges groups with
         more than one member.
         """
-        if len(self.guides) <= 1:
-            return
+        guides_list = self._guide_values
 
-        guides_list = list(self.guides) if isinstance(self.guides, dict) else self.guides
-
-        # Build hash keys
+        # Build hash keys (R: ``{order}_{hash}``).
         orders = [p.get("order", 0) for p in self.params]
         orders = [99 if o == 0 else o for o in orders]
         hashes = [p.get("hash", "") for p in self.params]
         keys = [f"{o:02d}_{h}" for o, h in zip(orders, hashes)]
+
+        # R early-exit: a single guide is still re-keyed by its hash
+        # (``names(self$guides) <- hashes``) so the named-list invariant holds.
+        if len(guides_list) <= 1:
+            self._set_guides(guides_list, keys)
+            return
 
         # Group by key
         groups: Dict[str, List[int]] = {}
@@ -4977,6 +5196,7 @@ class Guides:
         merged_guides: List[Any] = []
         merged_params: List[Dict[str, Any]] = []
         merged_aes: List[str] = []
+        merged_keys: List[str] = []
 
         # R guides-.R:428-430 — ``split`` keeps first-appearance order of
         # unique hashes, NOT lexicographic. Without this the merged
@@ -5004,10 +5224,12 @@ class Guides:
                 merged_guides.append(result["guide"])
                 merged_params.append(result["params"])
                 merged_aes.append(self.aesthetics[indices[0]])
+            merged_keys.append(key)
 
-        self.guides = merged_guides
+        # R: ``self$guides`` is re-keyed by hash here (``names <- hashes``).
         self.params = merged_params
         self.aesthetics = merged_aes
+        self._set_guides(merged_guides, merged_keys)
 
     def process_layers(
         self,
@@ -5026,15 +5248,26 @@ class Guides:
         theme : Theme, optional
             Plot theme.
         """
-        guides_list = list(self.guides) if isinstance(self.guides, dict) else self.guides
+        guide_keys = (
+            list(self.guides.keys())
+            if isinstance(self.guides, dict)
+            else None
+        )
+        guides_list = self._guide_values
         new_params = []
         for guide, params in zip(guides_list, self.params):
             new_params.append(guide.process_layers(params, layers, data, theme))
 
+        # R uses ``subset_guides(keep)`` here, preserving the hash names.
         keep = [p is not None for p in new_params]
         self.params = [p for p in new_params if p is not None]
-        self.guides = [g for g, k in zip(guides_list, keep) if k]
+        kept_guides = [g for g, k in zip(guides_list, keep) if k]
         self.aesthetics = [a for a, k in zip(self.aesthetics, keep) if k]
+        if guide_keys is not None:
+            kept_keys = [k for k, keep_ in zip(guide_keys, keep) if keep_]
+        else:
+            kept_keys = [str(i) for i in range(len(kept_guides))]
+        self._set_guides(kept_guides, kept_keys)
 
     def build(
         self,
@@ -5064,6 +5297,12 @@ class Guides:
         Guides
             Built guides ready for assembly.
         """
+        # R: collect custom guides first; they bypass the scale lifecycle and
+        # are concatenated back at the end.
+        custom = self.get_custom()
+        custom._built = True
+        no_guides = custom
+
         # Extract non-position scales
         if hasattr(scales, "non_position_scales"):
             scale_list = scales.non_position_scales()
@@ -5073,7 +5312,7 @@ class Guides:
             scale_list = scales if isinstance(scales, list) else []
 
         if not scale_list:
-            return Guides()
+            return no_guides
 
         # Flatten aesthetics
         flat_scales = []
@@ -5092,13 +5331,40 @@ class Guides:
             # ``Guides.train`` records before dropping GuideNone entries —
             # downstream ``plot_render._table_add_legends`` reads it to
             # skip scale-derived legends the user disabled via
-            # ``guides(<aes>='none')``.
-            empty = Guides()
-            empty.suppressed_aesthetics = getattr(guides, "suppressed_aesthetics", set())
-            return empty
+            # ``guides(<aes>='none')``.  Carry the set onto the custom-only
+            # container so the marker travels with the returned object.
+            no_guides.suppressed_aesthetics = getattr(
+                guides, "suppressed_aesthetics", set()
+            )
+            return no_guides
 
+        theme = theme if theme is not None else {}
         guides.merge()
         guides.process_layers(layers, layer_data, theme)
+
+        if not guides.guides:
+            no_guides.suppressed_aesthetics = getattr(
+                guides, "suppressed_aesthetics", set()
+            )
+            return no_guides
+
+        # R: append custom guides, ordered by name. We keep scale-derived
+        # guides first then customs (custom guides carry no aesthetic key).
+        custom_vals = custom._guide_values
+        if custom_vals:
+            merged_vals = guides._guide_values + custom_vals
+            merged_keys = (
+                list(guides.guides.keys())
+                + list(custom.guides.keys())
+            )
+            guides.params = list(guides.params) + list(custom.params)
+            guides.aesthetics = list(guides.aesthetics) + list(custom.aesthetics)
+            guides._set_guides(merged_vals, merged_keys)
+
+        guides._built = True
+        guides.suppressed_aesthetics = getattr(
+            guides, "suppressed_aesthetics", set()
+        )
         return guides
 
     def draw(
@@ -5123,7 +5389,7 @@ class Guides:
         list
             Rendered grobs.
         """
-        guides_list = list(self.guides) if isinstance(self.guides, dict) else self.guides
+        guides_list = self._guide_values
         directions = [direction or "vertical"] * len(positions)
         for i, pos in enumerate(positions):
             if direction is None and pos in ("top", "bottom"):
@@ -5284,10 +5550,14 @@ def _clone_guides(old: "Guides") -> "Guides":
     guides / params / aesthetics collections.
     """
     new = Guides()
-    new.guides = dict(old.guides)
+    if isinstance(old.guides, dict):
+        new.guides = dict(old.guides)
+    else:
+        new.guides = list(old.guides)
     new.params = list(old.params)
     new.aesthetics = list(old.aesthetics)
     new._missing = old._missing  # shared; set once at init, never mutated
+    new._built = getattr(old, "_built", False)
     return new
 
 

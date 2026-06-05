@@ -467,6 +467,36 @@ class TestScaleContinuous:
         assert "labels" in info
         assert "major" in info
 
+    def test_break_info_minor_continuous(self):
+        # With default (waiver) minor_breaks, a continuous POSITION scale must
+        # surface non-None minor / minor_source so that coord_polar /
+        # coord_radial can draw minor rings & spokes.  Values are the R gold
+        # standard for scale_y_continuous() trained on [0, 30]:
+        #   minor_source = 0 5 10 15 20 25 30
+        #   minor        = 0 1/6 1/3 1/2 2/3 5/6 1
+        s = continuous_scale("x", palette=lambda x: x,
+                             super_class=ScaleContinuousPosition)
+        s.train(np.array([0.0, 30.0]))
+        info = s.break_info(range=np.array([0.0, 30.0]))
+        assert info["minor_source"] is not None
+        assert info["minor"] is not None
+        np.testing.assert_allclose(
+            info["minor_source"], [0, 5, 10, 15, 20, 25, 30])
+        np.testing.assert_allclose(
+            info["minor"],
+            [0, 1 / 6, 1 / 3, 0.5, 2 / 3, 5 / 6, 1])
+
+    def test_break_info_minor_discards_oob(self):
+        # R: get_breaks_minor ends with discard(breaks, limits) — minor breaks
+        # outside the range must be dropped.  scale_y_continuous() on [2, 17]:
+        #   minor_source = 2 4 6 8 10 12 14 16   (0, 18, 20 discarded)
+        s = continuous_scale("x", palette=lambda x: x,
+                             super_class=ScaleContinuousPosition)
+        s.train(np.array([2.0, 17.0]))
+        info = s.break_info(range=np.array([2.0, 17.0]))
+        np.testing.assert_allclose(
+            info["minor_source"], [2, 4, 6, 8, 10, 12, 14, 16])
+
     def test_get_limits_empty_scale(self):
         s = continuous_scale("x", palette=lambda x: x, super_class=ScaleContinuousPosition)
         limits = s.get_limits()

@@ -119,13 +119,29 @@ def _theme_all_null() -> Theme:
     This is used by complete themes so that elements not explicitly set
     in the theme definition become ``None`` rather than being missing.
 
+    Mirrors R's ``theme_all_null()`` (theme-defaults.R:775-787), which reads
+    from the **static built-in** element tree (``.element_tree``) rather than
+    the live ``ggplot_global$element_tree``.  R's own comment explains why::
+
+        # We read from `.element_tree` instead of `ggplot_global$element_tree`
+        # because we don't want to change our results just because a user
+        # has defined new theme elements.
+
+    Using the live tree would give runtime-registered elements (e.g. a
+    ``register_theme_elements(ggh4x.facet.nestline = element_blank())``
+    default) a ``None`` placeholder in every complete theme, which would then
+    *block* the ``theme_default`` fallback fill in :func:`complete_theme`
+    (the placeholder is "present" so the registered default never surfaces).
+    Reading the static built-in tree keeps the registered default resolvable,
+    matching R.
+
     Returns
     -------
     Theme
     """
-    from ggplot2_py.theme_elements import get_element_tree
+    from ggplot2_py.theme_elements import _ELEMENT_TREE
 
-    elements = {name: None for name in get_element_tree()}
+    elements = {name: None for name in _ELEMENT_TREE}
     return Theme(elements=elements, complete=True, validate=False)
 
 

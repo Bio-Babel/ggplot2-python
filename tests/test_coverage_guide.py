@@ -50,6 +50,33 @@ from ggplot2_py.guide import (
 )
 
 
+def _contributing_colour_layer():
+    """A real layer that maps ``colour`` so it contributes to a colour guide.
+
+    ``GuideLegend.process_layers`` ports R's ``include`` computation
+    (``guide-legend.R:221-228``): a layer is only included when it
+    ``matched_aes`` against the guide's key and its ``show.legend`` is not
+    FALSE.  Tests that exercise ``process_layers`` therefore need a layer
+    whose mapping matches the guide aesthetic, else (like R) the guide is
+    dropped (``process_layers`` returns ``None``).
+    """
+    from ggplot2_py import geom_point, aes
+    return geom_point(mapping=aes(x="x", y="y", colour="g"))
+
+
+def _colour_key_params(extra=None):
+    """Guide params carrying a ``colour`` key (mirrors a trained legend)."""
+    params = {
+        "key": pd.DataFrame(
+            {"colour": ["red", "blue"], ".value": [1, 2], ".label": ["a", "b"]}
+        ),
+        "override.aes": {},
+    }
+    if extra:
+        params.update(extra)
+    return params
+
+
 # ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
@@ -145,13 +172,21 @@ class TestValidateGuide:
 
 
 class TestResolveGuideName:
+    # _resolve_guide_name is now R-faithful (Issue #4): it resolves via the
+    # extensible registry and *calls* the registered guide_* constructor, so it
+    # returns a resolved guide instance (or a bare class only when a class was
+    # registered, e.g. "custom"). These tests check the resolved guide type.
     def test_dash_to_underscore(self):
-        cls = _resolve_guide_name("axis-logticks")
-        assert cls is GuideAxisLogticks
+        resolved = _resolve_guide_name("axis-logticks")
+        if isinstance(resolved, type):
+            resolved = resolved()
+        assert isinstance(resolved, GuideAxisLogticks)
 
     def test_case_insensitive(self):
-        cls = _resolve_guide_name("LEGEND")
-        assert cls is GuideLegend
+        resolved = _resolve_guide_name("LEGEND")
+        if isinstance(resolved, type):
+            resolved = resolved()
+        assert isinstance(resolved, GuideLegend)
 
 
 # ---------------------------------------------------------------------------
@@ -852,9 +887,18 @@ class TestLegacyFunctions:
         assert isinstance(result, dict)
 
     def test_guide_geom(self):
+        # A contributing layer (maps ``colour``) keeps the guide → dict.
         g = guide_legend()
-        result = guide_geom(g)
+        g.params = _colour_key_params()
+        result = guide_geom(g, [_contributing_colour_layer()])
         assert isinstance(result, dict)
+
+    def test_guide_geom_no_contributing_layer_drops(self):
+        # R parity (guide-legend.R:226-228): no layer contributes → None.
+        g = guide_legend()
+        g.params = _colour_key_params()
+        result = guide_geom(g, [])
+        assert result is None
 
     def test_guide_transform(self):
         g = guide_legend()
@@ -1026,13 +1070,25 @@ class TestGuidesContainerMethods:
         assert len(g.guides) == 2
 
     def test_process_layers(self):
+        # A contributing layer keeps the colour guide (R parity).
         g = Guides()
         gl = guide_legend()
         g.guides = [gl]
-        g.params = [{"test": True}]
+        g.params = [_colour_key_params()]
+        g.aesthetics = ["colour"]
+        g.process_layers([_contributing_colour_layer()], None, None)
+        assert len(g.guides) == 1
+
+    def test_process_layers_drops_when_no_layer_contributes(self):
+        # R parity (guide-legend.R:226-228 / guides-.R:449-455):
+        # ``!any(include)`` → guide returns NULL and is subset out.
+        g = Guides()
+        gl = guide_legend()
+        g.guides = [gl]
+        g.params = [_colour_key_params()]
         g.aesthetics = ["colour"]
         g.process_layers([], None, None)
-        assert len(g.guides) == 1
+        assert len(g.guides) == 0
 
     def test_draw(self):
         g = Guides()

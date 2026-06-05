@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 
 from ggplot2_py.ggproto import GGProto, ggproto, ggproto_parent
-from ggplot2_py._compat import Waiver, is_waiver, waiver, cli_abort, cli_warn
+from ggplot2_py._compat import Waiver, is_waiver, waiver, cli_abort, cli_warn, cli_inform
 from ggplot2_py._utils import (
     remove_missing,
     resolution,
@@ -228,9 +228,23 @@ class FromTheme:
         return f"FromTheme({self._prop!r})"
 
 
+# ===========================================================================
+# Graphical-unit constants
+# ===========================================================================
+
+#: Points per mm  (``72.27 / 25.4``)
+PT: float = 72.27 / 25.4
+#: Stroke scale factor  (``96 / 25.4``)
+STROKE: float = 96 / 25.4
+
+
 # Default element_geom properties (R: theme-elements.R:356-363
-# `.default_geom_element`).  These are the *exact* values hardcoded
-# in R; we match them verbatim.
+# `.default_geom_element`).  These mirror the *stored* values of R's
+# ``.default_geom_element``, NOT the constructor arguments.  R's
+# element_geom constructor divides ``fontsize`` by .pt before storing
+# (theme-elements.R:340-342), so ``fontsize = 11`` is stored as
+# ``11 / .pt = 3.866058`` (mm).  This dict bypasses the ElementGeom
+# constructor, so we record the already-divided mm value here directly.
 _DEFAULT_GEOM_PROPS = {
     "ink": "black",
     "paper": "white",
@@ -240,7 +254,7 @@ _DEFAULT_GEOM_PROPS = {
     "linetype": 1,
     "bordertype": 1,
     "family": "",
-    "fontsize": 11,
+    "fontsize": 11 / PT,  # R stores fontsize in mm: 11 / .pt = 3.866058
     "pointsize": 1.5,
     "pointshape": 19,
     "fill": None,
@@ -305,15 +319,6 @@ def _eval_from_theme(default_aes: "Mapping", theme: Any) -> "Mapping":
             resolved[key] = val
     return Mapping(**resolved)
 
-
-# ===========================================================================
-# Graphical-unit constants
-# ===========================================================================
-
-#: Points per mm  (``72.27 / 25.4``)
-PT: float = 72.27 / 25.4
-#: Stroke scale factor  (``96 / 25.4``)
-STROKE: float = 96 / 25.4
 
 
 # ===========================================================================
@@ -831,6 +836,70 @@ def _coord_transform(coord: Any, data: pd.DataFrame, panel_params: Any) -> pd.Da
     return data
 
 
+def _coord_is_linear(coord: Any) -> bool:
+    """Whether ``coord`` is a linear coordinate system.
+
+    Mirrors R's ``coord$is_linear()`` guard.  A missing coord (legend
+    key drawing, tests) is treated as linear so the existing Cartesian
+    draw path is taken unchanged.
+    """
+    if coord is None or not hasattr(coord, "is_linear"):
+        return True
+    return bool(coord.is_linear())
+
+
+def _coord_munch(
+    coord: Any,
+    data: pd.DataFrame,
+    panel_params: Any,
+    is_closed: bool = False,
+) -> pd.DataFrame:
+    """Munch + transform ``data`` for a (non-linear) coordinate system.
+
+    Thin wrapper over :func:`ggplot2_py.coord.coord_munch` (R's
+    ``coord_munch``) so geoms have a single entry point.  For linear
+    coords this is exactly ``coord.transform`` (no subdivision, zero
+    cost — preserving the Cartesian fast path).
+    """
+    from ggplot2_py.coord import coord_munch
+    return coord_munch(coord, data, panel_params, is_closed=is_closed)
+
+
+def _rect_to_polygon(data: pd.DataFrame) -> pd.DataFrame:
+    """Expand each rectangle row into a 4-corner polygon row group.
+
+    Faithful port of R ``GeomRect$draw_panel``'s non-linear branch
+    (R/geom-rect.R:50-58): every rect ``(xmin, xmax, ymin, ymax)`` becomes
+    four vertices, walked counter-clockwise as R does::
+
+        x = interleave(xmin, xmax, xmax, xmin)
+        y = interleave(ymax, ymax, ymin, ymin)
+
+    All non-position aesthetics are repeated 4x (one block per rect) and a
+    per-rect ``group`` column (the original row index) keys each polygon.
+    """
+    pos_cols = {"x", "y", "xmin", "xmax", "ymin", "ymax"}
+    aesthetics = [c for c in data.columns if c not in pos_cols]
+
+    n = len(data)
+    # R: index <- rep(seq_len(nrow(data)), each = 4)
+    index = np.repeat(np.arange(n), 4)
+
+    new = data.iloc[index][aesthetics].reset_index(drop=True)
+
+    xmin = data["xmin"].to_numpy()
+    xmax = data["xmax"].to_numpy()
+    ymin = data["ymin"].to_numpy()
+    ymax = data["ymax"].to_numpy()
+
+    # R: vec_interleave(xmin, xmax, xmax, xmin) — column-stack then flatten
+    # row-major so each rect's 4 corners are contiguous.
+    new["x"] = np.column_stack([xmin, xmax, xmax, xmin]).reshape(-1)
+    new["y"] = np.column_stack([ymax, ymax, ymin, ymin]).reshape(-1)
+    new["group"] = index
+    return new
+
+
 # ===========================================================================
 # GeomPoint
 # ===========================================================================
@@ -942,8 +1011,32 @@ class GeomPath(Geom):
 
         R splits data by group and draws one polyline per group so
         that each group can have its own colour/linetype/linewidth.
+
+        Under a non-linear coord (R geom-path.R:48 ``coord_munch``) each
+        group's straight edges are subdivided so they bend into arcs in
+        plot space; the Cartesian path (plain ``coord$transform``) is
+        unchanged.
         """
-        coords = _coord_transform(coord, data, panel_params)
+        if data is None or len(data) < 2:
+            return null_grob()
+
+        if _coord_is_linear(coord):
+            coords = _coord_transform(coord, data, panel_params)
+        else:
+            # R sorts on group, then coord_munch (which subdivides each
+            # within-group edge — group boundaries are NA-broken, so we
+            # munch per group and concatenate to avoid cross-group arcs).
+            work = data.copy()
+            if "group" not in work.columns:
+                work["group"] = 0
+            parts = []
+            for _, gdata in work.groupby("group", sort=True, observed=True):
+                if len(gdata) < 2:
+                    continue
+                parts.append(_coord_munch(coord, gdata, panel_params, is_closed=False))
+            if not parts:
+                return null_grob()
+            coords = pd.concat(parts, ignore_index=True)
 
         if coords.empty or len(coords) < 2:
             return null_grob()
@@ -1154,7 +1247,23 @@ class GeomRect(Geom):
         linejoin: str = "mitre",
         **params: Any,
     ) -> Any:
-        """Draw rectangles."""
+        """Draw rectangles.
+
+        Faithful port of R ``GeomRect$draw_panel`` (R/geom-rect.R:47-80).
+        Under a non-linear coord each rect is expanded into a 4-corner
+        polygon (so the edges can bend into wedge arcs) and handed to
+        :meth:`GeomPolygon.draw_panel`; the Cartesian path is unchanged.
+        """
+        if not _coord_is_linear(coord):
+            new = _rect_to_polygon(data)
+            return _ggname(
+                "geom_rect",
+                GeomPolygon.draw_panel(
+                    GeomPolygon(), new, panel_params, coord,
+                    lineend=lineend, linejoin=linejoin,
+                ),
+            )
+
         coords = _coord_transform(coord, data, panel_params)
 
         return _ggname(
@@ -1256,17 +1365,84 @@ class GeomRaster(Geom):
         vjust: float = 0.5,
         **params: Any,
     ) -> Any:
-        """Draw raster tiles."""
+        """Draw raster tiles.
+
+        Faithful port of R ``GeomRaster$draw_panel`` (R/geom-raster.R:53-92).
+        R converts the per-row vector of fills into a 2-D ``nrow x ncol``
+        colour matrix (``as.raster``-shaped) and hands *that* to
+        ``rasterGrob`` — passing the flat fill vector renders nothing.
+
+        R algorithm::
+
+            x_pos <- as.integer((x - min(x)) / resolution(x, FALSE))
+            y_pos <- as.integer((y - min(y)) / resolution(y, FALSE))
+            nrow  <- max(y_pos) + 1 ; ncol <- max(x_pos) + 1
+            raster <- matrix(NA_character_, nrow, ncol)
+            raster[cbind(nrow - y_pos, x_pos + 1)] <- alpha(fill, alpha)
+
+        R's matrix is 1-indexed and row ``nrow - y_pos`` puts the *largest*
+        y at row 1 (the TOP of the image), columns increasing with x, byrow.
+        In 0-indexed NumPy that is ``row = (nrow - 1) - y_pos`` (row 0 = top),
+        ``col = x_pos``. Cells with no data stay NA → transparent at draw.
+
+        Non-linear coords: R (geom-raster.R:55-65) does NOT abort — it
+        ``cli_inform``s and falls back to ``GeomRect$draw_panel`` (which,
+        being non-linear, munches each tile into a wedge polygon).  We
+        mirror that exactly (linewidth = 0.3, colour = fill).
+        """
+        if not _coord_is_linear(coord):
+            cli_inform(
+                f"{snake_class(self)} only works with linear coordinate "
+                f"systems, not {snake_class(coord)}.\n"
+                f"Falling back to drawing as {snake_class(GeomRect())}."
+            )
+            data = data.copy()
+            data["linewidth"] = 0.3  # prevent anti-aliasing artefacts
+            data["colour"] = data["fill"]
+            return GeomRect.draw_panel(
+                GeomRect(), data, panel_params, coord,
+            )
+
+        from ggplot2_py.position import _resolution
+
+        # ---- integer raster positions (R uses the *pre-transform* x/y) ----
+        x_num = pd.to_numeric(data["x"], errors="coerce").to_numpy(dtype=float)
+        y_num = pd.to_numeric(data["y"], errors="coerce").to_numpy(dtype=float)
+        x_res = _resolution(x_num, zero=False)
+        y_res = _resolution(y_num, zero=False)
+        x_pos = ((x_num - np.nanmin(x_num)) / x_res).astype(int)
+        y_pos = ((y_num - np.nanmin(y_num)) / y_res).astype(int)
+
+        nrow = int(x_pos.size and y_pos.max() + 1)
+        ncol = int(x_pos.size and x_pos.max() + 1)
+
         coords = _coord_transform(coord, data, panel_params)
+
+        # ---- per-row fill colours (already correct in layer data) ---------
+        if "fill" in coords.columns:
+            fill = _fill_alpha(
+                coords["fill"].values,
+                coords["alpha"].values if "alpha" in coords.columns else None,
+            )
+        else:
+            fill = np.full(len(coords), "grey35", dtype=object)
+        fill = np.asarray(fill, dtype=object)
+
+        # ---- scatter the flat fill vector into the 2-D colour matrix ------
+        # row 0 = top = max y (R: nrow - y_pos, 1-indexed → 0-indexed below).
+        # Unfilled cells stay NA in R (rendered fully transparent by
+        # rasterGrob); use the explicit "transparent" sentinel so the
+        # renderer's colour parser maps them to alpha = 0 deterministically.
+        raster = np.full((nrow, ncol), "transparent", dtype=object)
+        rows = (nrow - 1) - y_pos
+        cols = x_pos
+        raster[rows, cols] = fill
 
         x_rng = (coords["xmin"].min(), coords["xmax"].max())
         y_rng = (coords["ymin"].min(), coords["ymax"].max())
 
         return raster_grob(
-            image=_fill_alpha(
-                coords["fill"].values if "fill" in coords.columns else "grey35",
-                coords["alpha"].values if "alpha" in coords.columns else None,
-            ),
+            image=raster,
             x=np.mean(x_rng),
             y=np.mean(y_rng),
             width=x_rng[1] - x_rng[0],
@@ -1393,10 +1569,14 @@ class GeomText(Geom):
 
     required_aes: Tuple[str, ...] = ("x", "y", "label")
     non_missing_aes: Tuple[str, ...] = ("angle",)
+    # R (geom-text.R:11-17):
+    #   colour = from_theme(colour %||% ink)
+    #   family = from_theme(family)
+    #   size   = from_theme(fontsize)
     default_aes: Mapping = Mapping(
         colour=FromTheme("colour", fallback="ink"),
-        family="",
-        size=3.88,  # R GeomText$default_aes: literal 3.88 (mm), ≈ 11 pt when ×.pt
+        family=FromTheme("family", fallback=""),
+        size=FromTheme("fontsize"),  # resolves to .default_geom_element fontsize = 11/.pt = 3.866
         angle=0,
         hjust=0.5,
         vjust=0.5,
@@ -1453,7 +1633,7 @@ class GeomText(Geom):
                 rot=float(row.get("angle", 0)),
                 gp=Gpar(
                     col=col_i,
-                    fontsize=float(row.get("size", 3.88)) * size_mul,
+                    fontsize=float(row.get("size", 11 / PT)) * size_mul,
                 ),
                 name=f"text.{i}",
             ))
@@ -1476,7 +1656,7 @@ class GeomLabel(Geom):
         colour=FromTheme("colour", fallback="ink"),
         fill=FromTheme("fill", fallback="paper"),
         family=FromTheme("family", fallback=""),
-        size=FromTheme("fontsize", fallback=3.88),
+        size=FromTheme("fontsize", fallback=11 / PT),  # R: from_theme(fontsize) → 11/.pt = 3.866
         angle=0,
         hjust=0.5,
         vjust=0.5,
@@ -1529,7 +1709,7 @@ class GeomLabel(Geom):
                 y=y_val,
                 gp=Gpar(
                     col=scales_alpha(row.get("colour", "black"), row.get("alpha")),
-                    fontsize=row.get("size", 3.88) * size_mul,
+                    fontsize=row.get("size", 11 / PT) * size_mul,
                     fontfamily=row.get("family", ""),
                     fontface=row.get("fontface", 1),
                 ),
@@ -1573,40 +1753,135 @@ class GeomPolygon(Geom):
         linemitre: float = 10,
         **params: Any,
     ) -> Any:
-        """Draw filled polygons."""
+        """Draw filled polygons.
+
+        Faithful port of R ``GeomPolygon$draw_panel`` (R/geom-polygon.R).
+        R always munches (``coord_munch(coord, data, is_closed = TRUE)``)
+        — for linear coords that is just ``coord$transform`` (no extra
+        points), for non-linear coords the polygon edges bend into arcs.
+        It then orders by group and pulls **one** gpar entry per group
+        (``first_rows``).  Holes are supported via the ``subgroup``
+        aesthetic + ``pathGrob``.
+        """
         if len(data) <= 1:
             return null_grob()
 
-        coords = _coord_transform(coord, data, panel_params)
-        # R does NOT sort by group here — group is only used as
-        # polygon sub-id.  Sorting would scramble vertex order.
-        group_id = coords["group"].values if "group" in coords.columns else None
+        if _coord_is_linear(coord):
+            # ---- Cartesian fast path (unchanged) --------------------
+            coords = _coord_transform(coord, data, panel_params)
+            # R does NOT sort by group here — group is only used as
+            # polygon sub-id.  Sorting would scramble vertex order.
+            group_id = coords["group"].values if "group" in coords.columns else None
 
-        # Take first value per group for gpar
+            # Take first value per group for gpar
+            return _ggname(
+                "geom_polygon",
+                polygon_grob(
+                    x=coords["x"].values,
+                    y=coords["y"].values,
+                    id=group_id,
+                    default_units="native",
+                    gp=Gpar(
+                        col=coords["colour"].iloc[0] if "colour" in coords.columns else None,
+                        fill=_fill_alpha(
+                            coords["fill"].iloc[0] if "fill" in coords.columns else "grey35",
+                            coords["alpha"].iloc[0] if "alpha" in coords.columns else None,
+                        ),
+                        lwd=(
+                            coords["linewidth"].iloc[0] * PT
+                            if "linewidth" in coords.columns
+                            else 0.5 * PT
+                        ),
+                        lty=coords["linetype"].iloc[0] if "linetype" in coords.columns else 1,
+                        lineend=lineend,
+                        linejoin=linejoin,
+                        linemitre=linemitre,
+                    ),
+                ),
+            )
+
+        # ---- Non-linear path (R geom-polygon.R:15-71) ---------------
+        munched = _coord_munch(coord, data, panel_params, is_closed=True)
+        if "group" not in munched.columns:
+            munched = munched.copy()
+            munched["group"] = 0
+
+        has_subgroup = (
+            "subgroup" in munched.columns and not munched["subgroup"].isna().all()
+        )
+
+        if not has_subgroup:
+            # R: munched <- munched[order(munched$group), ]
+            munched = munched.sort_values("group", kind="stable")
+            group_arr = munched["group"].to_numpy()
+            # R: first_rows <- munched[!duplicated(munched$group), ]
+            first_rows = munched.drop_duplicates(subset="group", keep="first")
+            gp = self._polygon_gpar(first_rows, lineend, linejoin, linemitre)
+            return _ggname(
+                "geom_polygon",
+                polygon_grob(
+                    x=munched["x"].to_numpy(),
+                    y=munched["y"].to_numpy(),
+                    id=group_arr,
+                    default_units="native",
+                    gp=gp,
+                ),
+            )
+
+        # ---- holes (subgroup) → pathGrob (R geom-polygon.R:44-70) ---
+        munched = munched.sort_values(["group", "subgroup"], kind="stable")
+        # R: id <- match(munched$subgroup, unique0(munched$subgroup))
+        sub_id = pd.factorize(munched["subgroup"], sort=False)[0] + 1
+        first_rows = munched.drop_duplicates(subset="group", keep="first")
+        gp = self._polygon_gpar(first_rows, lineend, linejoin, linemitre)
         return _ggname(
             "geom_polygon",
-            polygon_grob(
-                x=coords["x"].values,
-                y=coords["y"].values,
-                id=group_id,
+            path_grob(
+                x=munched["x"].to_numpy(),
+                y=munched["y"].to_numpy(),
+                id=sub_id,
+                path_id=munched["group"].to_numpy(),
+                rule=rule,
                 default_units="native",
-                gp=Gpar(
-                    col=coords["colour"].iloc[0] if "colour" in coords.columns else None,
-                    fill=_fill_alpha(
-                        coords["fill"].iloc[0] if "fill" in coords.columns else "grey35",
-                        coords["alpha"].iloc[0] if "alpha" in coords.columns else None,
-                    ),
-                    lwd=(
-                        coords["linewidth"].iloc[0] * PT
-                        if "linewidth" in coords.columns
-                        else 0.5 * PT
-                    ),
-                    lty=coords["linetype"].iloc[0] if "linetype" in coords.columns else 1,
-                    lineend=lineend,
-                    linejoin=linejoin,
-                    linemitre=linemitre,
-                ),
+                gp=gp,
             ),
+        )
+
+    @staticmethod
+    def _polygon_gpar(first_rows, lineend, linejoin, linemitre):
+        """Build per-group :class:`Gpar` from the first row of each group.
+
+        R ``gg_par`` with one entry per polygon (geom-polygon.R:32-40).
+        """
+        n = len(first_rows)
+        col = (
+            first_rows["colour"].to_numpy()
+            if "colour" in first_rows.columns
+            else np.array([None] * n, dtype=object)
+        )
+        fill = _fill_alpha(
+            first_rows["fill"].to_numpy() if "fill" in first_rows.columns
+            else np.array(["grey35"] * n, dtype=object),
+            first_rows["alpha"].to_numpy() if "alpha" in first_rows.columns else None,
+        )
+        lwd = (
+            first_rows["linewidth"].to_numpy() * PT
+            if "linewidth" in first_rows.columns
+            else np.full(n, 0.5 * PT)
+        )
+        lty = (
+            first_rows["linetype"].to_numpy()
+            if "linetype" in first_rows.columns
+            else np.ones(n, dtype=int)
+        )
+        return Gpar(
+            col=col,
+            fill=fill,
+            lwd=lwd,
+            lty=lty,
+            lineend=lineend,
+            linejoin=linejoin,
+            linemitre=linemitre,
         )
 
 
@@ -1658,20 +1933,39 @@ class GeomRibbon(Geom):
         outline_type: str = "both",
         **params: Any,
     ) -> Any:
-        """Draw ribbon."""
+        """Draw ribbon.
+
+        R (geom-ribbon.R:134-200) processes the upper edge and the
+        reversed lower edge *separately* through ``coord_munch`` and binds
+        them into one polygon, so under a non-linear coord both edges bend
+        into arcs.  The Cartesian path (plain ``coord$transform``) is
+        unchanged.
+        """
         data = data.copy()
 
-        # Build polygon from upper + reversed lower
+        linear = _coord_is_linear(coord)
+
+        # R: positions_upper = (x, ymax); positions_lower = rev(x, ymin).
         upper = pd.DataFrame({"x": data["x"].values, "y": data["ymax"].values})
         lower = pd.DataFrame({"x": data["x"].values[::-1], "y": data["ymin"].values[::-1]})
-        poly_data = pd.concat([upper, lower], ignore_index=True)
 
-        # Copy aesthetics
-        for col in ("colour", "fill", "linewidth", "linetype", "alpha"):
-            if col in data.columns:
-                poly_data[col] = data[col].iloc[0]
-
-        coords = _coord_transform(coord, poly_data, panel_params)
+        if linear:
+            poly_data = pd.concat([upper, lower], ignore_index=True)
+            # Copy aesthetics
+            for col in ("colour", "fill", "linewidth", "linetype", "alpha"):
+                if col in data.columns:
+                    poly_data[col] = data[col].iloc[0]
+            coords = _coord_transform(coord, poly_data, panel_params)
+        else:
+            # group needed so coord_munch treats each edge as one path.
+            upper["group"] = 0
+            lower["group"] = 0
+            mu = _coord_munch(coord, upper, panel_params, is_closed=False)
+            ml = _coord_munch(coord, lower, panel_params, is_closed=False)
+            coords = pd.concat([mu, ml], ignore_index=True)
+            for col in ("colour", "fill", "linewidth", "linetype", "alpha"):
+                if col in data.columns:
+                    coords[col] = data[col].iloc[0]
 
         fill_val = data["fill"].iloc[0] if "fill" in data.columns else "grey35"
         alpha_val = data["alpha"].iloc[0] if "alpha" in data.columns else None
@@ -1705,8 +1999,12 @@ class GeomRibbon(Geom):
             return _ggname("geom_ribbon", g_poly)
 
         # Draw outline lines
-        upper_coords = _coord_transform(coord, pd.DataFrame({"x": data["x"].values, "y": data["ymax"].values}), panel_params)
-        lower_coords = _coord_transform(coord, pd.DataFrame({"x": data["x"].values[::-1], "y": data["ymin"].values[::-1]}), panel_params)
+        if linear:
+            upper_coords = _coord_transform(coord, pd.DataFrame({"x": data["x"].values, "y": data["ymax"].values}), panel_params)
+            lower_coords = _coord_transform(coord, pd.DataFrame({"x": data["x"].values[::-1], "y": data["ymin"].values[::-1]}), panel_params)
+        else:
+            upper_coords = mu
+            lower_coords = ml
 
         line_gp = Gpar(col=colour_val, lwd=lwd, lty=lty, lineend=lineend, linejoin=linejoin)
 
@@ -1846,12 +2144,42 @@ class GeomSegment(Geom):
         na_rm: bool = False,
         **params: Any,
     ) -> Any:
-        """Draw line segments."""
+        """Draw line segments.
+
+        Under a non-linear coord (R geom-segment.R:41-49) each segment is
+        a 2-point path with ``group = row index`` handed to
+        :meth:`GeomPath.draw_panel` so it munches into an arc; the
+        Cartesian path uses ``segmentsGrob`` unchanged.
+        """
         data = data.copy()
         if "xend" not in data.columns:
             data["xend"] = data["x"]
         if "yend" not in data.columns:
             data["yend"] = data["y"]
+
+        if not _coord_is_linear(coord):
+            if data.empty:
+                return null_grob()
+            # R: data$group <- seq_len(nrow(data))
+            #    starts <- data[, -c(xend, yend)]
+            #    ends   <- rename(data[, -c(x, y)], xend->x, yend->y)
+            #    pieces <- rbind(starts, ends)[order(group)]
+            work = data.reset_index(drop=True)
+            work["group"] = np.arange(len(work))
+            other = [
+                c for c in work.columns
+                if c not in ("x", "y", "xend", "yend")
+            ]
+            starts = work[["x", "y"] + other].copy()
+            ends = work[["xend", "yend"] + other].rename(
+                columns={"xend": "x", "yend": "y"}
+            )
+            pieces = pd.concat([starts, ends], ignore_index=True)
+            pieces = pieces.sort_values("group", kind="stable").reset_index(drop=True)
+            return GeomPath.draw_panel(
+                GeomPath(), pieces, panel_params, coord,
+                arrow=arrow, lineend=lineend,
+            )
 
         coords = _coord_transform(coord, data, panel_params)
 

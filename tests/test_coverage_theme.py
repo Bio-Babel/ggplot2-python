@@ -386,7 +386,12 @@ class TestElementGeom:
             bordertype="solid", family="sans", fontsize=12,
             pointsize=3, pointshape=19, colour="red", fill="blue"
         )
-        assert e.fontsize == 12
+        # R's element_geom constructor (theme-elements.R:340-342) divides the
+        # supplied fontsize by .pt before storing, so fontsize=12 is stored as
+        # 12 / .pt (mm). Only fontsize is converted; pointsize is left as-is.
+        from ggplot2_py.geom import PT
+        assert e.fontsize == pytest.approx(12 / PT)
+        assert e.pointsize == 3
 
 
 # =====================================================================

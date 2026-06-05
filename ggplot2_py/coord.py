@@ -396,17 +396,79 @@ def _dist_euclidean(
     return np.sqrt(dx ** 2 + dy ** 2)
 
 
+def _spiral_arc_length(
+    a: np.ndarray, theta1: np.ndarray, theta2: np.ndarray
+) -> np.ndarray:
+    """Archimedes' spiral arc length (R ``spiral_arc_length``, coord-munch.R:210).
+
+    Each segment is a spiral ``r = a * theta`` between ``theta1`` and
+    ``theta2``.  Uses the closed form from mathworld.wolfram.com/
+    ArchimedesSpiral.html (``asinh`` = inverse hyperbolic sine).
+    """
+    a = np.asarray(a, dtype=float)
+    theta1 = np.asarray(theta1, dtype=float)
+    theta2 = np.asarray(theta2, dtype=float)
+    return 0.5 * a * (
+        (theta1 * np.sqrt(1 + theta1 * theta1) + np.arcsinh(theta1))
+        - (theta2 * np.sqrt(1 + theta2 * theta2) + np.arcsinh(theta2))
+    )
+
+
 def _dist_polar(r: np.ndarray, theta: np.ndarray) -> np.ndarray:
-    """Distance in polar coordinates between successive points."""
+    """Polar distance between successive points (R ``dist_polar``, coord-munch.R:118).
+
+    This does *not* give the straight-line distance between points in
+    polar space.  Instead it gives the distance along lines that *were*
+    straight in Cartesian space but have been warped into polar space —
+    these are spiral arcs, circular arcs, or rays.  Mirrors R faithfully:
+    pretend ``theta`` is x and ``r`` is y, find the per-segment line
+    formula, then integrate the appropriate arc length.
+    """
     r = np.asarray(r, dtype=float)
     theta = np.asarray(theta, dtype=float)
     if len(r) < 2:
-        return np.array([0.0])
-    dr = np.diff(r)
-    dtheta = np.diff(theta)
+        return np.array([], dtype=float)
+
+    # find_line_formula(theta, r): slope/intercepts treating theta as x, r as y.
+    t1 = theta[:-1]
+    t2 = theta[1:]
     r1 = r[:-1]
     r2 = r[1:]
-    return np.sqrt(r1 ** 2 + r2 ** 2 - 2 * r1 * r2 * np.cos(dtheta))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        slope = (r2 - r1) / (t2 - t1)
+        # xintercept (t_int) = t2 - r2 / slope; yintercept unused for dist
+        t_int = t2 - (r2 / slope)
+
+    # Re-normalize theta so the spiral intercept is 0 (R: tn1, tn2).
+    tn1 = t1 - t_int
+    tn2 = t2 - t_int
+
+    dist = np.full(len(slope), np.nan, dtype=float)
+
+    finite_slope = np.isfinite(slope)
+
+    # Spiral arcs: finite, non-zero slope.
+    idx_spiral = finite_slope & (slope != 0)
+    if np.any(idx_spiral):
+        dist[idx_spiral] = _spiral_arc_length(
+            slope[idx_spiral], tn1[idx_spiral], tn2[idx_spiral]
+        )
+
+    # Circular arcs: zero slope (r constant) → r1 * (t2 - t1).
+    idx_circle = finite_slope & (slope == 0)
+    if np.any(idx_circle):
+        dist[idx_circle] = r1[idx_circle] * (t2[idx_circle] - t1[idx_circle])
+
+    # Rays: infinite slope (theta constant) → r1 - r2.
+    idx_ray = np.isinf(slope)
+    if np.any(idx_ray):
+        dist[idx_ray] = r1[idx_ray] - r2[idx_ray]
+
+    # Max possible length: spiral from (r=0, theta=0) to (r=1, theta=2*pi).
+    max_dist = _spiral_arc_length(
+        np.array(1.0 / (2 * math.pi)), np.array(0.0), np.array(2 * math.pi)
+    )
+    return np.abs(dist / max_dist)
 
 
 def _theta_rescale(
@@ -442,6 +504,32 @@ def _r_rescale(
     x = np.asarray(x, dtype=float)
     x = np.clip(x, range_[0], range_[1])
     return _rescale(x, to=donut, from_=range_)
+
+
+def _as_float_array(x: Any) -> np.ndarray:
+    """Coerce *x* (None / scalar / sequence) to a 1-D float array.
+
+    ``None`` → empty array.  Used for polar panel-param break vectors
+    which may be ``None`` (no breaks) or numpy/list of breaks.
+    """
+    if x is None:
+        return np.array([], dtype=float)
+    arr = np.atleast_1d(np.asarray(x, dtype=float))
+    return arr
+
+
+def _vec_interleave(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Interleave two equal-length vectors (R ``vec_interleave(a, b)``).
+
+    Returns ``[a0, b0, a1, b1, ...]``.  Used to build the per-spoke
+    centre→edge segment endpoints for the polar grill.
+    """
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    out = np.empty(a.size + b.size, dtype=float)
+    out[0::2] = a
+    out[1::2] = b
+    return out
 
 
 def _parse_coord_expand(expand: Any) -> List[bool]:
@@ -2572,29 +2660,94 @@ class CoordPolar(Coord):
         scale_y: Any,
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        """Build polar panel parameters (R ``CoordPolar$setup_panel_params``).
+
+        Mirrors coord-polar.R:58-106: per axis, expand the scale range
+        with R's expansion (theta: ``mult=(0, 0.5), add=(0, 0)`` so the
+        wedge ring closes; r: ``(0, 0)``), compute ``break_info`` for
+        major/minor/labels, then rename ``x``/``y`` → ``theta``/``r``
+        depending on ``self.theta`` and record ``r.arrange``.
+        """
+        from ggplot2_py.scale import default_expansion, expand_range4, expansion
+
         params = params or {}
-        result: Dict[str, Any] = {}
+        ret: Dict[str, Dict[str, Any]] = {"x": {}, "y": {}}
         for name, scale in [("x", scale_x), ("y", scale_y)]:
             limits = self.limits.get(name)
-            rng = _scale_numeric_range(scale, [0, 1])
-            if limits is not None:
-                rng = list(limits)
 
             is_theta = (self.theta == name)
-            prefix = "theta" if is_theta else "r"
-
-            result[f"{prefix}.range"] = rng
-            if hasattr(scale, "break_info"):
-                info = scale.break_info(rng)
-                result[f"{prefix}.major"] = info.get("major_source")
-                result[f"{prefix}.minor"] = info.get("minor_source")
-                result[f"{prefix}.labels"] = info.get("labels")
+            # R: default_expansion(scale, c(0, 0.5), c(0, 0)) for theta and
+            # default_expansion(scale, c(0, 0), c(0, 0)) for r (coord-polar.R:66-70).
+            # The length-2 vectors are [mult, add] applied to BOTH sides, so the
+            # theta DISCRETE expansion is add=0.5 (half a category each side) —
+            # this is what closes the wedge ring for bar/pie charts; continuous
+            # theta and r get no expansion.
+            if is_theta:
+                disc, cont = expansion(mult=0, add=0.5), expansion(mult=0, add=0)
             else:
-                result[f"{prefix}.major"] = None
-                result[f"{prefix}.minor"] = None
-                result[f"{prefix}.labels"] = None
+                disc, cont = expansion(mult=0, add=0), expansion(mult=0, add=0)
+            if scale is not None and hasattr(scale, "expand"):
+                exp = default_expansion(scale, disc, cont)
+            else:
+                # No scale stub: assume discrete theta (the wedge-ring case).
+                exp = np.asarray(disc if is_theta else cont, dtype=float)
 
-        return result
+            # R: expand_limits_scale(scale, expansion, coord_limits=limits) —
+            # apply the polar expansion to the scale's RAW limits (mapped to
+            # numeric for discrete scales).  scale.dimension(expand=...) does
+            # exactly this; fall back to expand_range4 for bare stubs.
+            if scale is not None and hasattr(scale, "dimension"):
+                rng = list(np.asarray(scale.dimension(expand=exp), dtype=float))
+            else:
+                base = _scale_numeric_range(scale, [0, 1])
+                rng = list(np.asarray(expand_range4(base, exp), dtype=float))
+            if limits is not None:
+                rng = [
+                    float(limits[0]) if limits[0] is not None and np.isfinite(limits[0]) else rng[0],
+                    float(limits[1]) if limits[1] is not None and np.isfinite(limits[1]) else rng[1],
+                ]
+
+            if scale is not None and hasattr(scale, "break_info"):
+                info = scale.break_info(rng)
+                ret[name]["range"] = rng
+                ret[name]["major"] = info.get("major_source")
+                ret[name]["minor"] = info.get("minor_source")
+                ret[name]["labels"] = info.get("labels")
+            else:
+                ret[name]["range"] = rng
+                ret[name]["major"] = None
+                ret[name]["minor"] = None
+                ret[name]["labels"] = None
+            ret[name]["sec.range"] = info.get("sec.range") if scale is not None and hasattr(scale, "break_info") else None
+            ret[name]["sec.major"] = None
+            ret[name]["sec.minor"] = None
+            ret[name]["sec.labels"] = None
+
+        # R renames x.* -> theta.*/r.* depending on which axis is theta.
+        if self.theta == "y":
+            theta_src, r_src = ret["y"], ret["x"]
+            r_scale = scale_x
+        else:
+            theta_src, r_src = ret["x"], ret["y"]
+            r_scale = scale_y
+
+        details: Dict[str, Any] = {}
+        for prefix, src in (("theta", theta_src), ("r", r_src)):
+            details[f"{prefix}.range"] = src["range"]
+            details[f"{prefix}.major"] = src["major"]
+            details[f"{prefix}.minor"] = src["minor"]
+            details[f"{prefix}.labels"] = src["labels"]
+            details[f"{prefix}.sec.range"] = src.get("sec.range")
+            details[f"{prefix}.sec.major"] = src.get("sec.major")
+            details[f"{prefix}.sec.minor"] = src.get("sec.minor")
+            details[f"{prefix}.sec.labels"] = src.get("sec.labels")
+
+        if r_scale is not None and hasattr(r_scale, "axis_order"):
+            details["r.arrange"] = r_scale.axis_order()
+        else:
+            details["r.arrange"] = ["primary", "secondary"]
+
+        return details
 
     def setup_panel_guides(
         self,
@@ -2602,7 +2755,28 @@ class CoordPolar(Coord):
         guides: Any,
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        # CoordPolar cannot render standard guides
+        """Warn on unsupported guides (R ``CoordPolar$setup_panel_guides``).
+
+        CoordPolar cannot render standard x/y/r/theta guides; R emits a
+        warning naming the offending aesthetics (coord-polar.R:108-120).
+        """
+        guide_dict = None
+        if guides is not None:
+            guide_dict = getattr(guides, "guides", None)
+            if guide_dict is None and isinstance(guides, dict):
+                guide_dict = guides
+        if guide_dict:
+            names = [
+                n for n in guide_dict
+                if n in ("x", "x.sec", "y", "y.sec", "r", "r.sec", "theta", "theta.sec")
+            ]
+            if names:
+                import warnings
+                warnings.warn(
+                    f"coord_polar cannot render guides for the aesthetics: "
+                    f"{', '.join(names)}.",
+                    stacklevel=2,
+                )
         return panel_params
 
     def train_panel_guides(
@@ -2645,15 +2819,188 @@ class CoordPolar(Coord):
         return data
 
     def render_bg(self, panel_params: Dict[str, Any], theme: Any) -> Any:
-        return guide_grid(theme, panel_params, self)
+        """Render the polar grill (R ``CoordPolar$render_bg``, coord-polar.R:168).
+
+        Draws ``panel.background`` + theta spokes (major & minor lines from
+        the centre ``(0.5, 0.5)`` out to ``0.45·(sin θ, cos θ) + 0.5``) +
+        concentric r circles (radii ``[r_rescale(r.major), 0.45]`` sampled
+        over ``thetafine = linspace(0, 2π, 100)``).  Spoke/circle styling
+        comes from ``panel.grid.major/minor.<theta-axis>``.
+        """
+        from grid_py import grob_tree, null_grob
+        from ggplot2_py.theme_elements import element_render
+
+        arc = (self.start, self.start + 2 * math.pi)
+        dir_ = self.direction
+
+        theta_major = _as_float_array(panel_params.get("theta.major"))
+        theta_minor = _as_float_array(panel_params.get("theta.minor"))
+        r_major = _as_float_array(panel_params.get("r.major"))
+        theta_range = tuple(panel_params.get("theta.range", [0, 1]))
+        r_range = tuple(panel_params.get("r.range", [0, 1]))
+
+        theta = (_theta_rescale(theta_major, theta_range, arc, dir_)
+                 if theta_major.size > 0 else np.array([]))
+        thetamin = (_theta_rescale(theta_minor, theta_range, arc, dir_)
+                    if theta_minor.size > 0 else np.array([]))
+        thetafine = np.linspace(0, 2 * math.pi, 100)
+
+        # rfine = c(r_rescale(r.major), 0.45)
+        if r_major.size > 0:
+            rfine = np.concatenate([_r_rescale(r_major, r_range), [0.45]])
+        else:
+            rfine = np.array([0.45])
+
+        major_theta_el = f"panel.grid.major.{self.theta}"
+        minor_theta_el = f"panel.grid.minor.{self.theta}"
+        major_r_el = f"panel.grid.major.{self.r}"
+
+        children = []
+        bg = element_render(theme, "panel.background")
+        if bg is not None:
+            children.append(bg)
+
+        # Theta major spokes: segments from centre to 0.45*(sin, cos)+0.5.
+        if theta.size > 0:
+            x = _vec_interleave(np.zeros_like(theta), 0.45 * np.sin(theta)) + 0.5
+            y = _vec_interleave(np.zeros_like(theta), 0.45 * np.cos(theta)) + 0.5
+            g = element_render(
+                theme, major_theta_el, name="angle",
+                x=x, y=y, id_lengths=[2] * len(theta), default_units="npc",
+            )
+            if g is not None:
+                children.append(g)
+
+        # Theta minor spokes.
+        if thetamin.size > 0:
+            x = _vec_interleave(np.zeros_like(thetamin), 0.45 * np.sin(thetamin)) + 0.5
+            y = _vec_interleave(np.zeros_like(thetamin), 0.45 * np.cos(thetamin)) + 0.5
+            g = element_render(
+                theme, minor_theta_el, name="angle",
+                x=x, y=y, id_lengths=[2] * len(thetamin), default_units="npc",
+            )
+            if g is not None:
+                children.append(g)
+
+        # Concentric r circles (one polyline per radius in rfine).
+        xr = (np.repeat(rfine, len(thetafine))
+              * np.tile(np.sin(thetafine), len(rfine))) + 0.5
+        yr = (np.repeat(rfine, len(thetafine))
+              * np.tile(np.cos(thetafine), len(rfine))) + 0.5
+        g = element_render(
+            theme, major_r_el, name="radius",
+            x=xr, y=yr, id_lengths=[len(thetafine)] * len(rfine),
+            default_units="npc",
+        )
+        if g is not None:
+            children.append(g)
+
+        if not children:
+            return null_grob()
+        return grob_tree(*children, name="grill")
+
+    def render_fg(self, panel_params: Dict[str, Any], theme: Any) -> Any:
+        """Render theta tick labels + panel border (R ``CoordPolar$render_fg``).
+
+        Places ``axis.text.x`` labels around the ring at
+        ``0.45·(sin θ, cos θ) + 0.5`` (hjust = vjust = 0.5), applying R's
+        "combine close ends" rule (coord-polar.R:214-250): when the first
+        and last theta are within 0.05 rad they share a single combined
+        ``"first/last"`` label.  Always draws ``panel.border``.
+        """
+        from grid_py import grob_tree, null_grob
+        from ggplot2_py.theme_elements import element_render
+
+        theta_major = panel_params.get("theta.major")
+        if theta_major is None:
+            return element_render(theme, "panel.border", fill=None)
+
+        arc = (self.start, self.start + 2 * math.pi)
+        dir_ = self.direction
+        theta_major = _as_float_array(theta_major)
+        theta_range = tuple(panel_params.get("theta.range", [0, 1]))
+        theta = (_theta_rescale(theta_major, theta_range, arc, dir_)
+                 if theta_major.size > 0 else np.array([]))
+
+        labels = panel_params.get("theta.labels")
+        labels = list(labels) if labels is not None else None
+
+        # Drop NA thetas (R: theta <- theta[!is.na(theta)]).
+        if theta.size > 0:
+            mask = ~np.isnan(theta)
+            theta = theta[mask]
+
+        # Combine the two ends of the scale if they are close.
+        if theta.size > 0 and labels is not None:
+            ends_apart = (theta[-1] - theta[0]) % (2 * math.pi)
+            if ends_apart < 0.05 and len(labels) > 0:
+                n = len(labels)
+                combined = f"{labels[0]}/{labels[n - 1]}"
+                labels = labels[1:]
+                labels[-1] = combined
+                theta = theta[1:]
+
+        children = []
+        if labels is not None and len(labels) > 0 and theta.size > 0:
+            lab_x = 0.45 * np.sin(theta) + 0.5
+            lab_y = 0.45 * np.cos(theta) + 0.5
+            g = element_render(
+                theme, "axis.text.x",
+                label=[str(l) for l in labels],
+                x=lab_x, y=lab_y,
+                hjust=0.5, vjust=0.5,
+                default_units="npc",
+            )
+            if g is not None:
+                children.append(g)
+
+        border = element_render(theme, "panel.border", fill=None)
+        if border is not None:
+            children.append(border)
+
+        if not children:
+            return null_grob()
+        return grob_tree(*children, name="fg")
 
     def render_axis_h(self, panel_params: Dict[str, Any], theme: Any) -> Dict[str, Any]:
+        """Bottom blank axis (R ``CoordPolar$render_axis_h``, coord-polar.R:161)."""
         from grid_py import null_grob
-        return {"top": null_grob(), "bottom": null_grob()}
+        from ggplot2_py._guide_axis import draw_axis
+        return {
+            "top": null_grob(),
+            "bottom": draw_axis(np.array([]), [], "bottom", theme),
+        }
 
     def render_axis_v(self, panel_params: Dict[str, Any], theme: Any) -> Dict[str, Any]:
+        """r-axis on left/right (R ``CoordPolar$render_axis_v``, coord-polar.R:143).
+
+        Rescales ``r.major`` into NPC via ``r_rescale(...) + 0.5`` so the
+        r-axis spans the right half of the panel, then draws it through the
+        standard axis pipeline in the order given by ``r.arrange``.
+        """
         from grid_py import null_grob
-        return {"left": null_grob(), "right": null_grob()}
+        from ggplot2_py._guide_axis import draw_axis
+
+        arrange = panel_params.get("r.arrange") or ["primary", "secondary"]
+        r_major = _as_float_array(panel_params.get("r.major"))
+        r_range = tuple(panel_params.get("r.range", [0, 1]))
+        r_labels = panel_params.get("r.labels")
+        r_labels = list(r_labels) if r_labels is not None else []
+
+        if r_major.size > 0:
+            positions = _r_rescale(r_major, r_range) + 0.5
+        else:
+            positions = np.array([])
+
+        def _axis(which: str, position: str) -> Any:
+            if which == "primary":
+                return draw_axis(positions, r_labels, position, theme)
+            return null_grob()
+
+        return {
+            "left": _axis(arrange[0], "left"),
+            "right": _axis(arrange[1], "right"),
+        }
 
     def labels(self, labels: Dict[str, Any], panel_params: Dict[str, Any]) -> Dict[str, Any]:
         if self.theta == "y":
@@ -2690,6 +3037,9 @@ class CoordRadial(Coord):
     r_axis_inside: Any = None
     rotate_angle: bool = False
     inner_radius: Tuple[float, float] = (0.0, 0.4)
+    expand: Any = True
+    reverse: str = "none"
+    clip: str = "off"
     limits: Dict[str, Any] = {"theta": None, "r": None}
 
     def __init__(self, **kwargs: Any) -> None:
@@ -2700,6 +3050,7 @@ class CoordRadial(Coord):
         else:
             self.r = "x"
 
+    # R coord-radial.R:201-203 — aspect from the (possibly partial) bbox.
     def aspect(self, details: Any) -> float:
         bbox = details.get("bbox", {"x": [0, 1], "y": [0, 1]})
         dx = bbox["x"][1] - bbox["x"][0]
@@ -2709,6 +3060,7 @@ class CoordRadial(Coord):
     def is_free(self) -> bool:
         return True
 
+    # R coord-radial.R:209-220 — distance metric (donut-aware r).
     def distance(
         self,
         x: np.ndarray,
@@ -2718,61 +3070,197 @@ class CoordRadial(Coord):
     ) -> np.ndarray:
         arc = details.get("arc") or self.arc
         inner = self.inner_radius
+        to = (inner[0] / 0.4, inner[1] / 0.4)
         if self.theta == "x":
-            r = _rescale(np.asarray(y), from_=tuple(details.get("r.range", [0, 1])),
-                         to=(inner[0] / 0.4, inner[1] / 0.4))
-            theta = _theta_rescale_no_clip(np.asarray(x), tuple(details.get("theta.range", [0, 1])), arc)
+            r = _rescale(np.asarray(y), from_=tuple(details.get("r.range", [0, 1])), to=to)
+            theta = _theta_rescale_no_clip(
+                np.asarray(x), tuple(details.get("theta.range", [0, 1])), arc)
         else:
-            r = _rescale(np.asarray(x), from_=tuple(details.get("r.range", [0, 1])),
-                         to=(inner[0] / 0.4, inner[1] / 0.4))
-            theta = _theta_rescale_no_clip(np.asarray(y), tuple(details.get("theta.range", [0, 1])), arc)
-        return _dist_polar(r ** boost, theta)
+            r = _rescale(np.asarray(x), from_=tuple(details.get("r.range", [0, 1])), to=to)
+            theta = _theta_rescale_no_clip(
+                np.asarray(y), tuple(details.get("theta.range", [0, 1])), arc)
+        # R: r^boost — negative r (expanded ranges crossing 0) yields NaN,
+        # treated downstream as a single undivided segment.  Match R's
+        # silent NaN rather than emit a noisy power warning.
+        with np.errstate(invalid="ignore"):
+            r_boost = np.asarray(r, dtype=float) ** boost
+        return _dist_polar(r_boost, theta)
 
     def backtransform_range(self, panel_params: Dict[str, Any]) -> Dict[str, list]:
         return self.range(panel_params)
 
+    # R coord-radial.R:226-233 — name ranges by theta/r aesthetic.
     def range(self, panel_params: Dict[str, Any]) -> Dict[str, list]:
         return {
             self.theta: list(panel_params.get("theta.range", [0, 1])),
             self.r: list(panel_params.get("r.range", [0, 1])),
         }
 
+    def setup_params(self, data: Any) -> Dict[str, Any]:
+        """R coord-radial.R:528-539 — pick outside r-axis side and fake arc.
+
+        When the r-axis is drawn *outside* the panel, R chooses the side
+        (left/bottom) from which cardinal directions fall inside the
+        sector, and a ``fake_arc`` so the axis transform lands on a
+        horizontal/vertical position.
+        """
+        params = {"expand": _parse_coord_expand(getattr(self, "expand", True))}
+        if self.r_axis_inside is False:
+            arc = (min(self.arc), max(self.arc))
+            place = _in_arc(np.array([0.0, 0.5, 1.0, 1.5]) * math.pi, arc)
+            params["r_axis"] = "left" if (place[0] or place[2]) else "bottom"
+            # which(place[c(1,3,2,4)])[1] -> the first cardinal in-sector.
+            order = [place[0], place[2], place[1], place[3]]
+            fake = [(0, 2), (1, 3), (0.5, 2.5), (1.5, 3.5)]
+            idx = next((i for i, v in enumerate(order) if v), 0)
+            params["fake_arc"] = (fake[idx][0] * math.pi, fake[idx][1] * math.pi)
+        return params
+
+    # R coord-radial.R:235-269 — theta/r ranges, breaks, bbox, axis_rotation.
     def setup_panel_params(
         self,
         scale_x: Any,
         scale_y: Any,
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        from ggplot2_py.scale import default_expansion, expand_range4
+
         params = params or {}
-        result: Dict[str, Any] = {}
+        expand_vec = params.get("expand") or _parse_coord_expand(
+            getattr(self, "expand", True))
+        # expand vector is (top, right, bottom, left); R passes
+        # expand[c(4,2)] = (left, right) to the x scale and
+        # expand[c(3,1)] = (bottom, top) to the y scale.
+        expand_x = bool(expand_vec[3] or expand_vec[1])
+        expand_y = bool(expand_vec[2] or expand_vec[0])
 
         if self.theta == "x":
-            theta_limits = self.limits.get("theta")
-            r_limits = self.limits.get("r")
             theta_scale, r_scale = scale_x, scale_y
+            expand_theta, expand_r = expand_x, expand_y
         else:
-            theta_limits = self.limits.get("theta")
-            r_limits = self.limits.get("r")
             theta_scale, r_scale = scale_y, scale_x
+            expand_theta, expand_r = expand_y, expand_x
+        theta_limits = self.limits.get("theta")
+        r_limits = self.limits.get("r")
 
-        # Theta
-        theta_range = _scale_numeric_range(theta_scale, [0, 1])
-        if theta_limits is not None:
-            theta_range = list(theta_limits)
+        def _view(scale, coord_limits, expand_flag):
+            """Mirror R view_scales_polar for one axis (range + breaks).
 
-        # R
-        r_range = _scale_numeric_range(r_scale, [0, 1])
-        if r_limits is not None:
-            r_range = list(r_limits)
+            R: ``expansion <- default_expansion(scale, expand)`` then
+            ``continuous_range <- expand_limits_scale(scale, expansion,
+            limits, coord_limits)``.  The expansion is applied to the
+            scale's *unexpanded* numeric limits (``dimension(expand=0)``
+            for discrete → ``[1, n]``), with any finite ``coord_limits``
+            overriding the corresponding side.
+            """
+            if scale is None:
+                base = list(coord_limits) if coord_limits is not None else [0, 1]
+                return {"range": base, "major": None, "minor": None,
+                        "labels": None}
+            exp = default_expansion(scale, expand=expand_flag)
+            # Unexpanded numeric limits ([1, n] for discrete, raw for cont).
+            zero = np.zeros(4)
+            lim = list(np.asarray(scale.dimension(expand=zero), dtype=float))
+            if coord_limits is not None:
+                lim = [
+                    float(coord_limits[0]) if coord_limits[0] is not None
+                    and np.isfinite(coord_limits[0]) else lim[0],
+                    float(coord_limits[1]) if coord_limits[1] is not None
+                    and np.isfinite(coord_limits[1]) else lim[1],
+                ]
+            rng = list(expand_range4(lim, exp))
+            if hasattr(scale, "break_info"):
+                info = scale.break_info(rng)
+                return {
+                    "range": list(info.get("range", rng)),
+                    "major": info.get("major_source"),
+                    "minor": info.get("minor_source"),
+                    "labels": info.get("labels"),
+                }
+            return {"range": rng, "major": None, "minor": None, "labels": None}
 
-        result["theta.range"] = theta_range
-        result["r.range"] = r_range
-        result["bbox"] = _polar_bbox(self.arc, inner_radius=self.inner_radius)
-        result["arc"] = self.arc
-        result["inner_radius"] = self.inner_radius
+        theta_v = _view(theta_scale, theta_limits, expand_theta)
+        r_v = _view(r_scale, r_limits, expand_r)
+
+        result: Dict[str, Any] = {
+            "theta.range": theta_v["range"],
+            "theta.major": theta_v["major"],
+            "theta.minor": theta_v["minor"],
+            "theta.labels": theta_v["labels"],
+            "r.range": r_v["range"],
+            "r.major": r_v["major"],
+            "r.minor": r_v["minor"],
+            "r.labels": r_v["labels"],
+            "bbox": _polar_bbox(self.arc, inner_radius=self.inner_radius),
+            "arc": self.arc,
+            "inner_radius": self.inner_radius,
+        }
+
+        # Thread the outside r-axis placement (from setup_params) through
+        # to the render_axis_* methods (R passes it via params$r_axis).
+        if "r_axis" in params:
+            result["r_axis"] = params["r_axis"]
+        if "fake_arc" in params:
+            result["fake_arc"] = params["fake_arc"]
+
+        # R:254-266 — axis_rotation: when r_axis_inside is a numeric theta
+        # value, the inside r-axis is rotated to that theta; otherwise it
+        # spans the arc.
+        axis_rotation = self.r_axis_inside
+        if isinstance(axis_rotation, (int, float)) and not isinstance(axis_rotation, bool):
+            ar = float(axis_rotation)
+            tr = result["theta.range"]
+            ar = min(max(ar, tr[0]), tr[1])  # oob_squish
+            ar = float(_theta_rescale(np.array([ar]), tuple(tr), self.arc, 1)[0])
+            result["axis_rotation"] = (ar, ar)
+        else:
+            result["axis_rotation"] = self.arc
+
+        # R coord-radial.R:306-327 (setup_panel_guides) — when the r-axis is
+        # drawn inside, fix its panel side (left/right) and the rotation angle
+        # of its tick *text*.  The Python coord has no full guide system, so
+        # the primary r-axis placement/angle is precomputed here and consumed
+        # by render_fg.  (Secondary r.sec axis is GuideNone, i.e. blank.)
+        if self.r_axis_inside is not False:
+            # opposite_r: whether the r scale sits on the "secondary" side.
+            r_pos = getattr(r_scale, "position", "left") if r_scale is not None else "left"
+            if self.theta == "x":
+                opposite_r = r_pos in ("top", "right")
+            else:
+                opposite_r = r_pos in ("bottom", "left")
+            r_position = ["left", "right"]
+            # xor(reverse %in% c("thetar","theta"), opposite_r) -> flip sides.
+            if (self.reverse in ("thetar", "theta")) != opposite_r:
+                r_position = r_position[::-1]
+            arc_deg = [math.degrees(a) for a in result["axis_rotation"]]
+            if opposite_r:
+                arc_deg = arc_deg[::-1]
+            result["r_axis_inside_position"] = r_position[0]
+            result["r_sec_axis_inside_position"] = r_position[1]
+            result["r_axis_inside_angle"] = arc_deg[0]
+            result["r_sec_axis_inside_angle"] = arc_deg[1]
 
         return result
 
+    # R coord-radial.R:271-334 — guide setup.  No full guide system here;
+    # expose the panel params unchanged (axis grobs handled in render_axis_*).
+    def setup_panel_guides(
+        self,
+        panel_params: Dict[str, Any],
+        guides: Any,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        return panel_params
+
+    def train_panel_guides(
+        self,
+        panel_params: Dict[str, Any],
+        layers: list,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        return panel_params
+
+    # R coord-radial.R:392-411 — radial transform with bbox + inner radius.
     def transform(self, data: pd.DataFrame, panel_params: Dict[str, Any]) -> pd.DataFrame:
         data = data.copy()
         bbox = panel_params.get("bbox", {"x": [0, 1], "y": [0, 1]})
@@ -2788,14 +3276,14 @@ class CoordRadial(Coord):
         theta_range = panel_params.get("theta.range", [0, 1])
 
         if r_col in data.columns:
-            data["__r__"] = _r_rescale(data[r_col].values, tuple(r_range), donut=inner_radius)
+            data["__r__"] = _r_rescale(
+                data[r_col].values, tuple(r_range), donut=tuple(inner_radius))
         else:
             data["__r__"] = 0.0
 
         if theta_col in data.columns:
             data["__theta__"] = _theta_rescale(
-                data[theta_col].values, tuple(theta_range), arc
-            )
+                data[theta_col].values, tuple(theta_range), arc)
         else:
             data["__theta__"] = 0.0
 
@@ -2806,21 +3294,308 @@ class CoordRadial(Coord):
         data.drop(columns=["__r__", "__theta__"], inplace=True, errors="ignore")
         return data
 
+    # R coord-radial.R:427-434 — background grill via guide_grid(square=FALSE).
     def render_bg(self, panel_params: Dict[str, Any], theme: Any) -> Any:
-        return guide_grid(theme, panel_params, self)
+        return self._guide_grid_polar(panel_params, theme)
 
+    def _guide_grid_polar(self, panel_params: Dict[str, Any], theme: Any) -> Any:
+        """R guides-grid.R guide_grid(square=FALSE): munch each gridline.
+
+        theta breaks become radial spokes; r breaks become concentric
+        rings.  The background is an Inf-rect munched into the panel
+        shape.  All lines are produced in *data* space and curved by
+        ``coord_munch`` through this coord.
+        """
+        from grid_py import grob_tree, null_grob, polygon_grob
+        from ggplot2_py.theme_elements import element_render
+
+        theta_major = _as_float_array(panel_params.get("theta.major"))
+        theta_minor = _as_float_array(panel_params.get("theta.minor"))
+        r_major = _as_float_array(panel_params.get("r.major"))
+        r_minor = _as_float_array(panel_params.get("r.minor"))
+        # R: minor <- setdiff(minor, major)
+        if theta_major.size and theta_minor.size:
+            theta_minor = np.array(
+                [m for m in theta_minor if not np.any(np.isclose(theta_major, m))])
+        if r_major.size and r_minor.size:
+            r_minor = np.array(
+                [m for m in r_minor if not np.any(np.isclose(r_major, m))])
+
+        children = []
+
+        # Background: Inf-rect munched into the panel shape.
+        bg = element_render(theme, "panel.background")
+        if bg is not None and getattr(bg, "name", "") not in ("zeroGrob", "NULL"):
+            big = 1e5
+            poly = pd.DataFrame({
+                "x": [big, big, -big, -big],
+                "y": [big, -big, -big, big],
+                "group": [1, 1, 1, 1],
+            })
+            poly = coord_munch(self, poly, panel_params, is_closed=True)
+            gp = getattr(bg, "gp", None)
+            children.append(polygon_grob(
+                x=poly["x"].to_numpy(dtype=float),
+                y=poly["y"].to_numpy(dtype=float),
+                gp=gp, name="panel.background.polygon",
+            ))
+
+        def _grid(breaks: np.ndarray, axis: str, element: str) -> None:
+            # axis 'theta' -> vary theta with r spanning -Inf..Inf;
+            # axis 'r' -> vary r with theta spanning -Inf..Inf.
+            if breaks.size == 0:
+                return
+            n = breaks.size
+            var = np.repeat(breaks, 2)
+            alt = np.tile([-np.inf, np.inf], n)
+            group = np.repeat(np.arange(1, n + 1), 2)
+            if axis == "theta":
+                tcol, rcol = var, alt
+            else:
+                tcol, rcol = alt, var
+            if self.theta == "x":
+                df = pd.DataFrame({"x": tcol, "y": rcol, "group": group})
+            else:
+                df = pd.DataFrame({"y": tcol, "x": rcol, "group": group})
+            munched = coord_munch(self, df, panel_params)
+            # id.lengths = run lengths per group.
+            g = munched["group"].to_numpy()
+            id_lengths = [int(np.sum(g == gi)) for gi in np.unique(g)]
+            grob = element_render(
+                theme, element,
+                x=munched["x"].to_numpy(dtype=float),
+                y=munched["y"].to_numpy(dtype=float),
+                id_lengths=id_lengths, default_units="npc",
+            )
+            if grob is not None:
+                children.append(grob)
+
+        # Order mirrors R: minor.r, minor.theta, major.r, major.theta.
+        _grid(r_minor, "r", f"panel.grid.minor.{self.r}")
+        _grid(theta_minor, "theta", f"panel.grid.minor.{self.theta}")
+        _grid(r_major, "r", f"panel.grid.major.{self.r}")
+        _grid(theta_major, "theta", f"panel.grid.major.{self.theta}")
+
+        if not children:
+            return null_grob()
+        return grob_tree(*children, name="grill")
+
+    # R coord-radial.R:436-467 — theta labels along the arc + border.
+    def render_fg(self, panel_params: Dict[str, Any], theme: Any) -> Any:
+        """R coord-radial.R:436-467 — theta labels, in-panel r-axis, border.
+
+        When the r-axis is drawn inside the panel (``r_axis_inside`` truthy:
+        the default for partial arcs, ``True``, or a numeric theta value), the
+        primary r-axis is built as a vertical axis gtable and rotated into the
+        panel along a radial line via :func:`_rotate_r_axis` (mirroring R's
+        ``rotate_r_axis``).  When it is ``False``, the r-axis is drawn outside
+        via ``render_axis_*`` and only theta labels + border appear here.
+        """
+        from grid_py import grob_tree, null_grob
+        from ggplot2_py.theme_elements import element_render
+
+        children = []
+        theta_major = _as_float_array(panel_params.get("theta.major"))
+        theta_range = tuple(panel_params.get("theta.range", [0, 1]))
+        arc = panel_params.get("arc", self.arc)
+        labels = panel_params.get("theta.labels")
+        labels = list(labels) if labels is not None else None
+
+        if theta_major.size > 0 and labels is not None and len(labels) > 0:
+            theta = _theta_rescale(theta_major, theta_range, arc, 1)
+            mask = ~np.isnan(theta)
+            theta = theta[mask]
+            labels = [l for l, m in zip(labels, mask) if m]
+            # Combine close ends (R coord-polar combine rule reused).
+            if theta.size > 1:
+                ends_apart = (theta[-1] - theta[0]) % (2 * math.pi)
+                if ends_apart < 0.05:
+                    n = len(labels)
+                    combined = f"{labels[0]}/{labels[n - 1]}"
+                    labels = labels[1:]
+                    labels[-1] = combined
+                    theta = theta[1:]
+            if theta.size > 0:
+                lab_x = 0.45 * np.sin(theta) + 0.5
+                lab_y = 0.45 * np.cos(theta) + 0.5
+                # Rescale into the (possibly partial) bbox.
+                bbox = panel_params.get("bbox", {"x": [0, 1], "y": [0, 1]})
+                lab_x = _rescale(lab_x, from_=tuple(bbox["x"]))
+                lab_y = _rescale(lab_y, from_=tuple(bbox["y"]))
+                g = element_render(
+                    theme, "axis.text.x",
+                    label=[str(l) for l in labels],
+                    x=lab_x, y=lab_y, hjust=0.5, vjust=0.5,
+                    default_units="npc",
+                )
+                if g is not None:
+                    children.append(g)
+
+        # In-panel rotated r-axis (R coord-radial.R:449-465).
+        if self.r_axis_inside is not False:
+            r_axis = self._render_r_axis_inside(panel_params, theme)
+            if r_axis is not None:
+                children.append(r_axis)
+
+        border = element_render(theme, "panel.border", fill=None)
+        if border is not None:
+            children.append(border)
+        if not children:
+            return null_grob()
+        return grob_tree(*children, name="fg")
+
+    def _render_r_axis_inside(self, panel_params: Dict[str, Any], theme: Any) -> Any:
+        """Build the primary r-axis as a rotated in-panel grob.
+
+        Mirrors R ``CoordRadial$render_fg`` (coord-radial.R:449-465) for the
+        primary r-axis:
+
+        * ``rot <- rad2deg(-axis_rotation)``, reversed when ``reverse`` flips
+          theta, then the left/right axis is rotated by ``rot[1]`` / ``rot[2]``.
+        * tick positions are ``r_rescale(r.major, r.range, inner_radius) + 0.5``
+          along a vertical axis: the radial axis occupies the *upper half*
+          ``[0.5, 0.9]`` of the unrotated panel (donut centre at 0.5, rim at
+          0.9), so r=10 sits at the plot centre and r=max at the rim — matching
+          R's drawn ``polyline`` y-coords (e.g. full circle: 0.512 … 0.899).
+        * label text is rotated by the guide ``angle`` (``rad2deg`` of the
+          axis_rotation), exactly as ``setup_panel_guides`` sets it.
+        """
+        from grid_py import null_grob
+        from ggplot2_py._guide_axis import draw_axis
+
+        r_major = _as_float_array(panel_params.get("r.major"))
+        if r_major.size == 0:
+            return None
+        r_labels = panel_params.get("r.labels")
+        r_labels = [str(l) for l in r_labels] if r_labels is not None else \
+            [str(round(v, 2)) for v in r_major]
+
+        # Tick positions along the unrotated vertical axis: the radial axis
+        # spans the upper half of the [0,1] panel (R adds 0.5 to the rescaled
+        # radius when drawing — see _r_axis_positions, shared with the outside
+        # axis).  This is what places r=min at the plot centre.
+        positions, _ = self._r_axis_positions(panel_params)
+
+        bbox = panel_params.get("bbox", {"x": [0, 1], "y": [0, 1]})
+
+        # rot <- rad2deg(-axis_rotation); reversed when theta reverses.
+        rot = list(panel_params.get("axis_rotation", self.arc))
+        if self.reverse in ("thetar", "theta"):
+            rot = rot[::-1]
+        rot = [-math.degrees(a) for a in rot]
+
+        # Primary r-axis side + tick-text angle (precomputed in
+        # setup_panel_params per R's setup_panel_guides).
+        position = panel_params.get("r_axis_inside_position", "left")
+        text_angle = panel_params.get("r_axis_inside_angle", 0.0)
+        # rot index: the primary axis follows its panel side (left -> rot[1],
+        # right -> rot[2] in R's left/right rotate calls).
+        view_rot = rot[0] if position == "left" else rot[1]
+
+        axis = draw_axis(positions, r_labels, position, theme, angle=text_angle)
+        if axis is None or getattr(axis, "_grid_class", None) == "null":
+            return None
+        return _rotate_r_axis(axis, view_rot, bbox, position)
+
+    # R coord-radial.R:413-425 — r-axis suppressed when drawn inside.
     def render_axis_h(self, panel_params: Dict[str, Any], theme: Any) -> Dict[str, Any]:
         from grid_py import null_grob
-        return {"top": null_grob(), "bottom": null_grob()}
+        if self.r_axis_inside is not False:
+            return {"top": null_grob(), "bottom": null_grob()}
+        return self._render_r_axis_h(panel_params, theme)
 
     def render_axis_v(self, panel_params: Dict[str, Any], theme: Any) -> Dict[str, Any]:
         from grid_py import null_grob
-        return {"left": null_grob(), "right": null_grob()}
+        if self.r_axis_inside is not False:
+            return {"left": null_grob(), "right": null_grob()}
+        return self._render_r_axis_v(panel_params, theme)
 
+    def _r_axis_positions(self, panel_params: Dict[str, Any]) -> Tuple[np.ndarray, list]:
+        """r-axis break positions in NPC along the panel + labels.
+
+        Outside r-axis: r maps to [0, 0.4] then +0.5, spanning the panel
+        half (matching CoordPolar's outside axis), rescaled into bbox.
+        """
+        r_major = _as_float_array(panel_params.get("r.major"))
+        r_range = tuple(panel_params.get("r.range", [0, 1]))
+        inner = tuple(panel_params.get("inner_radius", self.inner_radius))
+        labels = panel_params.get("r.labels")
+        labels = [str(l) for l in labels] if labels is not None else []
+        if r_major.size == 0:
+            return np.array([]), []
+        pos = _r_rescale(r_major, r_range, donut=inner) + 0.5
+        return pos, labels
+
+    def _render_r_axis_v(self, panel_params: Dict[str, Any], theme: Any) -> Dict[str, Any]:
+        from grid_py import null_grob
+        from ggplot2_py._guide_axis import draw_axis
+        r_axis = panel_params.get("r_axis", "left")
+        pos, labels = self._r_axis_positions(panel_params)
+        if r_axis != "left":
+            return {"left": null_grob(), "right": null_grob()}
+        return {
+            "left": draw_axis(pos, labels, "left", theme) if pos.size else null_grob(),
+            "right": null_grob(),
+        }
+
+    def _render_r_axis_h(self, panel_params: Dict[str, Any], theme: Any) -> Dict[str, Any]:
+        from grid_py import null_grob
+        from ggplot2_py._guide_axis import draw_axis
+        r_axis = panel_params.get("r_axis", "left")
+        pos, labels = self._r_axis_positions(panel_params)
+        if r_axis != "bottom":
+            return {"top": null_grob(), "bottom": null_grob()}
+        return {
+            "top": null_grob(),
+            "bottom": draw_axis(pos, labels, "bottom", theme) if pos.size else null_grob(),
+        }
+
+    # R coord-radial.R:490-518 — title/label propagation.
     def labels(self, labels: Dict[str, Any], panel_params: Dict[str, Any]) -> Dict[str, Any]:
         if self.theta == "y":
             return {"x": labels.get("y", {}), "y": labels.get("x", {})}
         return labels
+
+
+def _rotate_r_axis(axis: Any, angle: float, bbox: Dict[str, list],
+                   position: str = "left") -> Any:
+    """Rotate a radius-axis grob through a viewport (R ``rotate_r_axis``).
+
+    Mirrors coord-radial.R:641-657 exactly::
+
+        gTree(children = gList(axis), vp = viewport(
+            angle  = angle,
+            x      = unit(rescale(0.5, from = bbox$x), "npc"),
+            y      = unit(rescale(0.5, from = bbox$y), "npc"),
+            just   = c(as.numeric(position == "left"), 0.5),
+            height = unit(1 / diff(bbox$y), "npc")))
+
+    The axis gtable spans ``[0, 1]`` in its long (vertical) dimension; this
+    viewport pins its centre at the panel centre (rescaled into the partial
+    bbox), scales its height so the full circle's radius fits, and rotates it
+    by ``angle`` degrees so the axis runs along the radial line.
+    """
+    from grid_py import grob_tree, Viewport, Unit
+
+    if axis is None or getattr(axis, "_grid_class", None) == "null":
+        return axis
+
+    bx = tuple(bbox.get("x", [0, 1]))
+    by = tuple(bbox.get("y", [0, 1]))
+    x_npc = float(_rescale(np.array([0.5]), from_=bx)[0])
+    y_npc = float(_rescale(np.array([0.5]), from_=by)[0])
+    dy = by[1] - by[0]
+    height = 1.0 / dy if dy != 0 else 1.0
+    just = (1.0 if position == "left" else 0.0, 0.5)
+
+    vp = Viewport(
+        angle=float(angle),
+        x=Unit(x_npc, "npc"),
+        y=Unit(y_npc, "npc"),
+        just=just,
+        height=Unit(height, "npc"),
+    )
+    return grob_tree(axis, vp=vp)
 
 
 def _polar_bbox(
@@ -2848,9 +3623,23 @@ def _polar_bbox(
         return {"x": [0.0, 1.0], "y": [0.0, 1.0]}
 
     sorted_arc = (min(arc), max(arc))
+    inner = (min(inner_radius), max(inner_radius))  # R: inner_radius <- sort(...)
     angles = np.array([sorted_arc[0], sorted_arc[1]])
+    # Sector arc end positions (R polar_bbox:593-597).
     x_outer = 0.5 * np.sin(angles) + 0.5
     y_outer = 0.5 * np.cos(angles) + 0.5
+    x_inner = inner[0] * np.sin(angles) + 0.5
+    y_inner = inner[0] * np.cos(angles) + 0.5
+
+    # Margins are measured from the *inner* radius ends, not the panel
+    # centre (R polar_bbox:599-604): with a donut hole the shortened
+    # edges hug the hole rim plus the margin, not 0.5.
+    m = [
+        float(np.max(y_inner)) + margin[0],
+        float(np.max(x_inner)) + margin[1],
+        float(np.min(y_inner)) - margin[2],
+        float(np.min(x_inner)) - margin[3],
+    ]
 
     # Check cardinal directions
     cardinal = np.array([0, 0.5 * math.pi, math.pi, 1.5 * math.pi])
@@ -2858,10 +3647,10 @@ def _polar_bbox(
 
     # top, right, bottom, left extremes
     bounds = [
-        1.0 if in_sector[0] else max(float(np.max(y_outer)), 0.5 + margin[0]),
-        1.0 if in_sector[1] else max(float(np.max(x_outer)), 0.5 + margin[1]),
-        0.0 if in_sector[2] else min(float(np.min(y_outer)), 0.5 - margin[2]),
-        0.0 if in_sector[3] else min(float(np.min(x_outer)), 0.5 - margin[3]),
+        1.0 if in_sector[0] else max(float(np.max(y_outer)), m[0]),
+        1.0 if in_sector[1] else max(float(np.max(x_outer)), m[1]),
+        0.0 if in_sector[2] else min(float(np.min(y_outer)), m[2]),
+        0.0 if in_sector[3] else min(float(np.min(x_outer)), m[3]),
     ]
     return {"x": [bounds[3], bounds[1]], "y": [bounds[2], bounds[0]]}
 
@@ -3016,83 +3805,197 @@ CoordTrans = CoordTransform
 # coord_munch
 # ---------------------------------------------------------------------------
 
+def _interp(start: float, end: float, n: int) -> np.ndarray:
+    """Interpolate *n* points from *start* toward *end* (R ``interp``).
+
+    Returns ``n`` evenly spaced steps starting at *start* and stopping
+    one step short of *end* (R: ``seq(0, 1, length.out = n + 1)[-(n+1)]``);
+    *end* is never included.  For ``n == 1`` returns just ``[start]``.
+    """
+    if n == 1:
+        return np.array([start], dtype=float)
+    frac = np.linspace(0.0, 1.0, n + 1)[:-1]
+    return start + frac * (end - start)
+
+
+def _close_poly(data: pd.DataFrame) -> pd.DataFrame:
+    """Close a polygon by repeating each group's first row after its last.
+
+    Mirrors R ``close_poly`` (coord-munch.R:220): sort by group/subgroup
+    (stable), then after every run insert a copy of that run's first row.
+    """
+    group_cols = [c for c in ("group", "subgroup") if c in data.columns]
+    if group_cols:
+        order = np.lexsort([data[c].values for c in reversed(group_cols)])
+    else:
+        order = np.arange(len(data))
+    ordered = data.iloc[order].reset_index(drop=True)
+
+    if group_cols:
+        keys = list(zip(*[ordered[c].values for c in group_cols]))
+    else:
+        keys = [(0,)] * len(ordered)
+
+    # Run-length: for each contiguous run, append a copy of its first row.
+    pieces: List[int] = []
+    n = len(ordered)
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and keys[j + 1] == keys[i]:
+            j += 1
+        pieces.extend(range(i, j + 1))
+        pieces.append(i)  # repeat first-in-group after the group
+        i = j + 1
+    return ordered.iloc[pieces].reset_index(drop=True)
+
+
+def _munch_data(
+    data: pd.DataFrame,
+    dist: np.ndarray,
+    segment_length: float = 0.01,
+) -> pd.DataFrame:
+    """Subdivide each segment by absolute arc length (R ``munch_data``).
+
+    ``extra = pmin(pmax(floor(dist / segment_length), 1), 1e4)`` gives the
+    number of interpolation points emitted for each segment (not counting
+    the segment's end).  The final point is appended manually; non-position
+    aesthetics are replicated from the segment's start row.
+    """
+    n = len(data)
+    x = data["x"].to_numpy(dtype=float)
+    y = data["y"].to_numpy(dtype=float)
+
+    dist = np.asarray(dist, dtype=float)
+    extra = np.floor(dist / segment_length)
+    extra = np.clip(extra, 1, 1e4)
+    extra[np.isnan(extra)] = 1
+    extra = extra.astype(int)
+
+    xs: List[np.ndarray] = []
+    ys: List[np.ndarray] = []
+    id_index: List[int] = []
+    for i in range(n - 1):
+        k = int(extra[i])
+        xs.append(_interp(x[i], x[i + 1], k))
+        ys.append(_interp(y[i], y[i + 1], k))
+        id_index.extend([i] * k)
+    # The final point must be manually inserted at the end.
+    xs.append(np.array([x[n - 1]], dtype=float))
+    ys.append(np.array([y[n - 1]], dtype=float))
+    id_index.append(n - 1)
+
+    new_x = np.concatenate(xs) if xs else np.array([], dtype=float)
+    new_y = np.concatenate(ys) if ys else np.array([], dtype=float)
+
+    other_cols = [c for c in data.columns if c not in ("x", "y")]
+    out = data.iloc[id_index][other_cols].reset_index(drop=True)
+    out.insert(0, "y", new_y)
+    out.insert(0, "x", new_x)
+    return out
+
+
 def coord_munch(
     coord: Coord,
     data: pd.DataFrame,
     range_: Dict[str, Any],
-    n: int = 50,
     is_closed: bool = False,
+    segment_length: float = 0.01,
+    n: Any = None,
 ) -> pd.DataFrame:
-    """Interpolate path data for non-linear coordinate systems.
+    """Munch path data for non-linear coordinate systems (R ``coord_munch``).
 
-    For linear coordinates, the data is returned unchanged (after
-    transformation).  For non-linear coordinates, points are
-    interpolated so that straight lines in data space become curves
-    in plot space.
+    Subdivides each line/polygon segment into pieces of approximately
+    ``segment_length`` (default ``0.01``, R's constant) measured by the
+    coordinate system's own distance metric (for polar, ``dist_polar``),
+    so straight lines in data space become correct curves in plot space.
+    For linear coordinates the data is returned unchanged (after transform).
 
     Parameters
     ----------
     coord : Coord
         Coordinate system.
     data : pd.DataFrame
-        Data with ``x`` and ``y`` columns (at minimum).
+        Data with ``x`` and ``y`` columns (at minimum); ``group`` /
+        ``subgroup`` delimit independent paths.
     range_ : dict
         Panel parameters / ranges.
-    n : int
-        Maximum number of interpolation points per segment.
     is_closed : bool
-        Whether the path is closed (polygon).
+        Whether the data should be treated as closed polygons (a closing
+        segment back to each group's first vertex is munched, then the
+        duplicate closing vertex is dropped).
+    segment_length : float
+        Target segment length (R default ``0.01``).
+    n : Any
+        Deprecated/ignored back-compat argument.  R's ``coord_munch`` has no
+        ``n``; subdivision is governed by ``segment_length`` (absolute arc
+        length), not a fixed per-segment count.
 
     Returns
     -------
     pd.DataFrame
-        Transformed (and possibly interpolated) data.
+        Munched and transformed data.
     """
     if coord.is_linear():
         return coord.transform(data, range_)
 
-    # For non-linear coords, interpolate
+    data = data.reset_index(drop=True)
+    if is_closed:
+        data = _close_poly(data)
+
     if len(data) < 2:
         return coord.transform(data, range_)
 
-    # Compute distances to determine segment counts
-    x = data["x"].values
-    y = data["y"].values
+    # range has theta and r values; get corresponding x and y values.
+    ranges = coord.backtransform_range(range_)
+    rx = ranges.get("x") if isinstance(ranges, dict) else None
+    ry = ranges.get("y") if isinstance(ranges, dict) else None
+
+    x = data["x"].to_numpy(dtype=float)
+    y = data["y"].to_numpy(dtype=float)
+    # Convert any infinite locations into max/min of the backtransformed range.
+    if rx is not None:
+        x = np.where(np.isneginf(x), rx[0], x)
+        x = np.where(np.isposinf(x), rx[1], x)
+    if ry is not None:
+        y = np.where(np.isneginf(y), ry[0], y)
+        y = np.where(np.isposinf(y), ry[1], y)
+    data = data.copy()
+    data["x"] = x
+    data["y"] = y
+
+    # Distances using the coord's distance metric.
     dist = coord.distance(x, y, range_)
+    dist = np.asarray(dist, dtype=float)
+    # Break distances across group / subgroup boundaries (NA).
+    if "group" in data.columns:
+        g = data["group"].to_numpy()
+        dist[g[1:] != g[:-1]] = np.nan
+    if "subgroup" in data.columns:
+        sg = data["subgroup"].to_numpy()
+        dist[sg[1:] != sg[:-1]] = np.nan
 
-    # Interpolate segments that are long
-    if len(dist) == 0:
-        return coord.transform(data, range_)
+    munched = _munch_data(data, dist, segment_length)
 
-    # Determine how many points each segment needs
-    max_dist = float(np.nanmax(dist)) if len(dist) > 0 else 0.0
-    if max_dist == 0:
-        return coord.transform(data, range_)
+    if is_closed:
+        # Drop the trailing (closing) vertex of every run (R: vec_slice(-cumsum(runs))).
+        group_cols = [c for c in ("group", "subgroup") if c in munched.columns]
+        if group_cols:
+            keys = list(zip(*[munched[c].to_numpy() for c in group_cols]))
+        else:
+            keys = [(0,)] * len(munched)
+        drop_idx = set()
+        n = len(keys)
+        i = 0
+        while i < n:
+            j = i
+            while j + 1 < n and keys[j + 1] == keys[i]:
+                j += 1
+            drop_idx.add(j)  # last index of this run
+            i = j + 1
+        keep = [k for k in range(n) if k not in drop_idx]
+        munched = munched.iloc[keep].reset_index(drop=True)
 
-    # Simple approach: subdivide each segment proportionally
-    segments = np.ceil(dist / max_dist * n).astype(int)
-    segments = np.clip(segments, 1, n)
-
-    rows = []
-    for i in range(len(data) - 1):
-        nseg = int(segments[i]) if i < len(segments) else 1
-        row_start = data.iloc[i]
-        row_end = data.iloc[i + 1]
-        for j in range(nseg):
-            t = j / nseg
-            new_row = {}
-            for col in data.columns:
-                v0 = row_start[col]
-                v1 = row_end[col]
-                if isinstance(v0, (int, float, np.integer, np.floating)):
-                    new_row[col] = v0 + (v1 - v0) * t
-                else:
-                    new_row[col] = v0
-            rows.append(new_row)
-    # Last point
-    rows.append(dict(data.iloc[-1]))
-
-    munched = pd.DataFrame(rows)
     return coord.transform(munched, range_)
 
 
@@ -3303,6 +4206,13 @@ def coord_radial(
     if reverse not in ("none", "theta", "r", "thetar"):
         cli_abort("reverse must be 'none', 'theta', 'r', or 'thetar'.")
 
+    if not (isinstance(r_axis_inside, (int, float)) and not isinstance(r_axis_inside, bool)):
+        if r_axis_inside is not None and not isinstance(r_axis_inside, bool):
+            cli_abort("r_axis_inside must be TRUE, FALSE, NULL or a number.")
+    if not isinstance(inner_radius, (int, float)) or not (0 <= inner_radius <= 1):
+        cli_abort("inner_radius must be a number between 0 and 1.")
+
+    # R coord-radial.R:159-163 — build the arc, rotating start below end.
     arc_end = end if end is not None else (start + 2 * math.pi)
     arc = (start, arc_end)
 
@@ -3310,11 +4220,28 @@ def coord_radial(
         n_rot = int((arc[0] - arc[1]) // (2 * math.pi)) + 1
         arc = (arc[0] - n_rot * 2 * math.pi, arc[1])
 
+    # R:164 — switch(reverse, thetar=, theta=rev(arc), arc)
     if reverse in ("theta", "thetar"):
         arc = (arc[1], arc[0])
 
-    inner = (inner_radius, 1.0)
-    inner = (inner[0] * 0.4, inner[1] * 0.4)
+    # R:166-176 — default r.axis.inside: outside for (near-)full circle,
+    # inside for partial arcs.  When forced FALSE on a partial arc with no
+    # cardinal direction in the sector, fall back to inside (with warning).
+    if r_axis_inside is None:
+        r_axis_inside = not (abs(arc[1] - arc[0]) >= 1.999 * math.pi)
+    elif r_axis_inside is False:
+        cardinals = np.array([0.0, 0.5, 1.0, 1.5]) * math.pi
+        if not bool(np.any(_in_arc(cardinals, (min(arc), max(arc))))):
+            import warnings
+            warnings.warn(
+                "No appropriate placement found for outside r.axis. "
+                "Will use r_axis_inside=True instead.",
+                stacklevel=2,
+            )
+            r_axis_inside = True
+
+    # R:178-179 — inner_radius scaled to drawing units [inner*0.4, 0.4].
+    inner = (inner_radius * 0.4, 1.0 * 0.4)
     if reverse in ("r", "thetar"):
         inner = (inner[1], inner[0])
 

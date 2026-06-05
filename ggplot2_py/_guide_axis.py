@@ -254,6 +254,15 @@ def draw_axis(
     minor_tick_length = tick_length * 0.5  # R: axis.minor.ticks.length = rel(0.75)
 
     # --- Build axis line (R: GuideAxis$build_decor, lines 313-322) -----
+    # R: the line is ``element_grob(elements$line, ...)``; when ``axis.line``
+    # is ``element_blank()`` (the default in theme_grey/theme_bw) this yields a
+    # zeroGrob — i.e. *no* line.  The previous fallback dict drew a spurious
+    # grey20 line regardless, which is invisible at a panel edge but crosses
+    # the interior for a rotated radial axis.  Honour the blank element.
+    from ggplot2_py.theme_elements import calc_element as _calc_el
+    _raw_line_el = _calc_el(f"axis.line.{aes}", theme)
+    _line_blank = _raw_line_el is None or _is_blank(_raw_line_el)
+
     if cap == "none" or len(breaks) == 0:
         line_start, line_end = 0.0, 1.0
     else:
@@ -261,7 +270,9 @@ def draw_axis(
         line_end = max(breaks) if cap in ("both", "upper") else 1.0
 
     line_lwd = float(line_el.get("linewidth", 0.5)) * _PT
-    if is_horizontal:
+    if _line_blank:
+        axis_line = null_grob(name="axis.line")
+    elif is_horizontal:
         axis_line = segments_grob(
             x0=[line_start], y0=[orth_side],
             x1=[line_end], y1=[orth_side],

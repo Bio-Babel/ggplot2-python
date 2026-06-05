@@ -566,6 +566,7 @@ from ggplot2_py.guide import (
     is_guide,
     is_guides,
     new_guide,
+    register_guide,
     old_guide,
     guide_geom,
     guide_train,
@@ -905,7 +906,7 @@ __all__ = [
     # Guides
     "Guide", "GuideAxis", "GuideAxisLogticks", "GuideAxisStack",
     "GuideAxisTheta", "GuideBins", "GuideColourbar", "GuideColoursteps",
-    "GuideCustom", "GuideLegend", "GuideNone",
+    "GuideCustom", "GuideLegend", "GuideNone", "register_guide",
     "guide_axis", "guide_legend", "guide_colourbar", "guide_colorbar",
     "guide_old_colourbar", "guide_old_colorbar",
     "guide_coloursteps", "guide_colorsteps", "guide_bins",

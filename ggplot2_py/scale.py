@@ -25,6 +25,7 @@ and expansion helpers (:func:`expansion`, :func:`expand_scale`).
 from __future__ import annotations
 
 import copy
+import inspect
 import math
 import warnings
 from typing import (
@@ -959,23 +960,46 @@ class ScaleContinuous(Scale):
         if minor is None:
             return None
 
+        # R: major breaks are not censored, but some transforms assume finite
+        # major breaks (scale-.R get_breaks_minor: `b <- b[is.finite(b)]`).
+        if b is not None:
+            b = np.asarray(b, dtype=float)
+            b = b[np.isfinite(b)]
+
+        transformation = self.get_transformation()
         if is_waiver(minor):
             if b is None:
-                return None
-            transformation = self.get_transformation()
-            if not callable(getattr(transformation, "minor_breaks_func", None)):
-                return None
-            b_finite = np.asarray(b, dtype=float)
-            b_finite = b_finite[np.isfinite(b_finite)]
-            return np.asarray(transformation.minor_breaks_func(b_finite, limits, n))
+                breaks = None
+            elif not callable(getattr(transformation, "minor_breaks_func", None)):
+                breaks = None
+            else:
+                breaks = np.asarray(
+                    transformation.minor_breaks_func(b, limits, n), dtype=float
+                )
         elif callable(minor):
-            transformation = self.get_transformation()
+            # R scale-.R get_breaks_minor dispatches on the user function's
+            # arity (``fn_fmls_names``):
+            #   1 arg  -> f(inverse(limits))                [range, data space]
+            #   2+ args-> f(inverse(limits), inverse(b))    [range, major breaks]
+            # The 2-arg form is the "new" minor_breaks_n() / minor_breaks_width()
+            # ``(range, breaks)`` interface.  Results are in data space and are
+            # transformed back, then discarded against the limits below.
             inv_limits = transformation.inverse(limits)
-            result = minor(inv_limits)
-            return np.asarray(transformation.transform(result), dtype=float)
+            nparams = len(inspect.signature(minor).parameters)
+            if nparams == 1:
+                result = minor(inv_limits)
+            else:
+                inv_b = transformation.inverse(b) if b is not None else None
+                result = minor(inv_limits, inv_b)
+            breaks = np.asarray(transformation.transform(result), dtype=float)
         else:
-            transformation = self.get_transformation()
-            return np.asarray(transformation.transform(minor), dtype=float)
+            breaks = np.asarray(transformation.transform(minor), dtype=float)
+
+        if breaks is None:
+            return None
+
+        # R: discard(breaks, limits) — drop any minor breaks outside the range.
+        return discard(breaks, limits)
 
     def get_labels(self, breaks: Optional[Any] = None) -> Optional[Any]:
         """Resolve labels for the given breaks.
@@ -1683,6 +1707,25 @@ class ScaleDiscretePosition(ScaleDiscrete):
         expand: Optional[np.ndarray] = None,
         limits: Optional[Any] = None,
     ) -> np.ndarray:
+        """Continuous extent of the discrete position scale.
+
+        Faithful port of R ``Scale$dimension`` for discrete position
+        scales (R/scale-.R:1077 → ``expand_limits_scale`` →
+        ``expand_limits_discrete_trans``).  The extent combines TWO
+        components (R/scale-expansion.R:248-266):
+
+        * the **discrete** range ``[min, max]`` of the mapped category
+          positions, with ``expand`` applied, and
+        * the **continuous** range ``range_c`` (trained from any
+          continuous data drawn on this scale — e.g. a bar's
+          ``xmin``/``xmax`` widths), added with **no** expansion.
+
+        The final dimension is the union of the two.  An earlier port
+        returned only the expanded discrete component, dropping
+        ``range_c``; that collapsed ``coord_polar``'s r-axis to a
+        zero-width range whenever the discrete expansion was ``(0, 0)``
+        (the polar r-axis case), producing zero-area wedges.
+        """
         if expand is None:
             # R default for discrete position scales: expansion(add = 0.6)
             expand = expansion(0, 0.6)
@@ -1690,10 +1733,34 @@ class ScaleDiscretePosition(ScaleDiscrete):
             limits = self.get_limits()
         mapped = self.map(limits)
         if mapped is None or len(mapped) == 0:
-            lo, hi = 0.0, 1.0
+            disc_lo, disc_hi = None, None
         else:
-            lo, hi = float(np.nanmin(mapped)), float(np.nanmax(mapped))
-        return expand_range4(np.array([lo, hi]), expand)
+            disc_lo = float(np.nanmin(mapped))
+            disc_hi = float(np.nanmax(mapped))
+
+        # Continuous component (R: scale$range_c$range), added un-expanded.
+        cont = None
+        rc = getattr(self, "range_c", None)
+        if rc is not None and getattr(rc, "range", None) is not None:
+            rng = np.asarray(rc.range, dtype=float)
+            if rng.size >= 2 and np.all(np.isfinite(rng[[0, -1]])):
+                cont = (float(np.nanmin(rng)), float(np.nanmax(rng)))
+
+        # R expand_limits_discrete_trans (scale-expansion.R:238-266):
+        #   empty            -> expand [0, 1]
+        #   only continuous  -> expand range_c
+        #   only discrete    -> expand discrete
+        #   both             -> union(expand(discrete), range_c)   (range_c un-expanded)
+        if disc_lo is None and cont is None:
+            return expand_range4(np.array([0.0, 1.0]), expand)
+        if disc_lo is None:
+            return expand_range4(np.array([cont[0], cont[1]]), expand)
+        disc = expand_range4(np.array([disc_lo, disc_hi]), expand)
+        if cont is None:
+            return disc
+        lo = min(float(disc[0]), cont[0])
+        hi = max(float(disc[1]), cont[1])
+        return np.array([lo, hi])
 
     def clone(self) -> "ScaleDiscretePosition":
         new = copy.copy(self)

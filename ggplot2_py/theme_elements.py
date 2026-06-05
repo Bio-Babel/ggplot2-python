@@ -747,7 +747,8 @@ class ElementGeom(Element):
     family : str or None
         Default font family.
     fontsize : float or None
-        Default font size in points.
+        Default font size in points. Stored internally in mm (divided by
+        .pt), mirroring R's ``element_geom`` constructor.
     pointsize : float or None
         Default point size in mm.
     pointshape : int or None
@@ -782,7 +783,11 @@ class ElementGeom(Element):
         self.linetype = linetype
         self.bordertype = bordertype
         self.family = family
-        self.fontsize = fontsize
+        # R: element_geom constructor (theme-elements.R:340-342) divides the
+        # supplied fontsize by .pt BEFORE storing, so a stored element_geom
+        # fontsize is in *mm* (e.g. fontsize=11 stored as 11/.pt = 3.866).
+        # Only fontsize is converted — pointsize and others are left as-is.
+        self.fontsize = fontsize / _PT if fontsize is not None else None
         self.pointsize = pointsize
         self.pointshape = pointshape
         self.colour = colour
@@ -1999,20 +2004,65 @@ def get_element_tree() -> Dict[str, Dict[str, Any]]:
 
 def register_theme_elements(
     element_tree: Optional[Dict[str, Dict[str, Any]]] = None,
+    complete: bool = True,
     **kwargs: Any,
 ) -> None:
     """Register new theme elements globally.
 
+    Mirrors R's ``register_theme_elements()`` (theme-elements.R:692-703)::
+
+        register_theme_elements <- function(..., element_tree = NULL, complete = TRUE) {
+          old <- ggplot_global$theme_default
+          t <- theme(..., complete = complete)
+          ggplot_global$theme_default <- ggplot_global$theme_default %+replace% t
+          check_element_tree(element_tree)
+          ggplot_global$element_tree <- defaults(element_tree, ggplot_global$element_tree)
+          invisible(old)
+        }
+
+    The default element *values* passed via ``**kwargs`` are merged into the
+    global ``theme_default`` using the ``%+replace%`` operator (wholesale
+    element replacement), so that a theme completed against ``theme_default``
+    (via :func:`complete_theme` / ``theme_get``) surfaces these registered
+    defaults for any element the completing theme does not itself set.  The
+    ``element_tree`` argument adds inheritance definitions; ``defaults(new, old)``
+    in R is *new-wins*, which is exactly ``dict.update``.
+
     Parameters
     ----------
     element_tree : dict, optional
-        Additional element tree entries (name -> ``el_def(...)``).
+        Additional element tree entries (name -> ``el_def(...)``).  Keys already
+        present in the global tree are overwritten (new-wins, matching R's
+        ``defaults()``).
+    complete : bool
+        Whether the registered defaults form a complete theme block.  R defaults
+        to ``True``.  Passed through to :func:`theme`.
     **kwargs
-        Element default values to merge into the default theme.
+        Element default values (e.g. ``plot.background=element_rect(...)`` or, for
+        dotted custom names, ``**{"ggh4x.facet.nestline": element_blank()}``)
+        merged into the global default theme.
+
+    Returns
+    -------
+    None
+        (R returns the previous ``theme_default`` invisibly; the Python API
+        returns ``None`` for back-compat.)
     """
+    # Merge default element VALUES into the global fallback default theme.
+    # Local import to avoid the theme <-> theme_elements import cycle, exactly
+    # as ``reset_theme_settings`` does for ``theme_defaults``.
+    if kwargs:
+        from ggplot2_py.theme import theme as _theme, theme_replace_op as _replace
+        t = _theme(complete=complete, **kwargs)
+        base = _ggplot_global.theme_default
+        if base is None:
+            _ggplot_global.theme_default = t
+        else:
+            _ggplot_global.theme_default = _replace(base, t)
+
+    # Merge element-tree inheritance definitions (new-wins == R defaults()).
     if element_tree is not None:
         _ggplot_global.element_tree.update(element_tree)
-    # Defaults are handled by the theme module once it is imported.
 
 
 def reset_theme_settings(reset_current: bool = True) -> None:

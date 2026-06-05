@@ -89,14 +89,19 @@ class TestDistEuclidean:
 
 class TestDistPolar:
     def test_basic(self):
+        # R gold standard: dist_polar is the polar arc-length metric
+        # (spiral/circular/ray), NOT the straight-line law of cosines.
+        # R: dist_polar(c(1, 1), c(0, pi)) == 0.9286289 (a circular arc,
+        # r constant -> r1 * (t2 - t1) / max_dist).
         r = np.array([1.0, 1.0])
         theta = np.array([0.0, math.pi])
         result = _dist_polar(r, theta)
-        assert result[0] == pytest.approx(2.0)
+        assert result[0] == pytest.approx(0.9286289, abs=1e-6)
 
     def test_single_point(self):
+        # R: dist_polar returns length n-1, so a single point -> length 0.
         result = _dist_polar(np.array([1.0]), np.array([0.0]))
-        assert result[0] == 0.0
+        assert len(result) == 0
 
 
 class TestThetaRescale:

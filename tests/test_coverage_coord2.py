@@ -26,7 +26,10 @@ class _FS:
 
     def get_limits(self):
         return [0, 10]
-    def dimension(self):
+    def dimension(self, expand=None):
+        # Real scales accept an ``expand`` vector (see Scale.dimension);
+        # CoordPolar.setup_panel_params passes one to apply the polar
+        # theta/r expansion.  Ignore it here (the stub has no breaks).
         return [0, 10]
     def is_discrete(self):
         return False

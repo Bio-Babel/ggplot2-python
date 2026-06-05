@@ -38,6 +38,8 @@ __all__ = [
     "_safe_colour",
     "_table_add_legends",
     "_table_add_titles",
+    "_included_layers_for_guide",
+    "_guide_key_aesthetics",
     "find_panel",
     "panel_rows",
     "panel_cols",
@@ -149,6 +151,41 @@ def _include_layer_in_guide(layer: Any, matched: set) -> bool:
     # Layer does not map any guide aesthetic: include only if show.legend
     # is explicitly TRUE.
     return show is True
+
+
+def _guide_key_aesthetics(key: Any) -> set:
+    """Canonical aesthetic names carried by a guide ``key`` DataFrame.
+
+    Mirrors R's ``names(guide$key)`` as consumed by ``matched_aes``
+    (``guides-.R:877``): the non-position aesthetic columns, excluding the
+    internal ``.value`` / ``.label`` / ``.id`` / ``.draw`` bookkeeping
+    columns.  (The R ``intersect`` against ``all``/``geom`` aesthetic names
+    drops the dotted columns anyway, but excluding them up-front keeps the
+    matched set tidy.)
+    """
+    cols = getattr(key, "columns", None)
+    if cols is None:
+        return set()
+    return {
+        _canon_aes(str(c)) for c in cols if not str(c).startswith(".")
+    }
+
+
+def _included_layers_for_guide(guide_aes: set, layers: Any) -> List[Any]:
+    """Layers that contribute to a guide, honouring ``show_legend``.
+
+    Port of the ``include`` computation in R's ``GuideLegend$process_layers``
+    (``guide-legend.R:221-224``): for each layer, compute ``matched_aes`` and
+    apply ``include_layer_in_guide``.  Returns the subset of layers that
+    should contribute their key/decor to the guide.  An empty result means
+    the guide must be dropped (R returns ``NULL`` when ``!any(include)``).
+    """
+    included: List[Any] = []
+    for layer in layers or []:
+        matched = _matched_aes(layer, guide_aes)
+        if _include_layer_in_guide(layer, matched):
+            included.append(layer)
+    return included
 
 
 def _resolve_draw_key_for_entry(
@@ -522,16 +559,36 @@ def _table_add_legends(
         if getattr(s, "aesthetics", None)
     ]
 
-    user_guides = guides if isinstance(guides, _Guides) else _Guides()
-    trained = user_guides.setup(
-        scales,
-        aesthetics=aesthetics,
-        default=_GL(),
-        missing=_gn(),
-    )
-    trained.train(scales, labels or {})
-    trained.merge()
-    trained.process_layers(layers or [], theme=theme)
+    # ------------------------------------------------------------------
+    # SINGLE guide build site (R parity — Issue #3, Design B(ii)).
+    #
+    # R's ``ggplot_build`` builds the guides exactly once
+    # (``plot@guides <- plot@guides$build(...)``) and ``ggplot_gtable``
+    # only ``assemble``s them.  ggplot2-python keeps ``_table_add_legends``
+    # as the single builder for the common case (no ``+ guides()`` call,
+    # so ``plot.guides is None``), BUT when the user wrote ``+ guides(...)``
+    # the build stage (``ggplot_build`` -> ``Guides.build``) has already
+    # run the full ``setup -> train -> merge -> process_layers`` lifecycle
+    # and flagged the result ``_built``.  Re-running ``setup`` on that
+    # resolved container crashed (``setup`` indexes the user map, which is
+    # now list-form) and — for the suppressed case — resurrected disabled
+    # legends.  So: if we are handed an already-built ``Guides``, assemble
+    # it directly (no second build); otherwise build-from-scales as before.
+    # Either way there is exactly ONE build per plot.
+    # ------------------------------------------------------------------
+    if isinstance(guides, _Guides) and getattr(guides, "_built", False):
+        trained = guides
+    else:
+        user_guides = guides if isinstance(guides, _Guides) else _Guides()
+        trained = user_guides.setup(
+            scales,
+            aesthetics=aesthetics,
+            default=_GL(),
+            missing=_gn(),
+        )
+        trained.train(scales, labels or {})
+        trained.merge()
+        trained.process_layers(layers or [], theme=theme)
     packaged_boxes = trained.assemble(theme) or {}
     packaged_boxes = {
         k: v for k, v in packaged_boxes.items() if v is not None
