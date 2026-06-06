@@ -122,7 +122,7 @@ __all__ = [
     # ggproto classes
     "GeomPoint", "GeomPath", "GeomLine", "GeomStep",
     "GeomBar", "GeomCol", "GeomRect", "GeomTile", "GeomRaster",
-    "GeomText", "GeomLabel",
+    "GeomText", "GeomLabel", "GeomAbsText",
     "GeomBoxplot", "GeomViolin", "GeomDotplot",
     "GeomRibbon", "GeomArea", "GeomSmooth",
     "GeomPolygon",
@@ -144,7 +144,7 @@ __all__ = [
     # Constructor functions
     "geom_point", "geom_path", "geom_line", "geom_step",
     "geom_bar", "geom_col", "geom_rect", "geom_tile", "geom_raster",
-    "geom_text", "geom_label",
+    "geom_text", "geom_label", "geom_abs_text",
     "geom_boxplot", "geom_violin", "geom_dotplot",
     "geom_ribbon", "geom_area", "geom_smooth",
     "geom_polygon",
@@ -672,25 +672,34 @@ class Geom(GGProto):
         Returns
         -------
         list of grobs
+            One grob **per layout panel**, in panel order — a
+            ``null_grob`` for panels this layer has no data in. Emitting a
+            grob for every panel (not only the panels present in *data*)
+            keeps the returned list aligned with ``layout.panel_params``
+            when a layer is faceted but only contributes to some panels
+            (e.g. per-track data in a stacked genome browser). R draws
+            every panel and returns ``zeroGrob()`` for empties.
         """
-        if data is None or (hasattr(data, "empty") and data.empty):
-            return [null_grob()]
+        n_panels = len(getattr(layout, "panel_params", None) or [None])
 
-        # Split by PANEL
+        if data is None or (hasattr(data, "empty") and data.empty):
+            return [null_grob() for _ in range(n_panels)]
+
+        # Split by PANEL (1-based ids); panel_params is 0-based.
         if "PANEL" in data.columns:
-            panels = {k: v for k, v in data.groupby("PANEL", observed=True)}
+            by_panel = {int(k): v for k, v in data.groupby("PANEL", observed=True)}
         else:
-            panels = {1: data}
+            by_panel = {1: data}
 
         grobs = []
-        for panel_id, panel_data in panels.items():
-            if panel_data.empty:
+        for idx in range(n_panels):
+            panel_data = by_panel.get(idx + 1)
+            if panel_data is None or panel_data.empty:
                 grobs.append(null_grob())
                 continue
-            # PANEL is 1-based, panel_params list is 0-based
-            idx = int(panel_id) - 1 if isinstance(panel_id, (int, np.integer)) else panel_id
-            panel_params = layout.panel_params[idx]
-            grobs.append(self.draw_panel(panel_data, panel_params, coord, **params))
+            grobs.append(
+                self.draw_panel(panel_data, layout.panel_params[idx], coord, **params)
+            )
         return grobs
 
     def draw_panel(
@@ -1717,6 +1726,91 @@ class GeomLabel(Geom):
             grobs.extend([bg_grob, txt_grob])
 
         return _ggname("geom_label", grob_tree(*grobs) if grobs else null_grob())
+
+
+class GeomAbsText(Geom):
+    """Text positioned in panel-relative *npc* coordinates (R: ``zplyr::GeomAbsText``).
+
+    Unlike :class:`GeomText` (which positions text at *data* coordinates),
+    ``GeomAbsText`` places each label at ``(xpos, ypos)`` given as
+    normalised-parent-coordinates (npc): ``(0, 0)`` is the panel's
+    bottom-left, ``(1, 1)`` its top-right — independent of the data
+    scale. ``xpos``/``ypos`` are therefore **not** coordinate-transformed
+    and do not train the position scales.
+
+    Useful for per-panel annotation badges (e.g. a coverage track's
+    ``[min-max]`` range label) that must sit in a fixed corner of *every*
+    facet regardless of that facet's data range.
+    """
+
+    required_aes: Tuple[str, ...] = ("xpos", "ypos", "label")
+    default_aes: Mapping = GeomText.default_aes
+    draw_key = draw_key_blank
+
+    def handle_na(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
+        """Keep all rows — npc badges are annotations, not data points.
+
+        R: ``zplyr::GeomAbsText`` inherits ``ggplot2::GeomCustomAnn``, whose
+        ``handle_na`` is the identity (R/annotation-custom.R:67-69). Unlike the
+        default :meth:`Geom.handle_na` (which ``remove_missing()``-drops rows with
+        NA in ``required_aes``), a panel-corner badge must never be silently
+        dropped, so we return the data unchanged.
+        """
+        return data
+
+    def draw_panel(
+        self,
+        data: pd.DataFrame,
+        panel_params: Any,
+        coord: Any,
+        parse: bool = False,
+        na_rm: bool = False,
+        size_unit: str = "mm",
+        **params: Any,
+    ) -> Any:
+        """Draw npc-positioned text. ``xpos``/``ypos`` are read as npc, not data."""
+        if data is None or data.empty:
+            return null_grob()
+
+        size_mul = PT
+        if size_unit == "pt":
+            size_mul = 1
+        elif size_unit == "cm":
+            size_mul = PT * 10
+        elif size_unit == "in":
+            size_mul = 72.27
+        elif size_unit == "pc":
+            size_mul = 12
+
+        colours = scales_alpha(
+            data["colour"].values if "colour" in data.columns else "black",
+            data["alpha"].values if "alpha" in data.columns else None,
+        )
+        if isinstance(colours, str):
+            colours = [colours] * len(data)
+
+        children = []
+        for i in range(len(data)):
+            row = data.iloc[i]
+            col_i = colours[i] if i < len(colours) else "black"
+            children.append(text_grob(
+                label=str(row.get("label", "")),
+                x=float(row["xpos"]),
+                y=float(row["ypos"]),
+                default_units="npc",
+                hjust=float(row.get("hjust", 0.5)),
+                vjust=float(row.get("vjust", 0.5)),
+                rot=float(row.get("angle", 0)),
+                gp=Gpar(
+                    col=col_i,
+                    fontsize=float(row.get("size", 11 / PT)) * size_mul,
+                    fontfamily=row.get("family", "") or "",
+                    fontface=row.get("fontface", 1),
+                    lineheight=row.get("lineheight", 1.2),
+                ),
+                name=f"abs_text.{i}",
+            ))
+        return _ggname("geom_abs_text", grob_tree(*children))
 
 
 # ===========================================================================
@@ -4111,6 +4205,31 @@ def geom_label(
     layer = _layer_import()
     return layer(
         geom=GeomLabel, stat=stat, data=data, mapping=mapping,
+        position=position, show_legend=show_legend, inherit_aes=inherit_aes,
+        params={"na_rm": na_rm, "parse": parse, "size_unit": size_unit, **kwargs},
+    )
+
+
+def geom_abs_text(
+    mapping: Optional[Mapping] = None,
+    data: Any = None,
+    stat: str = "identity",
+    position: str = "identity",
+    na_rm: bool = False,
+    show_legend: Any = None,
+    inherit_aes: bool = True,
+    parse: bool = False,
+    size_unit: str = "mm",
+    **kwargs: Any,
+) -> Any:
+    """Create an npc-positioned text layer (panel-corner badges).
+
+    Maps ``xpos``/``ypos`` (npc, 0–1 within the panel) and ``label``.
+    See :class:`GeomAbsText`.
+    """
+    layer = _layer_import()
+    return layer(
+        geom=GeomAbsText, stat=stat, data=data, mapping=mapping,
         position=position, show_legend=show_legend, inherit_aes=inherit_aes,
         params={"na_rm": na_rm, "parse": parse, "size_unit": size_unit, **kwargs},
     )

@@ -123,6 +123,7 @@ from ggplot2_py.geom import (
     GeomRaster,
     GeomText,
     GeomLabel,
+    GeomAbsText,
     GeomBoxplot,
     GeomViolin,
     GeomDotplot,
@@ -173,6 +174,7 @@ from ggplot2_py.geom import (
     geom_raster,
     geom_text,
     geom_label,
+    geom_abs_text,
     geom_boxplot,
     geom_violin,
     geom_dotplot,
@@ -765,7 +767,7 @@ __all__ = [
     # Geom classes
     "Geom", "GeomPoint", "GeomPath", "GeomLine", "GeomStep",
     "GeomBar", "GeomCol", "GeomRect", "GeomTile", "GeomRaster",
-    "GeomText", "GeomLabel", "GeomBoxplot", "GeomViolin", "GeomDotplot",
+    "GeomText", "GeomLabel", "GeomAbsText", "GeomBoxplot", "GeomViolin", "GeomDotplot",
     "GeomRibbon", "GeomArea", "GeomSmooth", "GeomPolygon",
     "GeomErrorbar", "GeomErrorbarh", "GeomCrossbar", "GeomLinerange", "GeomPointrange",
     "GeomSegment", "GeomCurve", "GeomSpoke",
@@ -776,7 +778,7 @@ __all__ = [
     # Geom constructors
     "geom_point", "geom_path", "geom_line", "geom_step",
     "geom_bar", "geom_col", "geom_rect", "geom_tile", "geom_raster",
-    "geom_text", "geom_label", "geom_boxplot", "geom_violin", "geom_dotplot",
+    "geom_text", "geom_label", "geom_abs_text", "geom_boxplot", "geom_violin", "geom_dotplot",
     "geom_ribbon", "geom_area", "geom_smooth", "geom_polygon",
     "geom_errorbar", "geom_errorbarh", "geom_crossbar", "geom_linerange", "geom_pointrange",
     "geom_segment", "geom_curve", "geom_spoke",
