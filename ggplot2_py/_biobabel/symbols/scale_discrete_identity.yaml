@@ -1,0 +1,30 @@
+id: ggplot2_py.scale_discrete_identity
+import_path: ggplot2_py.scale_discrete_identity
+kind: function
+signature: scale_discrete_identity(aesthetics, name=None, guide='none', kwargs)
+purpose: Generic discrete identity scale.
+description: Generic discrete identity scale.
+parameters:
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: true
+  default: null
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: guide
+  type: str
+  required: false
+  default: none
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleDiscreteIdentity; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

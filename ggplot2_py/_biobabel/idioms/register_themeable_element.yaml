@@ -1,0 +1,60 @@
+id: ggplot2_py.register_themeable_element
+name: Register a custom themeable element under a dotted name, then set it via theme()
+applicable_to:
+  - ggplot2_py.scoped_defaults
+description: |
+  An extension package that draws its own decorations (a facet nesting line,
+  a custom strip, …) should make those decorations USER-THEMEABLE rather than
+  hard-coding their appearance. The mechanism is the same one ggplot2 uses for
+  its own elements: register a new entry in the theme element tree under a
+  namespaced, dotted name, then read it back at draw time. Once registered,
+  the element behaves like any built-in one — the user sets it with
+  `theme(**{"pkg.elem": element_line(...)})` and it inherits from its parent.
+
+  Two pieces:
+
+  * `register_theme_elements(element_tree={...})` — installs new nodes into
+    the GLOBAL element tree. The keys are dotted, package-namespaced names
+    (`"mypkg.custom.line"`), the values are `el_def(...)` descriptors.
+  * `el_def(class_, inherit, description=None)` — describes one element:
+    which `Element*` CLASS validates a user-supplied value, and which
+    existing element it INHERITS unset fields from. It returns a plain dict
+    `{'class': <ElementClass>, 'inherit': ['line'], 'description': None}`.
+    `inherit` may be a string or a list; a string is normalized to a
+    one-element list.
+
+  Because the registration mutates a global tree, do it once at import time
+  (module top level), exactly as ggh4x does in `themes_ggh4x.py`
+  (`register_theme_elements(element_tree={"ggh4x.facet.nestline": el_def(ElementLine, "line")})`).
+  After that, any plot can set the element and `ggplot_build(p)` resolves it
+  by walking the inherit chain (here, falling back to the global `line`
+  element for unset fields).
+code_template: |
+  from ggplot2_py import (
+      register_theme_elements, el_def, element_line, theme,
+      ggplot, aes, geom_point, ggplot_build, ggsave,
+  )
+  from ggplot2_py.theme_elements import ElementLine
+  from ggplot2_py.datasets import mpg
+
+  # 1) Register a NEW themeable element under a dotted, package-namespaced
+  #    name. It validates against ElementLine and inherits from "line".
+  register_theme_elements(
+      element_tree={"mypkg.custom.line": el_def(ElementLine, "line")}
+  )
+
+  # el_def returns a plain descriptor dict (class / inherit / description)
+  d = el_def(ElementLine, "line")
+  assert d["class"] is ElementLine and d["inherit"] == ["line"]
+
+  # 2) A user can now SET the element with theme(**{...}) like any built-in
+  #    one; the build resolves it through the inherit chain.
+  p = (
+      ggplot(mpg, aes(x="displ", y="hwy"))
+      + geom_point()
+      + theme(**{"mypkg.custom.line": element_line(color="red")})
+  )
+  ggplot_build(p)                       # resolves the registered element
+  ggsave("/tmp/idiom_register_themeable_element.png", plot=p, width=5, height=4)
+anti_pattern_paired: null
+typical_use_case: "an extension that draws its own decoration (facet nesting line, custom strip) and wants users to restyle it through the normal theme() system instead of a bespoke argument"

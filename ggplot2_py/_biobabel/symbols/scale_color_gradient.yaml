@@ -1,0 +1,83 @@
+id: ggplot2_py.scale_color_gradient
+import_path: ggplot2_py.scale_color_gradient
+kind: function
+signature: scale_color_gradient(low='#132B43', high='#56B1F7', name=None, limits=None, breaks=None, labels=None, na_value='grey50', guide='colourbar', transform='identity', space='Lab', aesthetics='colour')
+purpose: two-color sequential gradient for a numeric color aesthetic; simple low-to-high color ramp (no meaningful midpoint)
+description: "Two-color sequential gradient. Linearly interpolates between `low=` and\n`high=` colors across the numeric data range. **Use when the data has no\nnatural midpoint** — e.g. counts, intensities, distances.\n\nChoosing between the gradient family:\n\n- `scale_color_gradient`  — 2 colors (low, high). Sequential data.\n- `scale_color_gradient2` — 3 colors with a midpoint. Diverging data\n  (log2FC, correlations, residuals — anything that crosses zero).\n- `scale_color_gradientn` — N custom colors along the ramp.\n\nFor numeric data only. For factor / categorical levels, use\n`scale_color_brewer`, `scale_color_viridis_d`, or `scale_color_manual`.\n"
+parameters:
+- name: low
+  type: str
+  required: false
+  default: '#132B43'
+  description: Color at the data minimum (or at `limits[0]` if set).
+- name: high
+  type: str
+  required: false
+  default: '#56B1F7'
+  description: Color at the data maximum (or at `limits[1]` if set).
+- name: name
+  type: str | None
+  required: false
+  default: null
+  description: Colorbar title.
+- name: limits
+  type: tuple[float, float] | None
+  required: false
+  default: null
+  description: Data range mapped to (low, high). Values outside become `na_value` unless `oob=` is set.
+- name: breaks
+  type: list[float] | callable | None
+  required: false
+  default: null
+  description: Tick positions on the colorbar.
+- name: labels
+  type: callable | list | None
+  required: false
+  default: null
+  description: Tick formatter.
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+  description: Color for NA. Python uses `na_value=` (not R's `na.value=`).
+- name: guide
+  type: str | Guide
+  required: false
+  default: colourbar
+  description: '''colourbar'' (continuous) or ''legend'' (binned legend).'
+- name: transform
+  type: str | Transform
+  required: false
+  default: identity
+  description: Pre-transform of the data scale, e.g. 'log10', 'sqrt'.
+- name: space
+  type: str
+  required: false
+  default: Lab
+  description: Color interpolation space; 'Lab' is perceptually uniform and usually best.
+- name: aesthetics
+  type: str | list[str]
+  required: false
+  default: colour
+  description: '''color'' / ''colour'' are aliases.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_color_gradient(low='lightyellow', high='red')
+- p + scale_color_gradient(low='#f7fbff', high='#08306b', transform='log10')
+failure_fixes:
+- when: data crosses zero (positive and negative) but the gradient is one-sided
+  suggest:
+  - Switch to `scale_color_gradient2(low='blue', mid='white', high='red', midpoint=0)` — gradient2 is built for diverging data.
+- when: 'Error: Discrete value supplied to continuous scale'
+  suggest:
+  - Column is categorical; use `scale_color_manual()`, `scale_color_brewer()`, or `scale_color_viridis_d()`.
+- when: 'TypeError: got an unexpected keyword argument ''na.value'''
+  suggest:
+  - Use `na_value=` — Python uses underscores, not R's dots.
+- when: outliers dominate the colorbar, leaving the bulk of points one color
+  suggest:
+  - Constrain with `limits=(q_low, q_high)` and pass `oob=scales.squish` to clamp outliers.
+  - 'Or transform: `transform=''log10''` / `''sqrt''`.'

@@ -1,0 +1,33 @@
+id: ggplot2_py.discrete_x_continuous_y
+name: Discrete-x / continuous-y — boxplot, bar/lollipop, ordered categories
+applicable_to:
+  - ggplot2_py.geom_boxplot
+  - ggplot2_py.geom_col
+  - ggplot2_py.geom_segment
+description: |
+  When one axis is a category and the other a number, three geoms cover
+  ~90% of cases:
+
+  - **`geom_boxplot()` / `geom_violin()`** — distribution per category.
+  - **`geom_col()`** — pre-computed bar (height already in the data); use
+    `geom_bar(stat="count")` only when ggplot should count rows itself.
+  - **`geom_segment()` + `geom_point()`** — a lollipop chart: less ink than
+    a bar, same information. Map `xend=` equal to `x` and `yend=` equal to
+    `y`, and set `y=0` for the segment baseline (`geom_segment` requires all
+    of `x`/`y`/`xend`/`yend`).
+
+  Category order on the x-axis defaults to alphabetical — combine with
+  `ggplot2_py.factor_for_categorical_order` to control it.
+code_template: |
+  from ggplot2_py import ggplot, aes, geom_segment, geom_point
+  from ggplot2_py.datasets import mpg
+
+  # Lollipop chart of mean highway MPG per vehicle class.
+  df = mpg.groupby("class", as_index=False)["hwy"].mean()
+
+  p = (
+      ggplot(df, aes(x="class", y="hwy"))
+      + geom_segment(aes(xend="class", yend="hwy"), y=0, color="gray60")
+      + geom_point(size=4, color="steelblue")
+  )
+typical_use_case: "summary statistic per category — replace a crowded bar chart with a cleaner lollipop"

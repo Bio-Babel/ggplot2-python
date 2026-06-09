@@ -1,0 +1,101 @@
+id: ggplot2_py.geom_abs_text
+import_path: ggplot2_py.geom_abs_text
+kind: function
+signature: geom_abs_text(mapping=None, data=None, stat='identity', position='identity', na_rm=False, show_legend=None, inherit_aes=True, parse=False, size_unit='mm')
+purpose: place text badges at fixed panel-relative positions, independent of the data scales; annotate a corner of every facet (e.g. a per-panel range label) regardless of that facet's data range
+description: 'Draw text at `(xpos, ypos)` given in *npc* (normalised-parent-coordinates):
+
+  `(0, 0)` is the panel''s bottom-left, `(1, 1)` its top-right — independent of
+
+  the x/y data scales. Unlike `geom_text` (which positions text at DATA
+
+  coordinates and trains the position scales), `geom_abs_text` does NOT
+
+  coordinate-transform `xpos`/`ypos` and does NOT train the scales, so the
+
+  badge sits at the same spot in every panel no matter how that panel''s data
+
+  ranges differ.
+
+
+  Required aesthetics are `xpos`, `ypos`, and `label`. NA rows are kept (an
+
+  annotation badge is never silently dropped). This mirrors R''s
+
+  `zplyr::GeomAbsText` (which inherits `ggplot2::GeomCustomAnn`). Use it for
+
+  per-facet annotation badges such as a coverage track''s `[min-max]` range
+
+  label that must always sit in a fixed corner. Accumulates via `+`
+
+  (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Supply xpos, ypos (npc 0..1) and label. For a constant badge pass them as params with inherit_aes=False; to vary per row map data columns inside aes(xpos='...', ypos='...', label='...').
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+  description: Kept for API symmetry; the geom retains NA rows regardless (badges are never dropped).
+- name: show_legend
+  type: bool
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: parse
+  type: bool
+  required: false
+  default: false
+  description: If True, parse labels as plotmath expressions (R-style).
+- name: size_unit
+  type: str
+  required: false
+  default: mm
+  description: '''mm'' (default), ''pt'', ''cm'', ''in'', ''pc''; controls how the size aesthetic is interpreted.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(mpg, aes('displ', 'hwy')) + geom_point() + geom_abs_text(xpos=0.95, ypos=0.95, label='DRAFT', inherit_aes=False)
+- 'geom_abs_text(aes(xpos=''x_npc'', ypos=''y_npc'', label=''range_lab''), hjust=0)  # per-row badges from data columns'
+failure_fixes:
+- when: no text appears / empty layer
+  suggest:
+  - 'xpos, ypos AND label are all required. For a constant badge: geom_abs_text(xpos=0.95, ypos=0.95, label=''tag'', inherit_aes=False).'
+- when: 'ValueError: geom_abs_text requires the following missing aesthetics: label'
+  suggest:
+  - 'A constant string label is a param, not an aes() mapping: pass label=''tag'' (and inherit_aes=False so x/y aren''t pulled in). Use aes(label=''colname'') only to vary the label per data row.'
+- when: passed x= / y= expecting data coordinates
+  suggest:
+  - geom_abs_text uses xpos/ypos in npc (0..1 within the panel), NOT data x/y. For data-coordinate text use geom_text instead.
+- when: badge moves between facets / scales with the data
+  suggest:
+  - 'That is geom_text behaviour. geom_abs_text is the fixed-corner variant: xpos/ypos are panel-relative and do not train the scales.'
+- when: text too large or too small relative to plot
+  suggest:
+  - Pass size= as a kwarg (e.g. size=3) — not via aes() unless you want per-row sizing; size_unit controls the unit.
+related:
+- ggplot2_py.geom_text
+- ggplot2_py.facet_wrap
+- ggplot2_py.annotate

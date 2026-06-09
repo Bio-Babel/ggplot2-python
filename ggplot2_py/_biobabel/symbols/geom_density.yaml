@@ -1,0 +1,84 @@
+id: ggplot2_py.geom_density
+import_path: ggplot2_py.geom_density
+kind: function
+signature: geom_density(mapping=None, data=None, stat='density', position='identity', outline_type='upper', bw='nrd0', kernel='gaussian', n=512, adjust=1)
+purpose: 1D kernel density estimate; smoothed alternative to histogram
+description: 'Draw a smoothed KDE of a continuous x variable. Uses `stat=''density''` by
+
+  default, which delegates bandwidth/kernel/grid params (`bw`, `kernel`, `n`,
+
+  `adjust`, `from`/`to`) to the stat via `**kwargs`. Prefer `geom_density`
+
+  over `geom_histogram` when you want a continuous curve and don''t care
+
+  about bin counts; use `geom_freqpoly` when you want the histogram skeleton
+
+  without bars. Accumulates via `+` (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Needs x (continuous). For grouped densities, map fill or color.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: density
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: outline_type
+  type: str
+  required: false
+  default: upper
+  description: '''upper'' (default, curve only), ''both'' (also draws baseline), ''lower'', ''full''.'
+- name: bw
+  type: str | float
+  required: false
+  default: nrd0
+  description: Bandwidth; passed via **kwargs to stat_density.
+- name: kernel
+  type: str
+  required: false
+  default: gaussian
+  description: '''gaussian'' (default), ''epanechnikov'', ''rectangular'', ''triangular'', ''biweight'', ''cosine'', ''optcosine''.'
+- name: n
+  type: int
+  required: false
+  default: 512
+  description: Number of equally spaced points at which density is evaluated.
+- name: adjust
+  type: float
+  required: false
+  default: 1
+  description: Bandwidth multiplier; 0.5 = half as smooth, 2 = twice as smooth.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(mpg, aes(x='hwy')) + geom_density()
+- ggplot(mpg, aes(x='hwy', fill='drv')) + geom_density(alpha=0.4)
+- geom_density(adjust=0.5, kernel='epanechnikov')
+failure_fixes:
+- when: density too wiggly or too flat
+  suggest:
+  - Tune adjust= (e.g. adjust=2 for smoother, adjust=0.5 for wigglier); or pass bw=<float>.
+- when: want densities to integrate to group proportions, not 1 each
+  suggest:
+  - 'Map y via after_stat: geom_density(aes(y=after_stat(''count''))) or after_stat(''scaled'').'
+- when: filled densities for groups overlap and obscure each other
+  suggest:
+  - Set alpha (e.g. geom_density(alpha=0.4)); or use position='stack' / 'fill'.
+related:
+- ggplot2_py.geom_rug
+- ggplot2_py.facet_wrap
+- ggplot2_py.scale_x_log10
+- ggplot2_py.theme_minimal

@@ -1,0 +1,70 @@
+id: ggplot2_py.element_geom
+import_path: ggplot2_py.element_geom
+kind: function
+signature: element_geom(ink=None, paper=None, accent=None, linewidth=None, borderwidth=None, linetype=None, bordertype=None, family=None, fontsize=None, pointsize=None, pointshape=None, colour=None, color=None, fill=None)
+purpose: Create a geom defaults theme element.
+description: Create a geom defaults theme element.
+parameters:
+- name: ink
+  type: Optional[str]
+  required: false
+  default: null
+- name: paper
+  type: Optional[str]
+  required: false
+  default: null
+- name: accent
+  type: Optional[str]
+  required: false
+  default: null
+- name: linewidth
+  type: Optional[float]
+  required: false
+  default: null
+- name: borderwidth
+  type: Optional[float]
+  required: false
+  default: null
+- name: linetype
+  type: Optional[Union[int, str]]
+  required: false
+  default: null
+- name: bordertype
+  type: Optional[Union[int, str]]
+  required: false
+  default: null
+- name: family
+  type: Optional[str]
+  required: false
+  default: null
+- name: fontsize
+  type: Optional[float]
+  required: false
+  default: null
+- name: pointsize
+  type: Optional[float]
+  required: false
+  default: null
+- name: pointshape
+  type: Optional[int]
+  required: false
+  default: null
+- name: colour
+  type: Optional[str]
+  required: false
+  default: null
+- name: color
+  type: Optional[str]
+  required: false
+  default: null
+- name: fill
+  type: Optional[str]
+  required: false
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ElementGeom; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

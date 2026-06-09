@@ -1,0 +1,33 @@
+id: ggplot2_py.using_xlim_to_filter
+name: Using xlim()/ylim()/scale_*_continuous(limits=) to "zoom" — it actually filters
+applicable_to:
+  - ggplot2_py.plus_accumulation
+detection:
+  regex: '\+\s*(?:xlim|ylim|lims)\s*\(|scale_[xy]_(?:continuous|log10|sqrt|reverse)\s*\([^)]*\blimits\s*='
+  static_only: true
+why_bad: |
+  `xlim(0, 10)` and `scale_x_continuous(limits=(0, 10))` build a *scale*,
+  and continuous scales in ggplot2-python default to ``oob=censor``
+  (see ``scale.py``). At training time, any data point outside the limits
+  is replaced with NaN *before* stats run. The consequences are not
+  cosmetic:
+
+  - `geom_smooth(...) + xlim(0, 10)` fits the smoother on the subset, so
+    the line is wrong (and silently so).
+  - `geom_boxplot(...) + ylim(0, 100)` drops outliers from the boxplot
+    summary; the box, whiskers, and median change.
+  - n decreases with no warning.
+
+  Use `coord_cartesian(xlim=..., ylim=...)` to *zoom* — it clips the
+  drawing region after stats run, leaving the data and statistics intact.
+correct_pattern: ggplot2_py.coord_cartesian_for_zoom
+code_example_wrong: |
+  p = (ggplot(mpg, aes(x="displ", y="hwy"))
+       + geom_point()
+       + geom_smooth()
+       + xlim(2, 5))                          # ← filters first, smoother is wrong
+code_example_right: |
+  p = (ggplot(mpg, aes(x="displ", y="hwy"))
+       + geom_point()
+       + geom_smooth()
+       + coord_cartesian(xlim=(2, 5)))        # ← zooms after stats run

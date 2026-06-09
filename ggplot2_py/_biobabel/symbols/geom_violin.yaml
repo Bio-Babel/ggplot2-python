@@ -1,0 +1,78 @@
+id: ggplot2_py.geom_violin
+import_path: ggplot2_py.geom_violin
+kind: function
+signature: geom_violin(mapping=None, data=None, stat='ydensity', position='dodge', trim=True, scale='area', orientation=None)
+purpose: violin plot of distribution per group; compare full density shape across categories
+description: 'Draw a mirrored kernel-density estimate per group as a violin. Uses
+
+  `stat=''ydensity''` by default; the width of the violin at each y is
+
+  proportional to the local density. Reach for `geom_violin` instead of
+
+  `geom_boxplot` when the distribution shape (multi-modality, skew) matters;
+
+  combine with `geom_boxplot(width=0.1)` overlaid to keep the Tukey summary.
+
+  Accumulates onto a `GGPlot` via `+` (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Layer aes; needs x (group) and y (continuous).
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: ydensity
+- name: position
+  type: str
+  required: false
+  default: dodge
+  description: '''dodge'' (default, side-by-side per fill group), ''identity''.'
+- name: trim
+  type: bool
+  required: false
+  default: true
+  description: If True, trim density tails to data range; False extends beyond observed min/max.
+- name: scale
+  type: str
+  required: false
+  default: area
+  description: '''area'' (equal area, default), ''count'' (proportional to n), ''width'' (equal max width).'
+- name: orientation
+  type: str | None
+  required: false
+  default: null
+  description: '''x'' or ''y'' to force flip when auto-detection is ambiguous.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(mpg, aes(x='class', y='hwy')) + geom_violin()
+- ggplot(iris, aes(x='Species', y='Sepal_Length', fill='Species')) + geom_violin(trim=False, scale='count')
+- geom_violin() + geom_boxplot(width=0.1, outlier_shape=None)
+failure_fixes:
+- when: violins are all the same width regardless of group n
+  suggest:
+  - Default scale='area' equalizes area — pass scale='count' to make width proportional to group n.
+- when: want quartile lines inside the violin
+  suggest:
+  - geom_violin does NOT draw quartiles; overlay a thin geom_boxplot(width=0.1) on the same x/y.
+- when: violin extends past observed data range
+  suggest:
+  - Default trim=True clips to data; if you set trim=False, KDE bleeds beyond min/max.
+- when: x is continuous and you get one wide violin
+  suggest:
+  - Bin or cast x to a categorical first — geom_violin groups by discrete x.
+related:
+- ggplot2_py.geom_boxplot
+- ggplot2_py.geom_jitter
+- ggplot2_py.facet_wrap
+- ggplot2_py.theme_minimal

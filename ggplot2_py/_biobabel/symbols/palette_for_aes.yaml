@@ -1,0 +1,47 @@
+id: ggplot2_py.extension.palette_for_aes
+import_path: ggplot2_py.extension.palette_for_aes
+kind: function
+signature: palette_for_aes(original_aes, scale_template=None, theme=None)
+purpose: resolve the default palette callable for an aesthetic, for building a fresh scale in an extension
+description: 'Resolve the default palette callable for the aesthetic `original_aes` (e.g.
+
+  `"colour"`, `"fill"`), as used when an extension needs to construct a fresh
+
+  scale for a renamed/duplicated aesthetic (the `new_scale()` pattern). Optional
+
+  `scale_template` and `theme` let the lookup honour a template scale''s palette
+
+  or the active theme''s defaults. Returns a palette callable, or `None` if no
+
+  default palette applies to that aesthetic.
+
+  '
+parameters:
+- name: original_aes
+  type: str
+  required: true
+  default: null
+  description: The aesthetic whose default palette to resolve (e.g. 'colour', 'fill', 'size').
+- name: scale_template
+  type: Any
+  required: false
+  default: null
+  description: Optional scale to copy the palette from, instead of the aesthetic's built-in default.
+- name: theme
+  type: Any
+  required: false
+  default: null
+  description: Optional theme to consult for palette defaults.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Optional[Callable]; kind=value
+requires: []
+writes: []
+examples:
+- pal = palette_for_aes('colour'); my_scale = continuous_scale(['colour'], palette=pal)
+failure_fixes:
+- when: palette_for_aes returned None
+  suggest:
+  - That aesthetic has no default palette; supply an explicit palette to the scale, or pass a scale_template to copy from.
+related:
+- ggplot2_py.continuous_scale
+- ggplot2_py.discrete_scale

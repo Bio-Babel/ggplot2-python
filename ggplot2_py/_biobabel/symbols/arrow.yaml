@@ -1,0 +1,64 @@
+id: ggplot2_py.arrow
+import_path: ggplot2_py.arrow
+kind: function
+signature: arrow(angle=30, length=None, ends='last', type='open')
+purpose: build an Arrow spec to put arrow heads on segments, paths, lines, or curves
+description: 'Re-export of `grid_py._arrow.arrow` (mirror of R''s `grid::arrow()`). Returns
+
+  an `Arrow` describing the head geometry; pass it to the `arrow=` parameter of
+
+  line-type geoms such as `geom_segment`, `geom_path`, `geom_line`, or
+
+  `geom_curve`.
+
+
+  `length` is a grid `Unit` (default `unit(0.25, ''inches'')` when None). `ends`
+
+  selects which end(s) of the line get a head; `type` chooses an open V or a
+
+  closed filled triangle.
+
+  '
+parameters:
+- name: angle
+  type: float | Sequence[float]
+  required: false
+  default: 30
+  description: Angle of the arrow head in degrees.
+- name: length
+  type: Unit | None
+  required: false
+  default: null
+  description: Length of the arrow head edges as a grid Unit; defaults to unit(0.25, 'inches'). Wrap plain numbers with unit().
+- name: ends
+  type: str | Sequence[str]
+  required: false
+  default: last
+  description: '''first'', ''last'' (default), or ''both'' — which end(s) of the line receive a head.'
+- name: type
+  type: str | Sequence[str]
+  required: false
+  default: open
+  description: '''open'' (default, V-shaped) or ''closed'' (filled triangle).'
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Arrow; kind=value
+requires: []
+writes: []
+examples:
+- geom_segment(aes(x='x0', y='y0', xend='x1', yend='y1'), arrow=arrow())
+- arrow(angle=45, length=unit(0.2, 'inches'), type='closed')
+- geom_path(arrow=arrow(ends='both'))
+failure_fixes:
+- when: no arrow head appears on a geom_segment / geom_path
+  suggest:
+  - 'Pass the Arrow to the geom''s arrow= param: geom_segment(..., arrow=arrow()). Building the Arrow alone draws nothing.'
+- when: passed a plain number to length= and got a type error
+  suggest:
+  - 'length is a grid Unit: arrow(length=unit(0.15, ''inches'')), not arrow(length=0.15).'
+- when: want heads on both ends
+  suggest:
+  - arrow(ends='both'). Use 'first' to reverse a single head.
+related:
+- ggplot2_py.geom_segment
+- ggplot2_py.geom_path
+- ggplot2_py.unit

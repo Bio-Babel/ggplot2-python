@@ -1,0 +1,22 @@
+id: ggplot2_py.expand_scale
+import_path: ggplot2_py.expand_scale
+kind: function
+signature: expand_scale(mult=0, add=0)
+purpose: Deprecated.
+description: Deprecated. Use :func:`expansion` instead.
+parameters:
+- name: mult
+  type: Union[float, Sequence[float]]
+  required: false
+  default: 0
+- name: add
+  type: Union[float, Sequence[float]]
+  required: false
+  default: 0
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: np.ndarray; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

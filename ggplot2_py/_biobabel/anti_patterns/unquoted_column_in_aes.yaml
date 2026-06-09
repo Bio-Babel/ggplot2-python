@@ -1,0 +1,21 @@
+id: ggplot2_py.unquoted_column_in_aes
+name: Passing bare identifiers (R NSE style) to aes()
+applicable_to:
+  - ggplot2_py.aes_mapping
+detection:
+  regex: 'aes\s*\(\s*[a-zA-Z_][a-zA-Z0-9_]*\s*,'
+  static_only: true
+why_bad: |
+  R's `aes(displ, hwy)` works via Non-Standard Evaluation: the names are
+  resolved against the data frame, not the local scope. Python has no NSE.
+  `aes(displ, hwy)` will either NameError (no local `displ`) or — worse —
+  silently pick up shadowed locals like `displ = 1.2`, mapping x to a
+  constant.
+
+  Both column references must be quoted strings:
+  `aes(x="displ", y="hwy")`.
+correct_pattern: ggplot2_py.constants_outside_aes
+code_example_wrong: |
+  ggplot(mpg, aes(displ, hwy)) + geom_point()
+code_example_right: |
+  ggplot(mpg, aes(x="displ", y="hwy")) + geom_point()

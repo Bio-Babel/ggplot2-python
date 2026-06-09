@@ -1,0 +1,62 @@
+id: ggplot2_py.ggplot_defaults
+import_path: ggplot2_py.ggplot_defaults
+kind: function
+signature: ggplot_defaults(theme=None, coord=None, facet=None, mapping=None)
+purpose: apply theme/coord/facet/mapping defaults to every ggplot in a block; avoid repeating + theme_minimal() on every plot
+description: 'Python-exclusive context manager (backed by ``contextvars``, so thread-safe)
+
+  that sets scoped defaults for every :func:`ggplot` built inside the ``with``
+
+  block; outside the block the defaults revert. R has the global
+
+  ``theme_set()`` but no scoped equivalent. The context defaults are applied at
+
+  the end of the ggplot factory, after the plot''s intrinsic defaults, and the
+
+  context-provided ``coord`` is marked ``default=True`` so a later
+
+  ``plot + coord_X()`` still replaces it silently. All four arguments are
+
+  keyword-only. Useful to set a house style for one notebook section or inside
+
+  a plotting helper without mutating global state.
+
+  See idiom ``ggplot2_py.scoped_defaults_context``.
+
+  '
+parameters:
+- name: theme
+  type: Any
+  required: false
+  default: null
+  description: Default Theme (or dict) applied to all plots in scope. Keyword-only.
+- name: coord
+  type: Any
+  required: false
+  default: null
+  description: Default Coord; marked default=True so a later + coord_X() replaces it. Keyword-only.
+- name: facet
+  type: Any
+  required: false
+  default: null
+  description: Default Facet specification. Keyword-only.
+- name: mapping
+  type: Any
+  required: false
+  default: null
+  description: Default aesthetic Mapping. Keyword-only.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ContextManager; kind=value
+requires: []
+writes: []
+examples:
+- "from ggplot2_py import ggplot, aes, geom_point, ggplot_defaults\nfrom ggplot2_py.theme_defaults import theme_minimal\nfrom ggplot2_py.datasets import mpg\nwith ggplot_defaults(theme=theme_minimal()):\n    p1 = ggplot(mpg, aes(\"displ\", \"hwy\")) + geom_point()   # gets theme_minimal\n    p2 = ggplot(mpg, aes(\"cty\", \"hwy\")) + geom_point()     # same default\n# Outside: no defaults applied\n"
+failure_fixes:
+- when: defaults still applied after the block
+  suggest:
+  - Defaults revert only on exiting the with-block; ensure the ggplot() calls are inside it
+- when: 'TypeError: takes 0 positional arguments'
+  suggest:
+  - 'All arguments are keyword-only: ggplot_defaults(theme=..., coord=...)'
+related:
+- ggplot2_py.ggplot

@@ -1,0 +1,42 @@
+id: ggplot2_py.guide_axis_stack
+import_path: ggplot2_py.guide_axis_stack
+kind: function
+signature: guide_axis_stack(first='axis', args, title='waiver()', theme=None, spacing=None, order=0, position='waiver()')
+purpose: Create a stacked axis guide.
+description: Create a stacked axis guide.
+parameters:
+- name: first
+  type: Any
+  required: false
+  default: axis
+- name: args
+  type: Any
+  required: true
+  default: null
+- name: title
+  type: Any
+  required: false
+  default: waiver()
+- name: theme
+  type: Any
+  required: false
+  default: null
+- name: spacing
+  type: Any
+  required: false
+  default: null
+- name: order
+  type: int
+  required: false
+  default: 0
+- name: position
+  type: Any
+  required: false
+  default: waiver()
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: GuideAxisStack; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

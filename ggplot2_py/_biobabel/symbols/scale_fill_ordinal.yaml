@@ -1,0 +1,26 @@
+id: ggplot2_py.scale_fill_ordinal
+import_path: ggplot2_py.scale_fill_ordinal
+kind: function
+signature: scale_fill_ordinal(name=None, aesthetics='fill', kwargs)
+purpose: Ordinal fill scale (viridis palette).
+description: Ordinal fill scale (viridis palette).
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: fill
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleDiscrete; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

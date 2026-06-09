@@ -1,0 +1,24 @@
+id: ggplot2_py.theme_get
+import_path: ggplot2_py.theme_get
+kind: function
+signature: theme_get()
+purpose: inspect the currently-active global default Theme; snapshot the current theme so it can be restored later; build a partial override on top of whatever the user currently has
+description: "Return the Theme object currently registered as `ggplot2_py`'s\nmodule-level default. This is the theme that every `ggplot(...)` will\ninherit when no `+ theme_*()` is added per-plot.\n\n`theme_get()` returns the LIVE reference, not a deep copy — mutating\nthe returned object would mutate the global default. In practice the\nTheme constructors never mutate after construction, so this is rarely\na footgun, but if you want a safe snapshot to restore later, capture\nthe reference and just pass it back through `theme_set(prev)`:\n\n    prev = theme_get()\n    try:\n        theme_set(theme_bw())\n        ...  # work that needs bw globally\n    finally:\n        theme_set(prev)\n\nReturns `None` only when the default has never been initialized (rare;\nthe package sets `theme_grey()` at import time).\n"
+parameters: []
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=same_object
+returns: Optional[Theme]; kind=same_object
+requires: []
+writes: []
+examples:
+- current = theme_get()
+- prev = theme_get(); theme_set(theme_bw()); ...; theme_set(prev)
+failure_fixes:
+- when: User expected a fresh copy and mutated the return value
+  suggest:
+  - theme_get() returns the live global reference. Add via `+ theme(...)` per-plot, or call theme_set(...) explicitly.
+- when: Returned None
+  suggest:
+  - The module-level default was cleared (e.g. reset_theme_settings(reset_current=True) before a default was installed). Call theme_set(theme_grey()) to re-seed.
+related:
+- ggplot2_py.theme_set
+- ggplot2_py.theme_update

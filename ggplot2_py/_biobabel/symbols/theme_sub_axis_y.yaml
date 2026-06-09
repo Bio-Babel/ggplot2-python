@@ -1,0 +1,18 @@
+id: ggplot2_py.theme_sub_axis_y
+import_path: ggplot2_py.theme_sub_axis_y
+kind: function
+signature: theme_sub_axis_y(kwargs)
+purpose: Create a partial theme modifying y-axis elements.
+description: Create a partial theme modifying y-axis elements.
+parameters:
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Theme; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

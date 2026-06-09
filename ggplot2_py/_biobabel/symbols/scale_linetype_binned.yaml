@@ -1,0 +1,26 @@
+id: ggplot2_py.scale_linetype_binned
+import_path: ggplot2_py.scale_linetype_binned
+kind: function
+signature: scale_linetype_binned(name=None, aesthetics='linetype', kwargs)
+purpose: Binned linetype scale.
+description: Binned linetype scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: linetype
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleBinned; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

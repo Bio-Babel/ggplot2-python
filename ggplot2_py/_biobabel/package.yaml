@@ -1,0 +1,98 @@
+schema_version: 1
+repo: https://github.com/Bio-Babel/ggplot2-python
+distribution: ggplot2-python
+import_name: ggplot2_py
+display_name: ggplot2-python — grammar of graphics for Python (R ggplot2 port)
+contract_class: mixed
+tier: 2
+maturity: beta
+r_package:
+  package: ggplot2
+  repo: https://github.com/tidyverse/ggplot2
+  version_or_commit: 4.0.2.9000 @ c02c05a
+  fidelity: partial
+capabilities:
+- layered-grammar-of-graphics
+- aes-mapping
+- geom-stat-position-scale-coord-facet-theme
+- faceting-wrap-grid
+- statistical-transforms
+- axis-and-color-scales
+domain_tags:
+- visualization
+- publication-graphics
+task_tags:
+- scatter-plot
+- line-plot
+- bar-plot
+- histogram
+- boxplot
+- violin-plot
+- smoothed-trend
+- faceted-figure
+- log-axis
+- custom-theme
+- colored-by-group
+foundation:
+- grid_py
+- scales
+- gtable_py
+triggers:
+- ggplot in Python
+- scatter plot with smoothed trend
+- faceted plot by category
+- publication-quality plot
+- layered statistical graphic
+- colored by group
+not_when:
+- single bar chart of one number — matplotlib bar is simpler
+- interactive widget — use plotly / bokeh instead
+templates:
+- id: ggplot2_py.scatter_smooth_facet
+  path: templates/scatter_smooth_facet.py
+  task_tags:
+  - scatter-plot
+  - smoothed-trend
+  - faceted-figure
+  description: Canonical mpg displ-vs-hwy scatter with geom_smooth and facet_wrap(~class).
+  parameters: []
+  code_template: ''
+  expected_artifacts:
+  - scatter_smooth_facet.png
+  notes: []
+- id: ggplot2_py.minimal_scatter
+  path: templates/minimal_scatter.py
+  task_tags:
+  - scatter-plot
+  description: The two-line ggplot — ggplot(mpg, aes(x='displ', y='hwy')) + geom_point().
+  parameters: []
+  code_template: ''
+  expected_artifacts:
+  - minimal_scatter.png
+  notes: []
+- id: ggplot2_py.geom_gallery
+  path: templates/geom_gallery.py
+  task_tags:
+  - bar-plot
+  - boxplot
+  - violin-plot
+  - line-plot
+  - smoothed-trend
+  - colored-by-group
+  description: One composite figure showcasing diverse geoms (point, line+ribbon, col, boxplot, violin, tile) — each panel built as its own GGPlot and tiled via gtable, since ggplot2_py has no p1+p2 composition operator.
+  parameters: []
+  code_template: ''
+  expected_artifacts:
+  - geom_gallery.png
+  notes: []
+- id: ggplot2_py.custom_stat_geom
+  path: templates/custom_extension.py
+  task_tags:
+  - custom-theme
+  - smoothed-trend
+  description: Extension showcase — a custom Stat (override compute_group, polynomial fit) plus a custom +-type registered via update_ggplot.register (Watermark caption), combined in one plot.
+  parameters: []
+  code_template: ''
+  expected_artifacts:
+  - custom_extension.png
+  notes: []

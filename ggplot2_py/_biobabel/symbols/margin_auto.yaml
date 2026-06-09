@@ -1,0 +1,34 @@
+id: ggplot2_py.margin_auto
+import_path: ggplot2_py.margin_auto
+kind: function
+signature: margin_auto(t=0.0, r=None, b=None, l=None, unit='pt')
+purpose: Create a ``Margin`` with auto-recycling (CSS-like shorthand).
+description: Create a ``Margin`` with auto-recycling (CSS-like shorthand).
+parameters:
+- name: t
+  type: float
+  required: false
+  default: 0.0
+- name: r
+  type: Optional[float]
+  required: false
+  default: null
+- name: b
+  type: Optional[float]
+  required: false
+  default: null
+- name: l
+  type: Optional[float]
+  required: false
+  default: null
+- name: unit
+  type: str
+  required: false
+  default: pt
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Margin; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,26 @@
+id: ggplot2_py.autoplot
+import_path: ggplot2_py.autoplot
+kind: function
+signature: autoplot(obj, args, kwargs)
+purpose: Create a complete ggplot appropriate to a particular data type.
+description: Create a complete ggplot appropriate to a particular data type.
+parameters:
+- name: obj
+  type: Any
+  required: true
+  default: null
+- name: args
+  type: Any
+  required: true
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

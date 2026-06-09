@@ -1,0 +1,18 @@
+id: ggplot2_py.facet_null
+import_path: ggplot2_py.facet_null
+kind: function
+signature: facet_null(shrink=True)
+purpose: Create a null facet (single panel).
+description: Create a null facet (single panel).
+parameters:
+- name: shrink
+  type: bool
+  required: false
+  default: true
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: FacetNull; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

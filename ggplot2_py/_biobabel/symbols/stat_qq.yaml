@@ -1,0 +1,60 @@
+id: ggplot2_py.stat_qq
+import_path: ggplot2_py.stat_qq
+kind: function
+signature: stat_qq(mapping=None, data=None, geom='point', distribution=None, dparams=None)
+purpose: quantile-quantile plot points comparing a sample to a theoretical distribution; normality (or other-distribution) diagnostic
+description: 'Computes Q-Q points: sorted sample values on one axis, theoretical
+
+  quantiles (default `scipy.stats.norm`) on the other. Required aesthetic
+
+  is `sample` (NOT x/y). The stat sets the default mapping
+
+  `aes(x=after_stat(''theoretical''), y=after_stat(''sample''))`, so usually
+
+  only `aes(sample=''col'')` is needed.
+
+
+  Equivalent constructions: `stat_qq(geom=''point'')` and `geom_qq()` produce
+
+  the same Layer. Pair with `geom_qq_line()` / `stat_qq_line()` for the
+
+  reference line.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: DataFrame | None
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: point
+- name: distribution
+  type: scipy distribution | None
+  required: false
+  default: null
+  description: Defaults to scipy.stats.norm. Pass e.g. scipy.stats.t for a t-distribution Q-Q.
+- name: dparams
+  type: dict | None
+  required: false
+  default: null
+  description: 'Keyword arguments forwarded to `distribution.ppf` (e.g. {''df'': 5}).'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- stat_qq(aes(sample='residuals'))
+- 'stat_qq(aes(sample=''x''), distribution=scipy.stats.t, dparams={''df'': 5})'
+failure_fixes:
+- when: 'stat_qq requires the following missing aesthetics: sample'
+  suggest:
+  - 'Map the values column to `sample`, not `x`: aes(sample=''value_col'').'
+related:
+- ggplot2_py.stat_qq_line
+- ggplot2_py.geom_qq_line

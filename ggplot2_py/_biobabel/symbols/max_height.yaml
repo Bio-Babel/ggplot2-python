@@ -1,0 +1,22 @@
+id: ggplot2_py.max_height
+import_path: ggplot2_py.max_height
+kind: function
+signature: max_height(grobs, value_only=False)
+purpose: Largest height over a list of grobs / units, returned in cm.
+description: Largest height over a list of grobs / units, returned in cm.
+parameters:
+- name: grobs
+  type: Any
+  required: true
+  default: null
+- name: value_only
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

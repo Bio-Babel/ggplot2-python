@@ -1,0 +1,43 @@
+id: ggplot2_py.callable_aes_wrong_shape
+name: "Callable in aes()/after_stat() returns a scalar reduction, not a per-row vector"
+applicable_to:
+  - ggplot2_py.aes_mapping
+detection:
+  # A lambda whose ENTIRE body is a column reduction
+  # (`lambda d: d["x"].mean()` / `.sum()` / `.count()` / `len()` …), passed
+  # as an aes/after_stat/after_scale mapping. The reducer must be the whole
+  # body and immediately close the call: this avoids flagging the legitimate
+  # `after_stat(lambda d: d["count"] / d["count"].sum())`, where the `.sum()`
+  # is a denominator inside a larger vector expression (there is a `/` and
+  # the body does not end at the reducer's `)`).
+  regex: '(?:aes|after_stat|after_scale)\s*\([^()]*=\s*lambda\s+\w+\s*:\s*\w+(?:\[[^\]]+\]|\.\w+)*\.(?:sum|mean|median|min|max|std|count|len)\s*\(\s*\)\s*\)'
+  static_only: true
+why_bad: |
+  An aesthetic callable is evaluated once per facet/group and must return a
+  value FOR EACH ROW of that group's data — it is broadcast column-wise, not
+  reduced. A body that is a bare reduction (`lambda d: d["x"].mean()`,
+  `lambda d: len(d)`) returns a single scalar (or 0-d value). Depending on
+  the stage this either:
+
+  - raises a length-mismatch when the scalar can't be aligned to the n rows,
+  - or silently recycles the scalar to every row, collapsing the aesthetic
+    to a constant (e.g. every point the same size) — a silent bug.
+
+  The mental model: the lambda receives the stage's DataFrame and must
+  produce a Series/array of length `len(data)`. Reductions belong in a
+  ratio/expression (`d["count"] / d["count"].sum()` is fine — vector over
+  scalar), or as a separate annotation layer with its own one-row data, NOT
+  as the whole mapping body.
+
+  Scope: this regex only catches the common "reduction-as-whole-body" form;
+  wrong-LENGTH arrays (e.g. returning `[1, 2, 3]` for a 200-row group) are
+  not statically detectable and surface at build time as a length error.
+correct_pattern: ggplot2_py.callable_aes_expression
+code_example_wrong: |
+  # collapses to one scalar -> recycled to every row (or length error):
+  ggplot(df, aes(x="t", y="v", size=lambda d: d["v"].mean())) + geom_point()
+code_example_right: |
+  # per-row vector expression (reduction used only as a scalar denominator):
+  ggplot(df, aes(x="t", y="v", size=lambda d: d["v"] / d["v"].max())) + geom_point()
+  # after_stat ratio — vector / scalar is fine because the body is not a bare reducer:
+  geom_histogram(aes(y=after_stat(lambda d: d["count"] / d["count"].sum())), bins=15)

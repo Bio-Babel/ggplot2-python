@@ -1,0 +1,54 @@
+id: ggplot2_py.geom_step
+import_path: ggplot2_py.geom_step
+kind: function
+signature: geom_step(mapping=None, data=None, stat='identity', position='identity', na_rm=False, show_legend=None, inherit_aes=True, direction='hv', orientation=None, kwargs)
+purpose: Create a stairstep layer.
+description: Create a stairstep layer.
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: show_legend
+  type: Any
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: direction
+  type: str
+  required: false
+  default: hv
+- name: orientation
+  type: Any
+  required: false
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

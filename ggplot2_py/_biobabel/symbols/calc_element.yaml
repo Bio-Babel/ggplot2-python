@@ -1,0 +1,52 @@
+id: ggplot2_py.calc_element
+import_path: ggplot2_py.calc_element
+kind: function
+signature: calc_element(element, theme, verbose=False, skip_blank=False)
+purpose: resolve a theme element name to its effective Element with inheritance; extension renderers call this to read theme values
+description: "Resolve the effective value of a named theme element by walking the\nelement-tree inheritance chain. Theme elements form a tree:\n`axis_text_x` inherits from `axis_text` inherits from `text`. This\nfunction consults the active element tree (`get_element_tree()`),\ncollects the chain, and merges via `merge_element` from the ROOT down.\n\n**For extension authors rendering custom theme parts**: this is the\nread path. Pass an underscore-separated element name (Python form) like\n`\"axis_text_x\"`; pass `theme` (typically already passed through\n`complete_theme`). The return is either:\n  - an `Element` (most cases)\n  - `None` if the element is unset and absent from the tree\n  - the `ElementBlank` sentinel if the element should not be drawn\n\nArgs:\n  - `skip_blank=True` walks past `element_blank()` ancestors so an\n    override can override the cancel.\n  - `verbose=True` prints the inheritance chain to stdout — useful for\n    debugging \"why is my element rendering this colour\"\
+  .\n\nElement name accepts either underscore (Python) or dot (R-style;\ninternally rewritten). See `theme_elements.py:1989`.\n"
+parameters:
+- name: element
+  type: str
+  required: true
+  default: null
+  description: Element name, e.g. 'axis_text_x', 'panel_grid_minor'. Dot-form 'axis.text.x' also accepted.
+- name: theme
+  type: Theme
+  required: true
+  default: null
+  description: Theme to read from. Typically already passed through `complete_theme`.
+- name: verbose
+  type: bool
+  required: false
+  default: false
+  description: If True, print the inheritance chain ('axis.text.x → axis.text → text').
+- name: skip_blank
+  type: bool
+  required: false
+  default: false
+  description: If True, walk past element_blank() ancestors instead of stopping at them.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Element | ElementBlank | None; kind=value
+requires: []
+writes: []
+examples:
+- el = calc_element('axis_text_x', complete_theme(my_theme))
+- 'calc_element(''panel_grid_minor'', theme, verbose=True)  # debug inheritance'
+- 'calc_element(''legend_text'', theme, skip_blank=True)  # read past element_blank()'
+failure_fixes:
+- when: returns None for an element name you know is in the tree
+  suggest:
+  - Pass the theme through complete_theme() first. Partial themes have only user-set keys.
+- when: Theme element 'X' must be a Y object, got Z
+  suggest:
+  - 'Wrong element_* type passed in theme(): e.g. axis_text expects element_text, not element_line. Use the type required by the tree entry.'
+- when: element rendered with unexpected colour/size
+  suggest:
+  - Pass verbose=True to print the inheritance chain. The merge runs root→leaf; an ancestor override may be winning over your leaf-level setting.
+- when: element_blank() override cancels everything below
+  suggest:
+  - Pass skip_blank=True if you want to read past a blank — useful when a custom guide wants the underlying inherited style even if the user hid the element.
+related:
+- ggplot2_py.element_render
+- ggplot2_py.element_grob

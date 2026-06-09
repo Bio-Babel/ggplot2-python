@@ -1,0 +1,42 @@
+id: ggplot2_py.coord_transform
+import_path: ggplot2_py.coord_transform
+kind: function
+signature: coord_transform(x='identity', y='identity', xlim=None, ylim=None, clip='on', expand=True, reverse='none')
+purpose: Create a transformed coordinate system.
+description: Create a transformed coordinate system.
+parameters:
+- name: x
+  type: Any
+  required: false
+  default: identity
+- name: y
+  type: Any
+  required: false
+  default: identity
+- name: xlim
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: ylim
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: clip
+  type: str
+  required: false
+  default: 'on'
+- name: expand
+  type: Union[bool, List[bool]]
+  required: false
+  default: true
+- name: reverse
+  type: str
+  required: false
+  default: none
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: CoordTransform; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

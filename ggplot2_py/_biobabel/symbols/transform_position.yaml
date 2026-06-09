@@ -1,0 +1,34 @@
+id: ggplot2_py.transform_position
+import_path: ggplot2_py.transform_position
+kind: function
+signature: transform_position(df, trans_x=None, trans_y=None, args, kwargs)
+purpose: Apply *trans_x* / *trans_y* to all x- / y-family aesthetics in *df*.
+description: Apply *trans_x* / *trans_y* to all x- / y-family aesthetics in *df*.
+parameters:
+- name: df
+  type: pd.DataFrame
+  required: true
+  default: null
+- name: trans_x
+  type: Optional[Any]
+  required: false
+  default: null
+- name: trans_y
+  type: Optional[Any]
+  required: false
+  default: null
+- name: args
+  type: Any
+  required: true
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=dataframe_mutation; mutates input object in place; returns_kind=value
+returns: pd.DataFrame; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

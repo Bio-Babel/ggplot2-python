@@ -1,0 +1,77 @@
+id: ggplot2_py.update_stat_defaults
+import_path: ggplot2_py.update_stat_defaults
+kind: function
+signature: update_stat_defaults(stat, new)
+purpose: globally override the default aesthetics for a Stat class
+description: 'The Stat-side companion to `update_geom_defaults`. Mutate the
+
+  `default_aes` slot of a `Stat` class for the rest of the interpreter
+
+  session. Pass `None` to roll back. Mirrors R `update_stat_defaults`
+
+  (geom-update-defaults.R:63-65).
+
+
+  **WARNING — process-global mutation.** Affects every subsequent layer
+
+  that uses this Stat. Not thread-safe. Pair with `reset_stat_defaults()`
+
+  to undo, or pass `None` for `new` to roll back one stat.
+
+
+  This is NOT a biobabel `writes:` slot mutation; the side effect is on
+
+  a Python class attribute, not adata.
+
+
+  Less commonly needed than `update_geom_defaults` because most users
+
+  override geom defaults, not stat defaults. Use cases: changing the
+
+  default smoothing method for stat_smooth, the default bin count for
+
+  stat_bin, or the default summary function for stat_summary across an
+
+  entire script.
+
+
+  Accepts a Stat class or registry name; aesthetic aliases
+
+  (`colour`/`color`) are standardised before write.
+
+  '
+parameters:
+- name: stat
+  type: str | type[Stat]
+  required: true
+  default: null
+  description: Stat class or registry name (e.g. 'bin', 'smooth', StatBin).
+- name: new
+  type: dict | Mapping | None
+  required: true
+  default: null
+  description: 'New defaults, e.g. {''bins'': 50}. None = roll back.'
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: dict; kind=value
+requires: []
+writes: []
+examples:
+- 'update_stat_defaults(''bin'', {''bins'': 50})'
+- 'update_stat_defaults(StatSmooth, {''method'': ''lm''})'
+- 'update_stat_defaults(''bin'', None)  # roll back'
+failure_fixes:
+- when: change leaks across tests
+  suggest:
+  - Call reset_stat_defaults() in tearDown / fixture cleanup. Module-level state otherwise persists.
+- when: want per-plot override instead
+  suggest:
+  - 'Pass the parameter to the stat factory: stat_bin(bins=50). Defaults override is for changing the package-wide baseline.'
+- when: registry lookup fails
+  suggest:
+  - Use the class directly (StatBin) or check Stat._registry keys. Names are lowercase ('bin', 'smooth').
+- when: stat already in use seems unaffected by the update
+  suggest:
+  - update_stat_defaults mutates the CLASS slot. If a Layer already captured an *instance* of the stat (rare), only future Layers see the change.
+related:
+- ggplot2_py.update_geom_defaults
+- ggplot2_py.reset_stat_defaults

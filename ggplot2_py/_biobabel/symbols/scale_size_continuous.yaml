@@ -1,0 +1,50 @@
+id: ggplot2_py.scale_size_continuous
+import_path: ggplot2_py.scale_size_continuous
+kind: function
+signature: scale_size_continuous(name=None, breaks=None, labels=None, limits=None, range=None, transform='identity', trans=None, guide='legend', aesthetics='size')
+purpose: Continuous size scale (area-based).
+description: Continuous size scale (area-based).
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: breaks
+  type: Any
+  required: false
+  default: null
+- name: labels
+  type: Any
+  required: false
+  default: null
+- name: limits
+  type: Optional[Any]
+  required: false
+  default: null
+- name: range
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: transform
+  type: Union[str, Any]
+  required: false
+  default: identity
+- name: trans
+  type: Optional[Any]
+  required: false
+  default: null
+- name: guide
+  type: str
+  required: false
+  default: legend
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: size
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuous; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

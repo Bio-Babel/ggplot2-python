@@ -1,0 +1,54 @@
+id: ggplot2_py.stat_boxplot
+import_path: ggplot2_py.stat_boxplot
+kind: function
+signature: stat_boxplot(mapping=None, data=None, geom='boxplot', position='dodge2', coef=1.5, orientation=None)
+purpose: compute Tukey five-number summary + outliers per group; statistical engine of geom_boxplot
+description: "Per `(group, x)` (or `(group, y)` if flipped), computes:\n- `lower` / `middle` / `upper` — 25th / 50th / 75th percentile;\n- `ymin` / `ymax` — Tukey whisker limits at the most extreme non-outlier\n  values inside `[lower - coef*IQR, upper + coef*IQR]`;\n- `outliers` — list of values outside that range;\n- `notchlower` / `notchupper` — median +/- 1.58 * IQR / sqrt(n);\n- `width` and `relvarwidth` — geometry hints for variable-width boxes.\n\nDefaults to `geom='boxplot'`; pair with `geom_boxplot()` for the\ncanonical builder, or override (e.g. `stat_boxplot(geom='errorbar')`\nto draw only the Tukey whisker caps on top of a separate box).\n\nQuantile interpolation matches R's `quantile.type=7` (numpy\n`method='linear'`); change via the `quantile_type` kwarg if you need\nto match a different R type (1..9).\n"
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: DataFrame | None
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: boxplot
+- name: position
+  type: str
+  required: false
+  default: dodge2
+  description: Default 'dodge2' so side-by-side boxes within an x position don't overlap.
+- name: coef
+  type: float
+  required: false
+  default: 1.5
+  description: IQR multiplier defining whisker reach. Tukey's standard is 1.5; set 0 to disable whiskers (whiskers collapse to box edges).
+- name: orientation
+  type: str | None
+  required: false
+  default: null
+  description: '''x'' (vertical boxes, y is the measurement) or ''y'' (horizontal). Auto-detected by default.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- 'geom_boxplot(coef=1.5)  # canonical form'
+- 'stat_boxplot(geom=''errorbar'', width=0.2)  # whisker-only overlay'
+failure_fixes:
+- when: boxes overlap when there are multiple groups at the same x
+  suggest:
+  - Keep position='dodge2' (the default) and map a discrete variable to fill or color via aes().
+- when: outliers drawn on top of jittered points are duplicated
+  suggest:
+  - 'Suppress outlier glyphs: geom_boxplot(outlier_shape=None) then overlay geom_jitter().'
+- when: horizontal boxplot wanted
+  suggest:
+  - Swap x and y in aes(), or add coord_flip().
+related:
+- ggplot2_py.geom_jitter
+- ggplot2_py.coord_flip

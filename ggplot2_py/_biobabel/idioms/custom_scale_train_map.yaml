@@ -1,0 +1,54 @@
+id: ggplot2_py.custom_scale_train_map
+name: Custom Scale — subclass ScaleContinuous, override get_breaks, build via continuous_scale(super_class=...)
+applicable_to:
+  - ggplot2_py.scale_extension_contract
+  - ggplot2_py.ggproto_system
+description: |
+  A `Scale` trains on the data range (`train`), maps values to aesthetic
+  output (`map`), and supplies axis/legend breaks (`get_breaks`). Subclass
+  `ScaleContinuous` (or `ScaleDiscrete`) and override the method you want
+  to customise — here `get_breaks` to force exactly N evenly-spaced breaks.
+
+  IMPORTANT: a bare `ScaleSub()` is NOT usable — the constructor
+  `continuous_scale(...)` is what wires up the `range` object, transform,
+  palette, oob/rescaler, etc. Always instantiate your subclass through
+  `continuous_scale(aesthetics, palette=..., super_class=YourScale)`. Then
+  `train` / `map` / `get_breaks` work on the fully-initialised instance and
+  the scale drops straight into a plot.
+code_template: |
+  import numpy as np, pandas as pd
+  from ggplot2_py.scale import ScaleContinuous, continuous_scale
+  from ggplot2_py import ggplot, aes, geom_point, ggsave
+  from ggplot2_py.datasets import mpg
+
+  class ScaleSqrtSize(ScaleContinuous):
+      """Continuous size scale with exactly 4 evenly-spaced breaks."""
+      def get_breaks(self, limits=None):
+          if limits is None:
+              limits = self.get_limits()
+          lo, hi = float(limits[0]), float(limits[1])
+          return np.linspace(lo, hi, 4)
+
+  def scale_size_sqrt(**kwargs):
+      # Build through the constructor so range/transform/palette are wired.
+      return continuous_scale(
+          "size",
+          palette=lambda x: 1 + 5 * np.sqrt(x),   # [0,1] -> point size
+          super_class=ScaleSqrtSize,
+          **kwargs,
+      )
+
+  # train / map / get_breaks exercised on a properly-initialised instance:
+  sc = scale_size_sqrt()
+  sc.train(pd.Series([1.0, 4.0, 9.0, 16.0]))
+  assert list(sc.get_limits()) == [1.0, 16.0]
+  assert len(sc.map(pd.Series([1.0, 16.0]))) == 2
+  assert len(sc.get_breaks()) == 4
+
+  p = (
+      ggplot(mpg, aes(x="displ", y="hwy", size="cyl"))
+      + geom_point(alpha=0.5)
+      + scale_size_sqrt()
+  )
+  ggsave("/tmp/idiom_custom_scale_train_map.png", plot=p, width=5, height=4)
+typical_use_case: "a bespoke continuous scale with custom breaks/palette/mapping not covered by the built-in scale_* family"

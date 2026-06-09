@@ -1,0 +1,91 @@
+id: ggplot2_py.geom_boxplot
+import_path: ggplot2_py.geom_boxplot
+kind: function
+signature: geom_boxplot(mapping=None, data=None, stat='boxplot', position='dodge2', outliers=True, outlier_shape=19, outlier_colour=None, notch=False, varwidth=False)
+purpose: boxplot of distribution per group; Tukey five-number summary with outliers
+description: 'Draw a Tukey boxplot per group: box spans Q1-Q3, line at median, whiskers
+
+  extend 1.5*IQR, individual points beyond as outliers. Default
+
+  `stat=''boxplot''` computes the summary internally from raw y values; pass
+
+  `stat=''identity''` only if your dataframe already has ymin/lower/middle/
+
+  upper/ymax columns. Outlier styling kwargs (`outlier_colour`, `outlier_shape`,
+
+  `outlier_size`, ...) are gathered into an `outlier_gp` dict by the
+
+  constructor — they''re params, not aesthetics. Accumulates onto a `GGPlot`
+
+  via `+` (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Needs y (continuous); x (group) optional — a single box if x omitted.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: boxplot
+- name: position
+  type: str
+  required: false
+  default: dodge2
+- name: outliers
+  type: bool
+  required: false
+  default: true
+  description: If False, drop outlier points entirely (whiskers extend to data range).
+- name: outlier_shape
+  type: int
+  required: false
+  default: 19
+  description: matplotlib marker code; set to None to hide outliers without dropping them.
+- name: outlier_colour
+  type: str | None
+  required: false
+  default: null
+  description: American alias outlier_color is also accepted.
+- name: notch
+  type: bool
+  required: false
+  default: false
+  description: Draw notched boxes (rough 95% CI of median).
+- name: varwidth
+  type: bool
+  required: false
+  default: false
+  description: If True, box width scales with sqrt(n).
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(mpg, aes(x='class', y='hwy')) + geom_boxplot()
+- ggplot(diamonds, aes(x='cut', y='price', fill='color')) + geom_boxplot(outlier_shape=None)
+- geom_boxplot(notch=True, varwidth=True)
+failure_fixes:
+- when: want to hide outlier points but keep whiskers
+  suggest:
+  - outlier_shape=None (or outliers=False to also extend whiskers to data range).
+- when: passing outlier.color (R dot syntax)
+  suggest:
+  - 'Use underscore: outlier_color= or outlier_colour=. Python rejects dots in kwargs.'
+- when: boxes overlap when fill mapped to different variable than x
+  suggest:
+  - Default position='dodge2' should separate them; ensure fill is mapped via aes(), not as a kwarg.
+- when: single huge box when x is continuous
+  suggest:
+  - geom_boxplot needs categorical x; bin x with cut_width() or coerce to string first.
+related:
+- ggplot2_py.geom_jitter
+- ggplot2_py.facet_wrap
+- ggplot2_py.scale_y_log10
+- ggplot2_py.theme_minimal

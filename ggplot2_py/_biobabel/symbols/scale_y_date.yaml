@@ -1,0 +1,32 @@
+id: ggplot2_py.scale_y_date
+import_path: ggplot2_py.scale_y_date
+kind: function
+signature: scale_y_date()
+purpose: Date-typed (day-resolution) y axis
+description: 'y-axis mirror of scale_x_date; see scale_x_date for behaviour / failure
+
+  modes (date_breaks/date_labels strftime, limits-filters-data pitfall,
+
+  string-vs-date column type). Note the y variant in ggplot2-python does NOT
+
+  expose `date_breaks` / `date_labels` / `date_minor_breaks` kwargs — pass
+
+  `breaks=`, `minor_breaks=`, and `labels=` directly (using date-aware
+
+  helpers from scales-python).
+
+  '
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_y_date(name='Date')
+failure_fixes:
+- when: TypeError because y column is a string
+  suggest:
+  - 'Cast: df[''day''] = pd.to_datetime(df[''day'']).dt.date.'
+related:
+- ggplot2_py.scale_x_date
+- ggplot2_py.scale_y_datetime

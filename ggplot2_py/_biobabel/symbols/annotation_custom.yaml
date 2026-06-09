@@ -1,0 +1,34 @@
+id: ggplot2_py.annotation_custom
+import_path: ggplot2_py.annotation_custom
+kind: function
+signature: annotation_custom(grob, xmin=-inf, xmax=inf, ymin=-inf, ymax=inf)
+purpose: Add an arbitrary grob as a plot annotation.
+description: Add an arbitrary grob as a plot annotation.
+parameters:
+- name: grob
+  type: Any
+  required: true
+  default: null
+- name: xmin
+  type: float
+  required: false
+  default: -.inf
+- name: xmax
+  type: float
+  required: false
+  default: .inf
+- name: ymin
+  type: float
+  required: false
+  default: -.inf
+- name: ymax
+  type: float
+  required: false
+  default: .inf
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

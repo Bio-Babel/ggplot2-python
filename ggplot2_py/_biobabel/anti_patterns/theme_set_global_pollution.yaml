@@ -1,0 +1,35 @@
+id: ggplot2_py.theme_set_global_pollution
+name: "`theme_set(...)` mutates module-level state (leaks across plots/tests)"
+applicable_to:
+  - ggplot2_py.plus_accumulation
+detection:
+  regex: '(?m)^\s*theme_set\s*\(\s*theme_'
+  static_only: true
+why_bad: |
+  `theme_set(theme_bw())` is not a per-plot call — it writes to a module-
+  level global (`_ggplot_global.theme_current` in ``theme.py``). Every
+  subsequent plot in the same Python process picks up that theme, which
+  is almost never the user's intent in a notebook, library, or test
+  suite:
+
+  - A test that calls `theme_set(...)` and doesn't restore the previous
+    theme corrupts unrelated tests.
+  - Importing a module whose top-level runs `theme_set(...)` silently
+    re-themes every downstream plot.
+  - The user *thinks* the theme is scoped to one figure — it isn't.
+
+  Prefer per-plot addition: `p + theme_bw()`. If you genuinely need a
+  process-wide default, capture and restore:
+  `prev = theme_set(theme_bw()); try: ...; finally: theme_set(prev)`.
+correct_pattern: null
+code_example_wrong: |
+  theme_set(theme_bw())                           # ← mutates global state
+  p = ggplot(mpg, aes("displ", "hwy")) + geom_point()
+code_example_right: |
+  p = ggplot(mpg, aes("displ", "hwy")) + geom_point() + theme_bw()
+  # If a process-wide default is truly needed, restore explicitly:
+  prev = theme_set(theme_bw())
+  try:
+      ...
+  finally:
+      theme_set(prev)

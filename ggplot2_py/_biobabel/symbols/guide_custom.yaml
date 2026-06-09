@@ -1,0 +1,42 @@
+id: ggplot2_py.guide_custom
+import_path: ggplot2_py.guide_custom
+kind: function
+signature: guide_custom(grob, width=None, height=None, title=None, theme=None, position=None, order=0)
+purpose: Create a custom guide displaying a user-supplied grob.
+description: Create a custom guide displaying a user-supplied grob.
+parameters:
+- name: grob
+  type: Any
+  required: true
+  default: null
+- name: width
+  type: Any
+  required: false
+  default: null
+- name: height
+  type: Any
+  required: false
+  default: null
+- name: title
+  type: Optional[str]
+  required: false
+  default: null
+- name: theme
+  type: Any
+  required: false
+  default: null
+- name: position
+  type: Optional[str]
+  required: false
+  default: null
+- name: order
+  type: int
+  required: false
+  default: 0
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: GuideCustom; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

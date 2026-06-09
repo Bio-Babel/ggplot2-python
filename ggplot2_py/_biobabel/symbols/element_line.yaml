@@ -1,0 +1,50 @@
+id: ggplot2_py.element_line
+import_path: ggplot2_py.element_line
+kind: function
+signature: element_line(colour=None, linewidth=None, linetype=None, lineend=None, linejoin=None, arrow=None, arrow_fill=None, color=None, inherit_blank=False)
+purpose: Create a line theme element.
+description: Create a line theme element.
+parameters:
+- name: colour
+  type: Optional[str]
+  required: false
+  default: null
+- name: linewidth
+  type: Optional[float]
+  required: false
+  default: null
+- name: linetype
+  type: Optional[Union[int, str]]
+  required: false
+  default: null
+- name: lineend
+  type: Optional[str]
+  required: false
+  default: null
+- name: linejoin
+  type: Optional[str]
+  required: false
+  default: null
+- name: arrow
+  type: Optional[Any]
+  required: false
+  default: null
+- name: arrow_fill
+  type: Optional[str]
+  required: false
+  default: null
+- name: color
+  type: Optional[str]
+  required: false
+  default: null
+- name: inherit_blank
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ElementLine; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

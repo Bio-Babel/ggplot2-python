@@ -1,0 +1,78 @@
+id: ggplot2_py.scale_color_brewer
+import_path: ggplot2_py.scale_color_brewer
+kind: function
+signature: scale_color_brewer(type='seq', palette=1, direction=1, name=None, breaks=None, labels=None, na_value='grey50', aesthetics='colour')
+purpose: categorical color scale using a ColorBrewer palette; perceptually balanced colors for qualitative / sequential / diverging factors
+description: "Discrete color scale backed by Cynthia Brewer's ColorBrewer palettes. The key\ndecision is `type=`:\n\n- `type='qual'` — qualitative / categorical levels with no order. Max ~8–12\n  distinct colors per palette; ggplot2 emits a warning and recycles if you\n  ask for more.\n- `type='seq'` — sequential, low → high. Use only when the discrete levels\n  have a meaningful order (e.g. age bins, ordinal grades).\n- `type='div'` — diverging from a center. For ordered factors with a natural\n  midpoint (e.g. low / neutral / high).\n\n`scale_color_brewer` is the **discrete** sibling of `scale_color_distiller`\n(which interpolates the same palettes for continuous data). Wraps the\n`pal_brewer` factory from scales (see `scales.Palette`).\n"
+parameters:
+- name: type
+  type: str
+  required: false
+  default: seq
+  description: '''qual'', ''seq'', or ''div''. Default is ''seq'' — override to ''qual'' for typical categorical use.'
+- name: palette
+  type: int | str
+  required: false
+  default: 1
+  description: 'Palette identifier within the chosen `type`. Either an integer index or a
+
+    palette name (''Set1'', ''Set2'', ''Dark2'', ''Paired'', ''Pastel1'', ''Pastel2'',
+
+    ''Accent'' for qual; ''Blues'', ''YlGnBu'', ... for seq; ''RdBu'', ''RdYlGn'',
+
+    ''Spectral'', ... for div).
+
+    '
+- name: direction
+  type: int
+  required: false
+  default: 1
+  description: +1 = native palette order, -1 = reversed.
+- name: name
+  type: str | None
+  required: false
+  default: null
+  description: Legend title.
+- name: breaks
+  type: list[str] | callable | None
+  required: false
+  default: null
+  description: Which levels appear in the legend, and in what order.
+- name: labels
+  type: list[str] | dict | callable | None
+  required: false
+  default: null
+  description: Legend label overrides.
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+  description: 'Color for NA. Note: Python uses `na_value=` not R''s `na.value=`.'
+- name: aesthetics
+  type: str | list[str]
+  required: false
+  default: colour
+  description: '''color'' / ''colour'' are aliases.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_color_brewer(type='qual', palette='Set2')
+- p + scale_color_brewer(type='div', palette='RdBu', direction=-1)
+failure_fixes:
+- when: 'warning: n too large, allowed maximum for palette ''<X>'' is 8 / 9 / 12'
+  suggest:
+  - 'Switch palette: scale_color_brewer(type=''qual'', palette=''Paired'')  # 12 colors max.'
+  - Or use scale_color_manual() with a custom list when you genuinely need >12 categorical colors.
+  - Or aggregate rare levels into 'Other' before plotting.
+  explanation: Qualitative ColorBrewer palettes have hard caps (Set1=9, Set2=8, Dark2=8, Paired=12).
+- when: categorical data but the palette looks like a gradient (light → dark)
+  suggest:
+  - Pass `type='qual'` — the default `type='seq'` gives a sequential ramp meant for ordered data.
+- when: data is continuous (numeric) but scale_color_brewer warns 'Continuous value supplied to discrete scale'
+  suggest:
+  - Use `scale_color_distiller()` (or `scale_color_fermenter()` for binned) for continuous data with Brewer palettes.
+- when: 'TypeError: got an unexpected keyword argument ''na.value'''
+  suggest:
+  - Use `na_value=` (Python uses underscores, not dots).

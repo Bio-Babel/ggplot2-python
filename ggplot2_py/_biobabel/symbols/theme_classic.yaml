@@ -1,0 +1,59 @@
+id: ggplot2_py.theme_classic
+import_path: ggplot2_py.theme_classic
+kind: function
+signature: theme_classic(base_size=11, base_family='', header_family=None, base_line_size=None, base_rect_size=None, ink='black', paper='white', accent='#3366FF')
+purpose: apply a classic axis-line theme; publication look without panel grid or border
+description: 'Complete Theme with axis LINES (not a full panel border) and NO grid
+
+  lines — closest match to a base-R `plot()` look. Same builder
+
+  contract as `theme_bw`: returns a complete Theme that REPLACES the
+
+  inherited theme when added with `+`. Chain `+ theme(...)` AFTER to
+
+  tweak individual elements (see `theme_bw` for details).
+
+  '
+parameters:
+- name: base_size
+  type: float
+  required: false
+  default: 11
+- name: base_family
+  type: str
+  required: false
+  default: ''
+- name: header_family
+  type: Optional[str]
+  required: false
+  default: null
+- name: base_line_size
+  type: Optional[float]
+  required: false
+  default: null
+- name: base_rect_size
+  type: Optional[float]
+  required: false
+  default: null
+- name: ink
+  type: str
+  required: false
+  default: black
+- name: paper
+  type: str
+  required: false
+  default: white
+- name: accent
+  type: str
+  required: false
+  default: '#3366FF'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Theme; kind=new_object
+requires: []
+writes: []
+examples:
+- p + theme_classic()
+- p + theme_classic(base_size=14)
+failure_fixes: []
+related:
+- ggplot2_py.theme

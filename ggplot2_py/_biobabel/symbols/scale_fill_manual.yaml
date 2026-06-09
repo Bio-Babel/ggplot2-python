@@ -1,0 +1,44 @@
+id: ggplot2_py.scale_fill_manual
+import_path: ggplot2_py.scale_fill_manual
+kind: function
+signature: scale_fill_manual(values, breaks=None, na_value='grey50')
+purpose: assign explicit colors to fill aesthetic levels; publication bar / area / boxplot palette
+description: 'Fill aesthetic mirror of `ggplot2_py.scale_color_manual`. Same parameters and
+
+  caveats — most importantly, `values=` as a bare list pairs with sorted unique
+
+  levels (not data order), so **always pair `values=[]` with explicit `breaks=`
+
+  or pass `values=` as a `{level: color}` dict**. See
+
+  `ggplot2_py.scale_color_manual` for the full discussion and see anti-pattern
+
+  `ggplot2_py.scale_color_manual_without_breaks`.
+
+  '
+parameters:
+- name: values
+  type: list[str] | dict[str, str]
+  required: true
+  default: null
+  description: 'Either a `{level: color}` dict (robust) or a list (must pair with `breaks=`).'
+- name: breaks
+  type: list[str] | None
+  required: false
+  default: null
+  description: Required when `values=` is a list.
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+  description: NA color. Python uses `na_value=` (not R's `na.value=`).
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- 'p + scale_fill_manual(values={''ctrl'': ''#1f77b4'', ''trt'': ''#d62728''})'
+failure_fixes:
+- when: wrong fill assigned to the wrong group
+  suggest:
+  - Pass `values=` as a dict, or pair the list with explicit `breaks=`.

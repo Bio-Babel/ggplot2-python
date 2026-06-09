@@ -1,0 +1,62 @@
+id: ggplot2_py.stat_quantile
+import_path: ggplot2_py.stat_quantile
+kind: function
+signature: stat_quantile(mapping=None, data=None, geom='quantile', position='identity', quantiles='(0.25, 0.5, 0.75)', formula=None, method='rq', method_args=None, na_rm=False, show_legend=None, inherit_aes=True, kwargs)
+purpose: Quantile regression lines.
+description: Quantile regression lines.
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: quantile
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: quantiles
+  type: Sequence[float]
+  required: false
+  default: (0.25, 0.5, 0.75)
+- name: formula
+  type: Any
+  required: false
+  default: null
+- name: method
+  type: str
+  required: false
+  default: rq
+- name: method_args
+  type: Optional[Dict[str, Any]]
+  required: false
+  default: null
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: show_legend
+  type: Optional[bool]
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

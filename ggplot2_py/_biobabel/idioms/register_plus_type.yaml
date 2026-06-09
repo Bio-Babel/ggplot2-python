@@ -1,0 +1,32 @@
+id: ggplot2_py.register_plus_type
+name: Register a custom type for the + operator with @update_ggplot.register
+applicable_to:
+  - ggplot2_py.singledispatch_composition
+description: |
+  Python-exclusive. `GGPlot.__add__` dispatches through the
+  `update_ggplot` `functools.singledispatch` generic, so ANY Python class
+  can be made addable with `+` by registering a handler:
+  `@update_ggplot.register(MyClass)`. The handler receives
+  `(obj, plot, object_name="")`, mutates/returns the plot, and that's it —
+  no subclassing, no metaclass.
+
+  This is the README "Watermark" example: a plain class that, when added,
+  stamps a caption. The handler MUST return the (possibly modified) plot.
+code_template: |
+  from ggplot2_py import ggplot, aes, geom_point, update_ggplot, ggsave
+  from ggplot2_py.datasets import mpg
+
+  class Watermark:
+      def __init__(self, text):
+          self.text = text
+
+  @update_ggplot.register(Watermark)
+  def _add_watermark(obj, plot, object_name=""):
+      """Fires when a Watermark is added via + ; injects it as a caption."""
+      plot.labels["caption"] = f"[{obj.text}]"
+      return plot
+
+  p = ggplot(mpg, aes("displ", "hwy")) + geom_point() + Watermark("DRAFT")
+  assert p.labels.get("caption") == "[DRAFT]"
+  ggsave("/tmp/idiom_register_plus_type.png", plot=p, width=5, height=4)
+typical_use_case: "make a domain object (watermark, annotation bundle, theme preset) composable into plots with the + operator"

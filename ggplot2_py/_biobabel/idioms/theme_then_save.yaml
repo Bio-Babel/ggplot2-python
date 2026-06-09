@@ -1,0 +1,32 @@
+id: ggplot2_py.theme_then_save
+name: Theme-then-save — set theme + element_text size, then ggsave with explicit dimensions
+applicable_to:
+  - ggplot2_py.theme
+  - ggplot2_py.ggsave
+description: |
+  Publication output is a two-step idiom: (1) pick a base theme and bump
+  the base text size with `theme(text=element_text(size=...))`, (2) save
+  with explicit `width`, `height`, and `dpi` in `ggsave()`.
+
+  The interaction matters: `element_text(size=...)` is in points and is
+  *independent* of the canvas size. If you ask for an 8×6 inch PDF, the
+  14-pt axis labels look reasonable; if you then halve the dimensions
+  without re-tuning `size`, the labels look giant. `dpi=300` only affects
+  raster outputs (PNG/JPG); vector outputs (PDF/SVG) ignore it.
+code_template: |
+  from ggplot2_py import (
+      ggplot, aes, geom_point,
+      theme_bw, theme, element_text, ggsave,
+  )
+  from ggplot2_py.datasets import mpg
+
+  p = (
+      ggplot(mpg, aes(x="displ", y="hwy", color="class"))
+      + geom_point(alpha=0.6)
+      + theme_bw()
+      + theme(text=element_text(size=14))
+  )
+
+  ggsave("mpg.pdf", plot=p, width=8, height=6, dpi=300)
+  # For a PNG at the same physical size: ggsave("mpg.png", plot=p, width=8, height=6, dpi=300)
+typical_use_case: "exporting a figure for a manuscript or slide deck with consistent font/canvas sizing"

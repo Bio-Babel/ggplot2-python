@@ -1,0 +1,38 @@
+id: ggplot2_py.scale_fill_continuous
+import_path: ggplot2_py.scale_fill_continuous
+kind: function
+signature: scale_fill_continuous(name=None, palette=None, aesthetics='fill', guide='colourbar', na_value='grey50', kwargs)
+purpose: Default continuous fill scale.
+description: Default continuous fill scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: palette
+  type: Optional[Any]
+  required: false
+  default: null
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: fill
+- name: guide
+  type: str
+  required: false
+  default: colourbar
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuous; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

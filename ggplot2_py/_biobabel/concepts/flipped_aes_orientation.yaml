@@ -1,0 +1,69 @@
+id: ggplot2_py.flipped_aes_orientation
+name: Flipped-aes orientation machinery (orientation / flipped_aes, x-y swap for horizontal geoms/stats)
+category: extension
+description: "Many geoms/stats are orientation-aware: a bar/boxplot/density can be vertical\n(the default, ``x`` is the main aesthetic) or horizontal (``y`` is the main\naesthetic). ggplot2 implements this by *flipping* the data: compute everything\nassuming the vertical orientation, then swap x/y columns back. The port mirrors\nR's ``flip_data`` / ``has_flipped_aes`` / ``flipped_names`` design (R ref:\n``ggplot2/R/utilities.R`` flip helpers), but the working implementation is the\nmodule-private pair inside ``ggplot2_py.stat``:\n\n  - ``_has_flipped_aes(data, params, *, main_is_orthogonal=False,\n    main_is_continuous=False, ...)`` — decides orientation. Precedence:\n      1. an explicit ``orientation`` param (``\"y\"`` → flipped/True, ``\"x\"`` →\n         not flipped/False);\n      2. an explicit boolean ``flipped_aes`` in ``params``;\n      3. otherwise infer from which of ``x``/``y`` is present and the\n         ``main_is_*`` hints; falls back to ``default`` (False).\n    Each orientation-aware\
+  \ stat calls this in its ``setup_params`` and stashes\n    the result as ``params[\"flipped_aes\"]``.\n  - ``_flip_data(data, flipped_aes)`` — when ``flipped_aes`` is truthy, swaps a\n    fixed set of paired columns: ``(x,y)``, ``(xmin,ymin)``, ``(xmax,ymax)``,\n    ``(xend,yend)``, ``(xlower,lower)``, ``(xupper,upper)``,\n    ``(xmiddle,middle)``. When ``flipped_aes`` is falsy it returns the data\n    unchanged. The geom/stat flips at entry, computes in canonical\n    orientation, then flips back at exit.\n\nSo an orientation-aware extension: (1) determines orientation in\n``setup_params`` via the equivalent of ``_has_flipped_aes`` and records\n``params[\"flipped_aes\"]``; (2) flips data in, computes, flips data out using\nthe equivalent of ``_flip_data``; (3) lets users pick orientation explicitly\nwith ``orientation=\"x\"`` / ``\"y\"`` (or implicitly via which axis is mapped).\n\nCAVEAT (verified against the build): the TOP-LEVEL names\n``ggplot2_py.flip_data`` / ``ggplot2_py.flipped_names``\
+  \ /\n``ggplot2_py.has_flipped_aes`` are exported as ``None`` PLACEHOLDERS — they\nare listed in ``__all__`` but not yet bound to the implementations. The live\nlogic is the module-private ``_has_flipped_aes`` / ``_flip_data`` in\n``stat.py``, plus the ``orientation`` / ``flipped_aes`` params the built-in\norientation-aware stats (StatBoxplot, StatYdensity, StatBin, …) already use.\nDo not rely on the public placeholders being callable.\n"
+invariants:
+- 'Orientation is encoded by a boolean `flipped_aes` carried in a layer''s params: truthy means the horizontal orientation (main aesthetic is `y`), falsy means vertical (main aesthetic is `x`).'
+- 'An explicit `orientation` param takes precedence: `orientation=''y''` forces flipped (True), `orientation=''x''` forces not-flipped (False); an explicit boolean `flipped_aes` in params is honored next; otherwise orientation is inferred from which of x/y is present.'
+- Flipping swaps a fixed set of paired position columns — (x,y), (xmin,ymin), (xmax,ymax), (xend,yend), (xlower,lower), (xupper,upper), (xmiddle,middle) — and is a no-op when `flipped_aes` is falsy.
+- Orientation-aware stats determine `flipped_aes` in `setup_params` (via the `_has_flipped_aes` helper) and store it in params; the geom/stat flips data in, computes in canonical (vertical) orientation, then flips back out.
+- The top-level names `flip_data`, `flipped_names`, and `has_flipped_aes` are exported but are currently `None` PLACEHOLDERS (listed in `__all__`, not bound); the working implementation is the module-private `_has_flipped_aes` / `_flip_data` in `ggplot2_py.stat` plus the `orientation`/`flipped_aes` params.
+mental_model: 'For R users:
+
+  This is R''s ``flip_data`` / ``has_flipped_aes`` / ``flipped_names`` design.
+
+  In R, an orientation-aware geom calls ``flipped_aes <- has_flipped_aes(data,
+
+  params, ...)`` in ``setup_params``, then ``flip_data(data, flipped_aes)`` on
+
+  the way in and out so the math is written once for the vertical case. Same
+
+  contract here: decide orientation (``orientation = "x"/"y"`` overrides, else
+
+  inferred), record ``flipped_aes``, swap the paired columns. One Python-port
+
+  wrinkle to know: the public ``flip_data`` / ``has_flipped_aes`` /
+
+  ``flipped_names`` exports are not yet wired (they are ``None``); the real
+
+  helpers are internal to ``stat.py``, so port your orientation logic against
+
+  those rather than the public placeholders.
+
+
+  For Python users:
+
+  "Flipped aes" = horizontal vs vertical. Implement it the way the built-in
+
+  boxplot/violin stats do: in ``setup_params`` compute a boolean for
+
+  orientation (respecting an ``orientation="x"/"y"`` arg) and store it as
+
+  ``params["flipped_aes"]``; then swap x/y (and the other paired columns) on
+
+  entry, do your computation as if vertical, and swap back on exit. Don''t call
+
+  the top-level ``flip_data``/``has_flipped_aes`` — they''re ``None``
+
+  placeholders; use the ``stat.py`` internals'' logic.
+
+
+  General:
+
+  Make a geom/stat orientation-aware by: deciding orientation in
+
+  ``setup_params`` (``orientation`` arg overrides inference) into a boolean
+
+  ``flipped_aes``; flipping the paired position columns in, computing
+
+  canonically, flipping out. Note the public flip helpers are unbound
+
+  placeholders today.'
+related_concepts:
+- ggplot2_py.stat_extension_contract
+- ggplot2_py.geom_extension_contract
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.aes_mapping
+- ggplot2_py.custom_stat_compute_group

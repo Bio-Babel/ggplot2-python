@@ -1,0 +1,52 @@
+id: ggplot2_py.draw_key_text
+import_path: ggplot2_py.draw_key_text
+kind: function
+signature: draw_key_text(data, params, size=None)
+purpose: draw the legend key for text geoms (a single character, no background)
+description: 'Render a single character ("a" by default) as the legend key glyph,
+
+  styled with the geom''s text aesthetics. Used by `geom_text` and any
+
+  text-rendering geom without a background — including ggrepel-python''s
+
+  `GeomTextRepel` (subclasses `GeomText`, inherits this draw_key).
+
+
+  Reads `colour`, `alpha`, `family`, `fontface`, `size` (in mm, scaled
+
+  by `_PT`). The displayed character is taken from `data[''label'']` if
+
+  set, else literally `"a"`.
+
+
+  See `ggplot2_py.draw_key_point` for the full `draw_key_*(data, params,
+
+  size) -> Grob` protocol documentation.
+
+  '
+parameters:
+- name: data
+  type: dict[str, Any]
+  required: true
+  default: null
+  description: 'Single-row aesthetic dict: colour, alpha, family, fontface, size, label.'
+- name: params
+  type: dict[str, Any]
+  required: true
+  default: null
+- name: size
+  type: Any
+  required: false
+  default: null
+mutates: execution_class=plot; no declared in-place mutation; returns_kind=value
+returns: Grob; kind=value
+requires: []
+writes: []
+examples:
+- "class GeomText(Geom):\n    draw_key = draw_key_text  # also inherited by ggrepel's GeomTextRepel"
+failure_fixes:
+- when: want a background behind the legend text
+  suggest:
+  - Use draw_key_label (rounded-rect background) — draw_key_text intentionally has no fill.
+related:
+- ggplot2_py.guide_legend

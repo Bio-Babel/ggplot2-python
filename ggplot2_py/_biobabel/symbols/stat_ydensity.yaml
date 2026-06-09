@@ -1,0 +1,70 @@
+id: ggplot2_py.stat_ydensity
+import_path: ggplot2_py.stat_ydensity
+kind: function
+signature: stat_ydensity(mapping=None, data=None, geom='violin', position='dodge', bw='nrd0', adjust=1.0, kernel='gaussian', trim=True, scale='area', na_rm=False, orientation=None, show_legend=None, inherit_aes=True, kwargs)
+purpose: Violin plot density.
+description: Violin plot density.
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: violin
+- name: position
+  type: str
+  required: false
+  default: dodge
+- name: bw
+  type: Union[str, float]
+  required: false
+  default: nrd0
+- name: adjust
+  type: float
+  required: false
+  default: 1.0
+- name: kernel
+  type: str
+  required: false
+  default: gaussian
+- name: trim
+  type: bool
+  required: false
+  default: true
+- name: scale
+  type: str
+  required: false
+  default: area
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: orientation
+  type: Any
+  required: false
+  default: null
+- name: show_legend
+  type: Optional[bool]
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

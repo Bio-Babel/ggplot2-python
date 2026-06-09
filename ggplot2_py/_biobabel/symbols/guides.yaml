@@ -1,0 +1,18 @@
+id: ggplot2_py.guides
+import_path: ggplot2_py.guides
+kind: function
+signature: guides(kwargs)
+purpose: Set guides for each scale.
+description: Set guides for each scale.
+parameters:
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Optional[Guides]; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

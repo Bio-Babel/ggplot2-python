@@ -1,0 +1,60 @@
+id: ggplot2_py.facet_extension_contract
+name: Facet extension contract (subclass Facet, override compute_layout / map_data / draw_panels)
+category: extension
+description: "A faceting specification is a subclass of ``Facet`` (``ggplot2_py.facet.Facet``,\na ``GGProto`` subclass). It splits data into panels and arranges them.\nConcrete examples: ``FacetGrid``, ``FacetWrap``, ``FacetNull`` (the\nintrinsic single-panel default). The methods that define a facet:\n\n  - ``compute_layout(self, data, params) -> DataFrame`` — build the panel\n    LAYOUT table. The returned frame MUST have columns ``PANEL``, ``ROW``,\n    ``COL``, ``SCALE_X``, ``SCALE_Y`` (one row per panel). The base class\n    raises — every concrete facet must implement it.\n  - ``map_data(self, data, layout, params) -> DataFrame`` — assign each data\n    row to a panel by adding a ``PANEL`` column. The base class raises.\n  - ``draw_panels(self, panels, layout, x_scales, y_scales, ranges, coord,\n    data, theme, params)`` — assemble the per-panel grobs into the final\n    gtable (strips, spacing, axes). Inherit from ``FacetGrid`` / ``FacetWrap``\n    to reuse their assembly.\n  - ``setup_params(self,\
+  \ data, params)`` / ``setup_data(self, data, params)``\n    — pre-build hooks; the base ``setup_params`` records the set of columns\n    available for faceting variables.\n  - ``init_scales(...)`` / ``train_scales(...)`` — set up and train per-panel\n    position scales (for free scales).\n\nClass slots: ``shrink`` (bool — shrink scales to stat output) and ``params``\n(dict, populated by the constructor with the faceting variables). ``Facet``\nsubclasses auto-register into ``Facet._registry`` via ``__init_subclass__``\n(the ``Facet`` prefix is stripped). A facet is added with ``+ facet_x(...)``\nand replaces any existing facet.\n\nFaceting is one of the more involved extensions because ``draw_panels`` deals\nwith gtable assembly. Most custom facets subclass ``FacetWrap`` or\n``FacetGrid`` and only override ``compute_layout`` / ``map_data`` to change\nhow data is partitioned, inheriting the panel assembly.\n"
+invariants:
+- A concrete facet subclasses `Facet` and MUST override `compute_layout(self, data, params)` (returns a layout DataFrame with columns PANEL/ROW/COL/SCALE_X/SCALE_Y) and `map_data(self, data, layout, params)` (adds a PANEL column to assign rows to panels); the base implementations raise.
+- '`compute_layout` returns one row per panel; `map_data` tags every data row with a `PANEL` value drawn from that layout.'
+- '`draw_panels(...)` assembles per-panel grobs into the final gtable (strips, spacing, axes); custom facets usually inherit it from `FacetGrid`/`FacetWrap` rather than reimplementing it.'
+- Class slots `shrink` (bool) and `params` (dict of faceting variables, filled by the constructor) are inheritable class attributes; `setup_params` records the available faceting columns.
+- Defining `class FacetX(Facet)` whose name starts with `Facet` auto-registers it into `Facet._registry` (the `Facet` prefix is stripped to form the key).
+- A facet is added with `+ facet_x(...)` and replaces any existing facet on the plot; a `FacetX` instance satisfies `isinstance(FacetX(), FacetProtocol)`.
+mental_model: 'For R users:
+
+  Same ggproto methods as R''s ``Facet``: ``compute_layout`` (returns the
+
+  layout data frame with ``PANEL``/``ROW``/``COL``/``SCALE_X``/``SCALE_Y``),
+
+  ``map_data`` (assigns ``PANEL``), ``draw_panels`` (assembles the gtable),
+
+  ``init_scales`` / ``train_scales``. ``FacetFoo <- ggproto("FacetFoo",
+
+  FacetWrap, compute_layout = ..., map_data = ...)`` becomes ``class
+
+  FacetFoo(FacetWrap): def compute_layout(self, data, params): ...``. The
+
+  LAYOUT column contract is identical to R''s.
+
+
+  For Python users:
+
+  Subclass ``Facet`` (usually ``FacetWrap`` or ``FacetGrid``) and implement
+
+  two methods: ``compute_layout`` (return a DataFrame describing the panel
+
+  grid) and ``map_data`` (add a ``PANEL`` column to the data). Those two define
+
+  *how data is partitioned*. The heavy ``draw_panels`` gtable assembly is
+
+  inherited from the parent unless you need a custom layout. The class
+
+  auto-registers; ship a ``facet_*`` factory.
+
+
+  General:
+
+  Override ``compute_layout`` and ``map_data`` to change partitioning; inherit
+
+  ``draw_panels`` from ``FacetWrap``/``FacetGrid`` for assembly. Honor the
+
+  LAYOUT column contract (``PANEL``, ``ROW``, ``COL``, ``SCALE_X``,
+
+  ``SCALE_Y``). Add with ``+ facet_x(...)``.'
+related_concepts:
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.ggproto_system
+- ggplot2_py.auto_registration
+- ggplot2_py.protocol_contracts
+- ggplot2_py.coord_extension_contract
+- ggplot2_py.custom_facet_layout

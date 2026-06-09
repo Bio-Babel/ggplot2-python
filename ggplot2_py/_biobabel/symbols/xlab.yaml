@@ -1,0 +1,18 @@
+id: ggplot2_py.xlab
+import_path: ggplot2_py.xlab
+kind: function
+signature: xlab(label)
+purpose: Set the x-axis label.
+description: Set the x-axis label.
+parameters:
+- name: label
+  type: Optional[str]
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Labels; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,30 @@
+id: ggplot2_py.position_dodge
+import_path: ggplot2_py.position_dodge
+kind: function
+signature: position_dodge(width=None, preserve='total', orientation='x', reverse=False)
+purpose: Create a dodge position adjustment.
+description: Create a dodge position adjustment.
+parameters:
+- name: width
+  type: Optional[float]
+  required: false
+  default: null
+- name: preserve
+  type: str
+  required: false
+  default: total
+- name: orientation
+  type: str
+  required: false
+  default: x
+- name: reverse
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: PositionDodge; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

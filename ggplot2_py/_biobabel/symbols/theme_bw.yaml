@@ -1,0 +1,69 @@
+id: ggplot2_py.theme_bw
+import_path: ggplot2_py.theme_bw
+kind: function
+signature: theme_bw(base_size=11, base_family='', header_family=None, base_line_size=None, base_rect_size=None, ink='black', paper='white', accent='#3366FF')
+purpose: apply black-and-white theme; publication-style figure with a visible panel border; drop the default grey background without losing the grid
+description: "Build a complete Theme with a white panel, dark border, and faint grey\ngrid lines — the classic \"dark on light\" look used in most journal\nfigures.\n\nUnlike `theme()` (a *partial* override), `theme_bw()` returns a\n*complete* Theme: when added to a plot with `+`, it REPLACES the inherited\ntheme rather than merging element-by-element. To tweak individual bits\nAFTER applying `theme_bw`, chain a second `+ theme(...)` — same-element\nlater overrides earlier (see concept `plus_accumulation`):\n\n    p + theme_bw() + theme(legend_position=\"bottom\")\n\nAll eight `base_*` / colour parameters propagate to every element via\nthe internal `theme_grey()` machinery; pass them at the theme-builder\nlevel instead of overriding axis_text, axis_title, etc. individually.\n"
+parameters:
+- name: base_size
+  type: float
+  required: false
+  default: 11
+  description: Base font size in points; axis text / legend text scale relative to this.
+- name: base_family
+  type: str
+  required: false
+  default: ''
+  description: Base font family. Empty string uses the matplotlib rcParams default.
+- name: header_family
+  type: Optional[str]
+  required: false
+  default: null
+  description: Font family for titles/strips; falls back to base_family when None.
+- name: base_line_size
+  type: Optional[float]
+  required: false
+  default: null
+  description: Line width for axis lines / grids; defaults to base_size/22.
+- name: base_rect_size
+  type: Optional[float]
+  required: false
+  default: null
+  description: Line width for rectangle borders; defaults to base_size/22.
+- name: ink
+  type: str
+  required: false
+  default: black
+  description: Foreground colour (text, axis, ticks).
+- name: paper
+  type: str
+  required: false
+  default: white
+  description: Background colour for the panel.
+- name: accent
+  type: str
+  required: false
+  default: '#3366FF'
+  description: Accent colour used for highlights (e.g. selected legend keys).
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Theme; kind=new_object
+requires: []
+writes: []
+examples:
+- p + theme_bw()
+- p + theme_bw(base_size=14) + theme(panel_grid_minor=element_blank())
+- p + theme_bw(base_family='Helvetica', ink='#222222')
+failure_fixes:
+- when: Adding theme_bw() AFTER theme(...) wipes out the partial overrides
+  suggest:
+  - 'Order matters: complete themes (theme_bw) come FIRST, partial theme(...) overrides come AFTER.'
+  - 'Use: p + theme_bw() + theme(legend_position=''bottom'') — not the reverse.'
+- when: User wrote theme_bw without parentheses (R-style call)
+  suggest:
+  - 'Python requires parentheses: p + theme_bw(), not p + theme_bw.'
+- when: Per-plot theme works but other plots still grey
+  suggest:
+  - theme_bw() is per-plot. To apply globally, use theme_set(theme_bw()) — but read its global-state caveats first.
+related:
+- ggplot2_py.theme
+- ggplot2_py.labs

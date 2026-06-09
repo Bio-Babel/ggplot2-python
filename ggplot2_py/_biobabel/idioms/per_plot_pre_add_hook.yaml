@@ -1,0 +1,38 @@
+id: ggplot2_py.per_plot_pre_add_hook
+name: Per-plot pre-add hook — register_pre_add_hook(plot, hook) firing on the next +
+applicable_to:
+  - ggplot2_py.singledispatch_composition
+description: |
+  Python-exclusive. `register_pre_add_hook(plot, hook)` tags a *single
+  plot* with a transformer that fires just before the NEXT `+` dispatches.
+  The hook signature is `hook(plot, other) -> other | None`:
+
+  * return the (possibly transformed) `other` to continue dispatch with it;
+  * return `None` to short-circuit the rest of that `+` step.
+
+  Hooks fire in registration order on every subsequent `+` and survive
+  `_clone()`, so they persist across `a + b + c`. For one-shot semantics,
+  the hook removes itself with `unregister_pre_add_hook(plot, hook)`. This
+  is the mechanism behind ggnewscale's `+.<dynamic_class>` trick.
+code_template: |
+  from ggplot2_py import ggplot, aes, geom_point, theme_minimal, ggsave
+  from ggplot2_py.extension import (
+      register_pre_add_hook, unregister_pre_add_hook,
+  )
+  from ggplot2_py.datasets import mpg
+
+  fired = []
+  def one_shot(plot, other):
+      fired.append(type(other).__name__)
+      unregister_pre_add_hook(plot, one_shot)   # remove self -> one-shot
+      return other                               # continue dispatch unchanged
+
+  p = ggplot(mpg, aes("displ", "hwy")) + geom_point()
+  register_pre_add_hook(p, one_shot)
+
+  p = p + theme_minimal()      # hook fires here
+  p = p + theme_minimal()      # already removed -> no second fire
+  assert len(fired) == 1
+
+  ggsave("/tmp/idiom_per_plot_pre_add_hook.png", plot=p, width=5, height=4)
+typical_use_case: "ggnewscale-style stateful transformation that must fire exactly once on the next component added to a specific plot"

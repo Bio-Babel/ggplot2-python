@@ -1,0 +1,27 @@
+id: ggplot2_py.Coord
+import_path: ggplot2_py.Coord
+kind: class
+signature: Coord()
+purpose: author a NEW coordinate system by subclassing Coord; discover the transform/setup_panel_params/range override points for a custom coord; port an R ggproto Coord (CoordXxx) to Python
+description: "Base class for coordinate systems. A coord controls how positional data is\nmapped onto the panel (Cartesian, flipped, polar, transformed, map\nprojections...). To create a custom coordinate system, subclass `Coord`\n(or `ggproto('CoordFoo', Coord, ...)`) and wrap it in a `coord_foo()`\nconstructor.\n\nSUBCLASSING — set these CLASS ATTRIBUTES (slots):\n  - `clip`: `\"on\"`/`\"off\"`, whether to clip drawing to the panel.\n  - `default`: bool, whether this is the default coord for a plot.\n  - `reverse`: which axes to reverse (coord-specific).\n\nSUBCLASSING — OVERRIDE these METHODS:\n  - `transform(self, data, panel_params) -> data`: THE core override. Map the\n    data's x/y (in data space) into [0,1] panel space.\n  - `setup_panel_params(self, scale_x, scale_y, params=None) -> dict`: build\n    the per-panel parameter dict (ranges, breaks, labels) from the scales.\n  - `range(self, panel_params) -> {\"x\": [...], \"y\": [...]}`: report the data\n    ranges for a panel.\n\
+  \  - `backtransform_range(self, panel_params) -> dict`: inverse of the panel\n    transform's range (data space from panel space).\n  - `is_linear(self) -> bool`: return False for non-linear coords (polar,\n    transformed) so geoms munch line segments.\n  - `render_bg(self, panel_params, theme) -> grob` and\n    `render_fg(self, panel_params, theme) -> grob`: draw panel background\n    (grid lines) and foreground.\n  - `setup_data(self, data, params=None) -> data`: optional pre-transform\n    massaging.\n\nReturns a CLASS. See concept `ggplot2_py.extension_class_hierarchy`.\n"
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: type[Coord]; kind=new_object
+requires: []
+writes: []
+examples:
+- "class CoordSwap(Coord):\n    def transform(self, data, panel_params):\n        ...  # swap/transform x and y into [0,1] panel space\n    def is_linear(self):\n        return True\n"
+- '# R-port form:
+
+  # CoordFoo = ggproto(''CoordFoo'', Coord, transform=lambda self, data, pp: ...)'
+failure_fixes:
+- when: lines look straight in a non-Cartesian coord (should curve)
+  suggest:
+  - Override is_linear to return False; the renderer then munches paths into many short segments before transform.
+- when: panel background / gridlines are wrong
+  suggest:
+  - Override render_bg(self, panel_params, theme) to emit the correct grid grob for your coordinate system.
+related:
+- ggplot2_py.ggproto
+- ggplot2_py.ggproto_parent

@@ -1,0 +1,34 @@
+id: ggplot2_py.position_dodge2
+import_path: ggplot2_py.position_dodge2
+kind: function
+signature: position_dodge2(width=None, preserve='total', padding=0.1, reverse=False, group_row='single')
+purpose: Create a dodge2 position adjustment.
+description: Create a dodge2 position adjustment.
+parameters:
+- name: width
+  type: Optional[float]
+  required: false
+  default: null
+- name: preserve
+  type: str
+  required: false
+  default: total
+- name: padding
+  type: float
+  required: false
+  default: 0.1
+- name: reverse
+  type: bool
+  required: false
+  default: false
+- name: group_row
+  type: str
+  required: false
+  default: single
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: PositionDodge2; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

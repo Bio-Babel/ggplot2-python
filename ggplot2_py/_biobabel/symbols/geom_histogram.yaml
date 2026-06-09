@@ -1,0 +1,53 @@
+id: ggplot2_py.geom_histogram
+import_path: ggplot2_py.geom_histogram
+kind: function
+signature: geom_histogram(mapping=None, data=None, bins=30, binwidth=None, position='stack')
+purpose: histogram of continuous variable; distribution visualization
+description: 'Draw a histogram. Uses `stat=''bin''` by default — bins the x aesthetic into
+
+  equal-width intervals and counts rows per bin. The y aesthetic defaults to
+
+  the bin count via `after_stat(''count'')`; for density, map y via after_stat.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: bins
+  type: int
+  required: false
+  default: 30
+  description: Number of equal-width bins. Either bins OR binwidth, not both.
+- name: binwidth
+  type: float | None
+  required: false
+  default: null
+  description: Width of each bin in data units. Overrides bins.
+- name: position
+  type: str
+  required: false
+  default: stack
+  description: '''stack'' (default), ''identity'', ''dodge'', ''fill''.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- geom_histogram(bins=30)
+- geom_histogram(aes(x='hwy', y=after_stat('density')))
+failure_fixes:
+- when: 'warning: bin width / count not specified, defaulting to 30'
+  suggest:
+  - Set bins=N or binwidth=W explicitly for reproducibility.
+- when: want density instead of count
+  suggest:
+  - 'Map y via after_stat: geom_histogram(aes(y=after_stat(''density'')))'
+related:
+- ggplot2_py.facet_wrap
+- ggplot2_py.theme_minimal

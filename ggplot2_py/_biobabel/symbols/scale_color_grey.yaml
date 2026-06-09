@@ -1,0 +1,38 @@
+id: ggplot2_py.scale_color_grey
+import_path: ggplot2_py.scale_color_grey
+kind: function
+signature: scale_color_grey(name=None, start=0.2, end=0.8, na_value='red', aesthetics='colour', kwargs)
+purpose: Sequential grey discrete colour scale.
+description: Sequential grey discrete colour scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: start
+  type: float
+  required: false
+  default: 0.2
+- name: end
+  type: float
+  required: false
+  default: 0.8
+- name: na_value
+  type: str
+  required: false
+  default: red
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: colour
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleDiscrete; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

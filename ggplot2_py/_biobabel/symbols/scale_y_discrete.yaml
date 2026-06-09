@@ -1,0 +1,37 @@
+id: ggplot2_py.scale_y_discrete
+import_path: ggplot2_py.scale_y_discrete
+kind: function
+signature: scale_y_discrete(limits=None, position='left')
+purpose: categorical y axis; re-order factor levels along y
+description: 'Y-axis mirror of `ggplot2_py.scale_x_discrete` — same parameters, same
+
+  semantics (limits=, breaks=, labels=, expand=, ...), only difference is
+
+  `position` default (''left'' vs ''bottom'') and the aesthetic it targets. The
+
+  most common use is `limits=` to force category order — see
+
+  `ggplot2_py.scale_x_discrete` for the full discussion.
+
+  '
+parameters:
+- name: limits
+  type: list[str] | None
+  required: false
+  default: null
+  description: Ordered list of categories along y; drops categories not in the list.
+- name: position
+  type: str
+  required: false
+  default: left
+  description: '''left'' or ''right''.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_y_discrete(limits=['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])
+failure_fixes:
+- when: categories appear in alphabetical order on y instead of the order I want
+  suggest:
+  - Pass `limits=[...]` explicitly, or wrap the column as `pd.Categorical(..., ordered=True)`.

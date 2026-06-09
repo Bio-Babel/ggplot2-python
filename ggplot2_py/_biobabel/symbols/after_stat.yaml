@@ -1,0 +1,43 @@
+id: ggplot2_py.after_stat
+import_path: ggplot2_py.after_stat
+kind: function
+signature: after_stat(x)
+purpose: inside aes(), refer to a column computed by the stat layer instead of the raw data; make geom_histogram show density, geom_bar show proportion, geom_density show count, etc.
+description: "Return an `AfterStat` sentinel wrapping a stat-computed variable name (or\na callable). Used inside `aes()` to bind an aesthetic to a column that\nexists ONLY after the stat has run — e.g. `count`, `density`, `prop`,\n`scaled`, `level` — not to anything in the original data frame.\n\nWithout `after_stat`, `aes(y='density')` would look for a column named\n`'density'` in the data and fail. With `after_stat`,\n`aes(y=after_stat('density'))` is resolved at stat-completion time, when\nthe bin's density column actually exists.\n\nPipeline phase: stat runs → `after_stat(name)` resolves against the stat\noutput → scale mapping → `after_scale(...)` resolves → draw.\n\nR's `..count..` / `..density..` double-dot syntax is the deprecated\nancestor of this. ggplot2-python only supports the `after_stat(...)`\nwrapper.\n\nThe argument can be:\n  - a string: the name of a stat-computed column (`'count'`, `'density'`,\n    `'prop'`, `'scaled'`, etc.).\n  - a callable `f(stat_df) -> array`:\
+  \ a one-shot transform of the\n    post-stat data (rare; used for normalized variants).\n"
+parameters:
+- name: x
+  type: str | Callable[[DataFrame], ArrayLike]
+  required: true
+  default: null
+  description: Name of a stat-computed column, or a callable f(stat_df) -> array.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: AfterStat; kind=value
+requires: []
+writes: []
+examples:
+- geom_histogram(aes(x='hwy', y=after_stat('density')))
+- geom_bar(aes(y=after_stat('prop'), group=1))
+- geom_density(aes(y=after_stat('count')))
+- 'after_stat(lambda d: d[''count''] / d[''count''].max())'
+failure_fixes:
+- when: want y to be density instead of count in geom_histogram
+  suggest:
+  - 'Use aes(y=after_stat(''density'')): geom_histogram(aes(x=''hwy'', y=after_stat(''density''))).'
+- when: want bar heights as proportions
+  suggest:
+  - 'Map y to after_stat(''prop'') AND set group=1 (or another constant) so prop is computed across all bars: geom_bar(aes(y=after_stat(''prop''), group=1)).'
+- when: KeyError or 'column not found' on a stat name like 'count' or 'density'
+  suggest:
+  - 'These names live only post-stat. Wrap with after_stat: aes(y=after_stat(''count'')), not aes(y=''count'').'
+- when: 'TypeError: AfterStat expects a str or callable'
+  suggest:
+  - Pass a string (column name) or a callable f(df) -> array. Numbers, lists, and arrays are not valid.
+- when: used old R-style ..count.. or stat(count) syntax
+  suggest:
+  - Replace ..count.. and stat(count) with after_stat('count'). The double-dot/stat() forms are not parsed by ggplot2-python.
+related:
+- ggplot2_py.aes
+- ggplot2_py.geom_histogram
+- ggplot2_py.geom_bar
+- ggplot2_py.geom_density

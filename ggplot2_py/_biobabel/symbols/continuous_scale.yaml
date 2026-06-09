@@ -1,0 +1,122 @@
+id: ggplot2_py.continuous_scale
+import_path: ggplot2_py.continuous_scale
+kind: function
+signature: continuous_scale(aesthetics, palette=None, name='waiver()', breaks='waiver()', minor_breaks='waiver()', n_breaks=None, labels='waiver()', limits=None, rescaler='rescale', oob='censor', expand='waiver()', na_value='np.nan', transform="'identity'", trans=None, guide="'legend'", position="'left'", fallback_palette=None, super_class='ScaleContinuous')
+purpose: construct a custom continuous Scale (typically wrapped by scale_color_my_palette / scale_x_my_transform); extension entry point for new continuous aesthetic mappings
+description: "Low-level factory for building a `ScaleContinuous` (or a user-defined\nsubclass via `super_class=`). Every built-in continuous scale —\n`scale_x_continuous`, `scale_color_viridis_c`, `scale_size_continuous`,\netc. — bottoms out in this function.\n\n**For extension authors**: write a new continuous scale by composing a\npalette function and calling `continuous_scale(...)`. Example pattern::\n\n    def scale_color_mypalette(name=None, **kwargs):\n        return continuous_scale(\n            aesthetics=[\"colour\"],\n            palette=my_palette_fn,         # callable[float in [0,1]] -> hex\n            name=name,\n            guide=\"colourbar\",\n            **kwargs,\n        )\n\nDefault behaviour mirrors R:\n  - `name`, `breaks`, `minor_breaks`, `labels`, `expand` default to\n    `waiver()` (see concept `ggplot2_py.waiver_sentinel`).\n  - `oob` defaults to `censor` (NaN out-of-bounds); pass `squish` to\n    clip to range.\n  - `rescaler` defaults to `rescale` (linear).\n\
+  \  - `transform` accepts a string name (e.g. `\"log10\"`, `\"sqrt\"`) or a\n    `Transform` object.\n  - The deprecated R alias `trans=` is accepted with a deprecation\n    warning (forwards to `transform`).\n\nAesthetic name standardisation runs internally (`standardise_aes_names`)\n— pass either `\"colour\"` or `\"color\"`, both resolve identically.\n\n`super_class=YourScaleClass` lets you subclass `ScaleContinuous` and\noverride `map()`, `train()`, etc. See `ggplot2_py.extension_class_hierarchy`.\n"
+parameters:
+- name: aesthetics
+  type: str | list[str]
+  required: true
+  default: null
+  description: Aesthetic name(s) bound by this scale, e.g. 'colour', ['colour','fill'].
+- name: palette
+  type: Callable | None
+  required: false
+  default: null
+  description: Maps a numeric in [0,1] (or array thereof) to aesthetic values (hex strings, numeric sizes, etc.).
+- name: name
+  type: str | Waiver
+  required: false
+  default: waiver()
+  description: Scale title. waiver() → use the mapped aesthetic name.
+- name: breaks
+  type: array-like | Callable | Waiver | None
+  required: false
+  default: waiver()
+  description: Tick positions. None disables ticks; waiver() uses transform default.
+- name: minor_breaks
+  type: array-like | Callable | Waiver | None
+  required: false
+  default: waiver()
+- name: n_breaks
+  type: int | None
+  required: false
+  default: null
+  description: Approximate number of breaks (passed to break algorithm).
+- name: labels
+  type: array-like | Callable | Waiver | None
+  required: false
+  default: waiver()
+- name: limits
+  type: Sequence[float] | Callable | None
+  required: false
+  default: null
+  description: Data domain. None → train from data.
+- name: rescaler
+  type: Callable | None
+  required: false
+  default: rescale
+  description: Maps data [limits] → [0,1] before palette is applied.
+- name: oob
+  type: Callable | None
+  required: false
+  default: censor
+  description: Out-of-bounds handler. censor=NaN, squish=clip.
+- name: expand
+  type: array-like | Waiver
+  required: false
+  default: waiver()
+- name: na_value
+  type: Any
+  required: false
+  default: np.nan
+- name: transform
+  type: str | Transform
+  required: false
+  default: '''identity'''
+  description: '''log10'', ''sqrt'', ''reverse'', ''date'', etc., or a Transform object.'
+- name: trans
+  type: str | Transform | None
+  required: false
+  default: null
+  description: DEPRECATED alias for transform; emits a deprecate_warn.
+- name: guide
+  type: str
+  required: false
+  default: '''legend'''
+  description: '''legend'', ''colourbar'', ''none'', or a Guide object/factory.'
+- name: position
+  type: str
+  required: false
+  default: '''left'''
+  description: One of 'left', 'right', 'top', 'bottom'.
+- name: fallback_palette
+  type: Callable | None
+  required: false
+  default: null
+  description: Used when both palette= and theme palette are absent.
+- name: super_class
+  type: type[ScaleContinuous] | None
+  required: false
+  default: ScaleContinuous
+  description: Subclass to instantiate. Override to attach custom Scale methods.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: ScaleContinuous; kind=new_object
+requires: []
+writes: []
+examples:
+- continuous_scale(aesthetics='colour', palette=my_pal_fn, name='Score', guide='colourbar')
+- continuous_scale(aesthetics=['colour','fill'], palette=viridis_pal_fn, transform='log10')
+- '# Custom Scale subclass:
+
+  class ScaleMyContinuous(ScaleContinuous): ...
+
+  continuous_scale(aesthetics=''x'', super_class=ScaleMyContinuous)'
+failure_fixes:
+- when: position must be one of 'left', 'right', 'top', 'bottom', got 'X'
+  suggest:
+  - Use one of the four cardinal positions; arbitrary placement is not supported. For axis-side override use guide_axis(position=...).
+- when: deprecation warning about trans=...
+  suggest:
+  - Rename `trans=` to `transform=`. R 3.5+ also deprecated `trans`.
+- when: scale has no effect on the plot
+  suggest:
+  - Make sure the aesthetics= list matches what the geom maps. `scale_color_*` won't affect `fill`. Pass aesthetics=['colour','fill'] if needed.
+- when: want to use the same palette for color AND fill
+  suggest:
+  - 'aesthetics=[''colour'', ''fill'']  # one scale, two aesthetics — both get the same training/palette.'
+related:
+- ggplot2_py.ggplot_add
+- ggplot2_py.expansion

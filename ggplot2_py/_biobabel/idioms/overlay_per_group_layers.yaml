@@ -1,0 +1,51 @@
+id: ggplot2_py.overlay_per_group_layers
+name: Programmatically add one geom per group in a Python loop (+ white-underlay border)
+applicable_to:
+  - ggplot2_py.plus_accumulation
+description: |
+  When each group needs its OWN layer — a distinct colour pulled from a
+  palette dict, a per-lineage style, a hand-picked subset — drive `+`
+  accumulation from a Python loop over `df.groupby(...)`. Each iteration adds
+  one `geom_*` whose `data=` is that group's frame and `inherit_aes=False`
+  so the layer carries its own `aes()` and constant aesthetics. This is the
+  pattern tradeSeq uses to draw one smoother per lineage and Monocle2 uses
+  for per-branch trajectory curves.
+
+  This idiom COMBINES two others:
+    * `data_in_layer_for_overlay` — each layer overrides the plot data with
+      its group's `data=` (and `inherit_aes=False` + a fresh `aes()`).
+    * `functional_composition` — `p = p + geom_*(...)` accumulates in a loop
+      exactly as `reduce(add, ...)` would; the running `p` is just rebound.
+
+  White-underlay border trick: to make overlapping coloured lines readable,
+  add a THICKER WHITE line first, then the coloured line on top in the same
+  iteration. The white line reads as a halo/border that separates crossing
+  lineages. (tradeSeq `plot_smoothers.py:501-529`.)
+
+  Note: `geom_line` takes `linewidth` (not `size`) for stroke width — passing
+  `size` is silently ignored.
+code_template: |
+  import numpy as np, pandas as pd
+  from ggplot2_py import ggplot, aes, geom_line, ggsave
+
+  # One fitted curve per lineage (the tradeSeq / Monocle2 shape).
+  t = np.linspace(0, 1, 40)
+  df = pd.concat([
+      pd.DataFrame({"t": t, "fit": np.sin(t * k * np.pi), "lineage": name})
+      for k, name in [(1, "A"), (2, "B"), (3, "C")]
+  ], ignore_index=True)
+  palette = {"A": "#E41A1C", "B": "#377EB8", "C": "#4DAF4A"}
+
+  # Accumulate one geom_line per group in a loop. inherit_aes=False so each
+  # layer carries its own aes() + constant colour. White underlay first,
+  # coloured line on top -> a halo border between crossing lineages.
+  p = ggplot()
+  for key, grp in df.groupby("lineage"):
+      p = p + geom_line(data=grp, mapping=aes("t", "fit"),
+                        inherit_aes=False, color="white", linewidth=2.5)
+      p = p + geom_line(data=grp, mapping=aes("t", "fit"),
+                        inherit_aes=False, color=palette[key], linewidth=1.2)
+
+  ggsave("/tmp/idiom_overlay_per_group_layers.png", plot=p, width=5, height=4)
+anti_pattern_paired: null
+typical_use_case: "drawing one styled layer per group from a loop — per-lineage trajectory smoothers, per-branch curves, palette-keyed highlights — with an optional white-underlay halo so overlapping lines stay readable"

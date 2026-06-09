@@ -1,0 +1,47 @@
+id: ggplot2_py.geom_path
+import_path: ggplot2_py.geom_path
+kind: function
+signature: geom_path(mapping=None, data=None, stat='identity', position='identity', na_rm=False, show_legend=None, inherit_aes=True, kwargs)
+purpose: Create a path layer (connects observations in data order).
+description: Create a path layer (connects observations in data order).
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: show_legend
+  type: Any
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

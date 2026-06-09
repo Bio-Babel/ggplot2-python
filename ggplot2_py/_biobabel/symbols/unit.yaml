@@ -1,0 +1,34 @@
+id: ggplot2_py.unit
+import_path: ggplot2_py.unit
+kind: class
+signature: unit(x, units)
+purpose: construct a grid Unit for theme/element sizing (e.g. margin lengths, key sizes)
+description: "`unit` is re-exported from `grid_py.Unit` (see `__init__.py`:\n`from grid_py import Unit as unit`). It carries the lowercase R name for\nsymmetry with R's `grid::unit()`; functionally identical to the class\nconstructor.\n\nUse it anywhere ggplot2 wants a measurement with units — typically in\n`theme()` element sizes:\n\n    theme(legend_key_size=unit(1.2, 'cm'),\n          plot_margin=unit([5, 5, 5, 5], 'pt'))\n\nSee the cross-package concept `grid_py.Unit` for the underlying semantics.\n"
+parameters:
+- name: x
+  type: float | Sequence[float]
+  required: true
+  default: null
+  description: Numeric value or vector.
+- name: units
+  type: str | Sequence[str]
+  required: true
+  default: null
+  description: 'Unit kind: ''npc'', ''native'', ''cm'', ''mm'', ''inches'', ''points'', ''pt'', ''lines'', ''char'', ''strwidth'', ''strheight''.'
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Unit; kind=value
+requires: []
+writes: []
+examples:
+- unit(1.2, 'cm')
+- unit([5, 5, 5, 5], 'pt')
+failure_fixes:
+- when: passed a plain number where ggplot2 wants a unit
+  suggest:
+  - 'Wrap with unit: theme(legend_key_size=unit(1.2, ''cm'')), not 1.2.'
+- when: want NPC vs native vs cm — which to use?
+  suggest:
+  - 'See concept grid_py.Unit. Short answer: ''npc'' is fraction of the viewport (0..1); ''cm''/''mm''/''pt'' are physical; ''native'' is data coordinates.'
+related:
+- ggplot2_py.theme
+- ggplot2_py.element_text

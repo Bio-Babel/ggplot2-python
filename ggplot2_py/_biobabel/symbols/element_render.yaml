@@ -1,0 +1,30 @@
+id: ggplot2_py.element_render
+import_path: ggplot2_py.element_render
+kind: function
+signature: element_render(theme, element_name, name=None, kwargs)
+purpose: Render a named theme element into a grob.
+description: Render a named theme element into a grob.
+parameters:
+- name: theme
+  type: Any
+  required: true
+  default: null
+- name: element_name
+  type: str
+  required: true
+  default: null
+- name: name
+  type: Optional[str]
+  required: false
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

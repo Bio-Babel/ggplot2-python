@@ -1,0 +1,46 @@
+id: ggplot2_py.custom_stat_compute_group
+name: Custom Stat — subclass Stat, override compute_group(), wrap in a layer()
+applicable_to:
+  - ggplot2_py.stat_extension_contract
+  - ggplot2_py.ggproto_system
+description: |
+  The easiest extension point. A `Stat` transforms each group's data before
+  it is drawn. Subclass `ggplot2_py.stat.Stat`, declare `required_aes`, and
+  override `compute_group(self, data, scales, **params)` to return a *new*
+  DataFrame (its columns become the geom's aesthetics). The subclass
+  auto-registers via `__init_subclass__` (no manual wiring). Expose it with
+  a thin `layer()` wrapper so users get the familiar `stat_*()` constructor.
+
+  `compute_group` receives one group at a time (already split by the
+  `group`/colour/fill aesthetic), so you never group by hand. Whatever
+  columns you return (`x`, `y`, …) feed straight into the chosen `geom`.
+code_template: |
+  import pandas as pd
+  from ggplot2_py.stat import Stat
+  from ggplot2_py.layer import layer as Layer
+  from ggplot2_py import ggplot, aes, geom_point, ggsave
+  from ggplot2_py.datasets import mpg
+
+  class StatMeanXY(Stat):
+      """Collapse each group to its single (mean x, mean y) point."""
+      required_aes = ["x", "y"]
+
+      def compute_group(self, data, scales, **params):
+          return pd.DataFrame({
+              "x": [data["x"].mean()],
+              "y": [data["y"].mean()],
+          })
+
+  def stat_mean_xy(mapping=None, data=None, geom="point",
+                   position="identity", **kwargs):
+      return Layer(stat=StatMeanXY, geom=geom, data=data, mapping=mapping,
+                   position=position, params=kwargs)
+
+  p = (
+      ggplot(mpg, aes(x="displ", y="hwy", colour="drv"))
+      + geom_point(alpha=0.3)
+      + stat_mean_xy(size=6)   # one big dot per drive train
+  )
+  ggsave("/tmp/idiom_custom_stat_compute_group.png", plot=p, width=5, height=4)
+anti_pattern_paired: ggplot2_py.subclass_without_override
+typical_use_case: "computing a per-group summary (centroid, regression line, hull) and drawing it as a new layer"

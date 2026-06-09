@@ -1,0 +1,33 @@
+id: ggplot2_py.extension.clone_stat
+import_path: ggplot2_py.extension.clone_stat
+kind: function
+signature: clone_stat(stat)
+purpose: make an independent copy of a stat so an extension can mutate slots without affecting the original
+description: 'Return an independent copy of the `GGProto` stat `stat`, so an extension can
+
+  modify its slots (e.g. rename an aesthetic in `default_aes`) without mutating
+
+  the shared/registered original. Counterpart to `clone_geom` for stats. Part of
+
+  the ggnewscale-style aesthetic-rename toolkit. Returns a new `GGProto` stat.
+
+  '
+parameters:
+- name: stat
+  type: GGProto
+  required: true
+  default: null
+  description: The stat (GGProto class or instance) to clone.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: GGProto; kind=new_object
+requires: []
+writes: []
+examples:
+- s2 = clone_stat(layer.stat); s2.default_aes = rename_aes_in_dict(s2.default_aes, 'fill', 'fill_new')
+failure_fixes:
+- when: mutating a stat changed every layer that shares it
+  suggest:
+  - Clone first with clone_stat(stat), then mutate the clone; the registered original stays untouched.
+related:
+- ggplot2_py.extension.clone_geom
+- ggplot2_py.extension.rename_aes_in_dict

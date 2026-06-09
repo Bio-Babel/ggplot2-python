@@ -1,0 +1,50 @@
+id: ggplot2_py.geom_vline
+import_path: ggplot2_py.geom_vline
+kind: function
+signature: geom_vline(mapping=None, data=None, xintercept=None, stat='identity', position='identity')
+purpose: vertical reference line; x-axis threshold marker
+description: 'Vertical mirror of geom_hline; see geom_hline for full failure modes.
+
+  Use `xintercept` as a direct argument (not via `aes()`). When passed directly,
+
+  the constructor synthesises a one-row dataframe and forces
+
+  `inherit_aes=False`.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: 'Only for the per-row case: aes(xintercept=''col'').'
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: xintercept
+  type: float | list[float]
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- geom_vline(xintercept=0, linetype='dashed')
+- geom_vline(xintercept=[0, 1.5], color='red')
+failure_fixes:
+- when: passed xintercept inside aes() with a literal number — line not drawn
+  suggest:
+  - 'Use the direct arg: geom_vline(xintercept=0), NOT geom_vline(aes(xintercept=0)).'
+related:
+- ggplot2_py.geom_hline
+- ggplot2_py.annotate

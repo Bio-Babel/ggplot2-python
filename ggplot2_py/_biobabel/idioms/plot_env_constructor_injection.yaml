@@ -1,0 +1,41 @@
+id: ggplot2_py.plot_env_constructor_injection
+name: Inject a per-plot scale constructor via plot.plot_env.push({...})
+applicable_to:
+  - ggplot2_py.scale_extension_contract
+  - ggplot2_py.singledispatch_composition
+description: |
+  Python-exclusive (mirrors R's `find_global` walk over `plot@plot_env`).
+  Each plot carries a layered `PlotEnv`. When the builder needs a default
+  scale for an aesthetic it calls `find_scale(aes, data, env=plot.plot_env)`,
+  which looks up `scale_<aes>_<type>` (e.g. `scale_colour_continuous`)
+  through the pushed layers (last-pushed-first, LIFO) before falling back
+  to `ggplot2_py.scales`. So you can override which constructor a plot uses
+  for an auto-added scale by pushing a layer:
+  `plot.plot_env.push({"scale_colour_continuous": my_factory})`.
+
+  NOTE on scope: the override is exercised through the *public*
+  `find_scale(..., env=plot.plot_env)` path below (the same call the
+  internal `ScalesList.add_defaults` makes). The template asserts the
+  injected constructor is the one resolved, which is the load-bearing
+  behaviour; it deliberately does not reach into private builder internals.
+code_template: |
+  from ggplot2_py import ggplot, aes, geom_point
+  from ggplot2_py.scale import find_scale
+  from ggplot2_py.scales import scale_colour_continuous
+  from ggplot2_py.datasets import mpg
+
+  calls = []
+  def my_scale_colour_continuous(**kwargs):
+      calls.append("custom")                 # prove our factory was used
+      return scale_colour_continuous(**kwargs)
+
+  p = ggplot(mpg, aes("displ", "hwy", colour="cyl")) + geom_point()
+
+  # Inject a per-plot constructor for the 'colour' continuous scale.
+  p.plot_env.push({"scale_colour_continuous": my_scale_colour_continuous})
+
+  # find_scale (the same lookup the builder uses) now resolves OUR factory.
+  sc = find_scale("colour", mpg["cyl"], env=p.plot_env)
+  assert calls == ["custom"]
+  assert sc is not None
+typical_use_case: "ggnewscale-style installation of a scale constructor for a dynamically-named aesthetic on a single plot (R: find_global)"

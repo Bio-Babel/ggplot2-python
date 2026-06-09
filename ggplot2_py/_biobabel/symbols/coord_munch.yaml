@@ -1,0 +1,34 @@
+id: ggplot2_py.coord_munch
+import_path: ggplot2_py.coord_munch
+kind: function
+signature: coord_munch(coord, data, range_, n=50, is_closed=False)
+purpose: Interpolate path data for non-linear coordinate systems.
+description: Interpolate path data for non-linear coordinate systems.
+parameters:
+- name: coord
+  type: Coord
+  required: true
+  default: null
+- name: data
+  type: pd.DataFrame
+  required: true
+  default: null
+- name: range_
+  type: Dict[str, Any]
+  required: true
+  default: null
+- name: n
+  type: int
+  required: false
+  default: 50
+- name: is_closed
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: pd.DataFrame; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

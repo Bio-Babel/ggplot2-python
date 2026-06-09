@@ -1,0 +1,93 @@
+id: ggplot2_py.stat_function
+import_path: ggplot2_py.stat_function
+kind: function
+signature: stat_function(mapping=None, data=None, geom='function', position='identity', fun, xlim=None, n=101, args=None)
+purpose: draw an arbitrary mathematical function f(x) on the plot; overlay a theoretical curve (PDF, identity line, sigmoid, ...) on top of data
+description: 'Evaluates `fun(x, **args)` at `n` equally-spaced x values and draws the
+
+  resulting (x, y=fun(x)) curve with the chosen geom (default `''function''`,
+
+  which renders as a path). Required parameter is `fun` — a Python
+
+  callable accepting a 1D array-like and returning the same shape. The
+
+  range is taken from `xlim=` if provided, else from the data''s x scale
+
+  (so adding it on top of an existing scatter "just works"). If neither
+
+  the call site nor the plot has an x range, the layer is constructed with
+
+  a dummy single-row frame so axes can still derive limits from other
+
+  layers.
+
+
+  Unlike `stat_smooth`, `fun=` IS a Python callable here — not an R
+
+  formula. Pass `lambda x: ...`, `np.sin`, or any vectorised ufunc.
+
+  Extra fixed parameters go through `args=` (e.g. distribution
+
+  parameters); they''re forwarded as `fun(x, **args)`.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: DataFrame | None
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: function
+  description: '''function'' or ''path'' / ''line'' — all render the curve.'
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: fun
+  type: Callable
+  required: true
+  default: null
+  description: Vectorised f(x). REQUIRED. Receives a 1D numpy array and must return same-length output.
+- name: xlim
+  type: tuple[float, float] | None
+  required: false
+  default: null
+  description: (min, max) x range to evaluate over. Defaults to the data x scale's range.
+- name: n
+  type: int
+  required: false
+  default: 101
+  description: Number of grid points (more = smoother curve).
+- name: args
+  type: dict | None
+  required: false
+  default: null
+  description: Extra keyword arguments forwarded to fun (e.g. distribution params).
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- 'stat_function(fun=lambda x: np.sin(x), xlim=(0, 2*np.pi), n=200)'
+- 'stat_function(fun=scipy.stats.norm.pdf, args={''loc'': 0, ''scale'': 1})'
+- 'ggplot(df, aes(x=''x'', y=''y'')) + geom_point() + stat_function(fun=lambda x: 2*x + 1, geom=''line'', color=''red'')'
+failure_fixes:
+- when: 'TypeError: stat_function() missing required argument ''fun'''
+  suggest:
+  - 'Pass fun= — e.g. stat_function(fun=lambda x: np.sin(x)).'
+- when: curve is a flat dashed line / blank panel — no x range available
+  suggest:
+  - Pass xlim=(a, b) explicitly, or set the panel range via coord_cartesian(xlim=(a, b)).
+  - 'Or layer on top of a geom that defines x: e.g. ggplot(df, aes(x=''x'')) + geom_point() + stat_function(fun=...).'
+- when: 'ValueError: shape mismatch — fun returned a scalar'
+  suggest:
+  - fun must be vectorised. Use np.vectorize(fun) if you have a scalar callable, or rewrite as a ufunc-style expression.
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.coord_cartesian

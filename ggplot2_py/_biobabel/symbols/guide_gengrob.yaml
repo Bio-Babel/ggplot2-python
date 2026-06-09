@@ -1,0 +1,22 @@
+id: ggplot2_py.guide_gengrob
+import_path: ggplot2_py.guide_gengrob
+kind: function
+signature: guide_gengrob(guide, theme)
+purpose: Legacy S3-style ``guide_gengrob`` dispatch.
+description: Legacy S3-style ``guide_gengrob`` dispatch.
+parameters:
+- name: guide
+  type: Any
+  required: true
+  default: null
+- name: theme
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

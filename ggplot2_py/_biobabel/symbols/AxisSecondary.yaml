@@ -1,0 +1,69 @@
+id: ggplot2_py.AxisSecondary
+import_path: ggplot2_py.AxisSecondary
+kind: class
+signature: AxisSecondary(trans=None, name=None, breaks=None, labels=None, guide=None)
+purpose: the secondary-axis object returned by sec_axis; construct a secondary axis directly
+description: 'The object that :func:`sec_axis` returns and that a continuous position
+
+  scale consumes via its ``sec_axis=`` argument. It holds a (monotonic)
+
+  ``trans`` mapping primary -> secondary values plus optional title / breaks /
+
+  labels / guide. Prefer :func:`sec_axis` for normal use; construct
+
+  ``AxisSecondary`` directly only when you need the object explicitly (e.g.
+
+  in an extension). Note the first positional parameter here is ``trans``
+
+  (whereas :func:`sec_axis` exposes it as ``transform`` with ``trans`` as a
+
+  deprecated alias).
+
+  '
+parameters:
+- name: trans
+  type: Optional[Callable]
+  required: false
+  default: null
+  description: Monotonic function mapping primary -> secondary axis values.
+- name: name
+  type: Any
+  required: false
+  default: null
+  description: Title for the secondary axis.
+- name: breaks
+  type: Any
+  required: false
+  default: null
+  description: Break positions (in secondary units) or a breaks function.
+- name: labels
+  type: Any
+  required: false
+  default: null
+  description: Tick labels or a labelling function for the secondary axis.
+- name: guide
+  type: Any
+  required: false
+  default: null
+  description: Guide specification for the secondary axis.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: AxisSecondary; kind=new_object
+requires: []
+writes: []
+examples:
+- 'from ggplot2_py import AxisSecondary
+
+  from ggplot2_py.scales import scale_y_continuous
+
+  ax = AxisSecondary(trans=lambda y: y / 1000, name="thousands")
+
+  sc = scale_y_continuous(sec_axis=ax)
+
+  '
+failure_fixes:
+- when: axis derives wrong values
+  suggest:
+  - trans must be monotonic over the primary axis range
+related:
+- ggplot2_py.scale_y_continuous
+- ggplot2_py.scale_x_continuous

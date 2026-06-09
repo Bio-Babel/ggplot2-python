@@ -1,0 +1,30 @@
+id: ggplot2_py.scale_shape_binned
+import_path: ggplot2_py.scale_shape_binned
+kind: function
+signature: scale_shape_binned(name=None, solid=True, aesthetics='shape', kwargs)
+purpose: Binned shape scale.
+description: Binned shape scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: solid
+  type: bool
+  required: false
+  default: true
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: shape
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleBinned; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

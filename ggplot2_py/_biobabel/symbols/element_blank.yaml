@@ -1,0 +1,14 @@
+id: ggplot2_py.element_blank
+import_path: ggplot2_py.element_blank
+kind: function
+signature: element_blank()
+purpose: Create a blank element that draws nothing.
+description: Create a blank element that draws nothing.
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ElementBlank; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

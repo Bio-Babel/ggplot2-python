@@ -1,0 +1,30 @@
+id: ggplot2_py.bind_method_override
+name: Bind an arbitrary callable as a method with bind_method(obj, name, fn)
+applicable_to:
+  - ggplot2_py.ggproto_system
+description: |
+  `GGProto`'s auto-bind only treats a function as a method when its first
+  parameter is literally named `self`. When you want to install a callable
+  whose first arg is named something else (a lambda, a partial, a closure
+  with `this`/`obj`), use `bind_method(obj, name, fn)` from
+  `ggplot2_py.ggproto`. It always produces a real `types.MethodType` bound
+  to `obj` (so `obj.name(...)` calls `fn(obj, ...)`), with no "first arg
+  isn't self" warning.
+
+  This is the explicit counterpart to R's `ggproto(NULL, obj, name = fn)`
+  for the non-`self` case. It mutates the instance in place.
+code_template: |
+  import pandas as pd
+  from ggplot2_py.ggproto import bind_method
+  from ggplot2_py.geom import GeomPoint
+
+  g = GeomPoint()
+
+  def my_handle_na(this, data, params):   # first arg is `this`, not `self`
+      return data                          # custom no-op NA handler
+
+  bind_method(g, "handle_na", my_handle_na)
+
+  df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+  assert g.handle_na(df, {}) is df         # calls my_handle_na(g, df, {})
+typical_use_case: "installing a lambda/partial/closure as a per-instance method override when its first param isn't 'self'"

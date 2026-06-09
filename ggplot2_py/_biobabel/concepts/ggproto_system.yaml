@@ -1,0 +1,78 @@
+id: ggplot2_py.ggproto_system
+name: The ggproto object system (GGProto / ggproto / instance-as-parent / ggproto_parent)
+category: oop
+description: "``ggproto`` is the prototype-based OOP system that every Grammar-of-Graphics\ncomponent (Geom, Stat, Scale, Coord, Facet, Position, Guide) is built on. It\nis a faithful port of R's ``ggproto`` (R ref: ``ggplot2/R/ggproto.R``), living\nin ``ggplot2_py.ggproto``. The public surface is:\n\n  - ``GGProto`` — the base class (metaclass ``GGProtoMeta``). All component\n    base classes subclass it. A ``GGProto`` subclass is usable both *as a\n    class* and *as a singleton object* — the R duality where ``GeomPoint`` is\n    simultaneously a type and a usable object.\n  - ``ggproto(_class, _inherit, **members)`` — the factory. Two paths:\n      * **class-as-parent**: ``_inherit`` is a ``GGProto`` *subclass* (or\n        ``None`` → ``GGProto``) ⇒ returns a fresh dynamically-created\n        subclass whose namespace is ``members`` (R: ``class(e) <- c(...)``).\n      * **instance-as-parent**: ``_inherit`` is a ``GGProto`` *instance* ⇒\n        returns a fresh *instance* whose class subclasses\
+  \ the parent's class\n        and whose ``_super_inst`` slot points at the parent instance. Only the\n        explicit ``members`` are written onto the child; everything else is\n        resolved lazily up the ``_super_inst`` chain (R env-chain semantics).\n        This is the clone-with-overrides idiom used by extension packages\n        (e.g. ggnewscale). Post-clone parent mutations are visible through\n        the child; child writes never touch the parent.\n  - ``_set(**members)`` — instance-level member override (prototype\n    semantics). Functions whose first parameter is named ``self`` are\n    auto-bound on access. ``_set`` emits a ``UserWarning`` when you replace an\n    existing self-bound method with a plain function whose first arg is *not*\n    ``self`` (the silent-mis-bind footgun) — use ``bind_method`` instead.\n  - ``ggproto_parent(Parent, self)`` — returns a proxy that dispatches an\n    attribute to ``Parent`` (class *or* instance) and binds plain functions to\n    ``self``\
+  \ (R: ``ggproto_parent``). Use it to call a parent method explicitly\n    from inside an override (``ggproto_parent(Geom, self).draw_panel(...)``).\n  - ``bind_method(obj, name, fn)`` — explicitly install ``fn`` as a bound\n    method on instance ``obj`` regardless of its first-arg name (R:\n    ``ggproto(NULL, obj, name = fn)`` when the function's first arg isn't\n    ``self``).\n  - ``is_ggproto(x)`` / ``fetch_ggproto(x, name)`` — predicate and\n    super-chain-walking accessor (R: ``is.ggproto`` / ``fetch_ggproto``).\n\nAttribute resolution on an instance (``GGProto.__getattribute__``) walks, in\norder: (1) the instance's own ``__dict__``, (2) the ``_super_inst`` instance\nchain, (3) the class MRO — then binds any ``self``-first plain function to the\n*current* receiver. This mirrors R's ``fetch_ggproto`` recursion into\n``x$super()``.\n\nIn practice you rarely call ``ggproto()`` directly — the Python-idiomatic way\nto make a Geom/Stat is a plain ``class GeomStar(Geom): ...`` (see\n\
+  geom_extension_contract / stat_extension_contract). ``ggproto()`` is for\ndynamic, name-driven construction and for the instance-as-parent clone idiom.\n"
+invariants:
+- '`ggproto(name, ParentClass, **members)` (class-as-parent: `_inherit` is a GGProto subclass or None) returns a NEW class; `ggproto(name, parent_instance, **members)` (instance-as-parent: `_inherit` is a GGProto instance) returns a NEW instance whose `super()` is that parent instance.'
+- 'A GGProto subclass is both a class and a usable singleton object: `GeomPoint` works as a class to subclass AND `GeomPoint()` is a usable instance — the metaclass `GGProtoMeta` makes class-level attribute access behave like instance access.'
+- Functions passed to `ggproto(...)` / `_set(...)` whose FIRST parameter is literally named `self` are auto-bound as methods on access; functions whose first arg is named anything else are NOT auto-bound — use `bind_method(obj, name, fn)` for those.
+- 'Instance attribute lookup order is: own `__dict__` -> `_super_inst` chain -> class MRO (matches R `fetch_ggproto` recursion into `x$super()`). The instance chain shadows class-level defaults.'
+- 'In the instance-as-parent path, the child does NOT snapshot the parent''s state: lookups walk `_super_inst` lazily, so mutating the parent after the clone is visible through the child, and writing to the child never mutates the parent (R env modify-in-place semantics).'
+- '`ggproto_parent(Parent, self).method(...)` invokes `Parent`''s `method` bound to `self`; `Parent` may be a class (walks its MRO) or an instance (walks its own `__dict__`, then class MRO, then `_super_inst`).'
+- '`_set(name=fn)` emits a UserWarning when `fn`''s first arg is not `self` AND it shadows an existing self-bearing method (the silent-mis-bind footgun); `bind_method` performs the same install without the warning.'
+mental_model: 'For R users:
+
+  This is R''s ggproto, one-to-one. ``ggproto("MyGeom", Geom, draw_panel = fn)``
+
+  is the same call in Python: ``ggproto("MyGeom", Geom, draw_panel=fn)``.
+
+  ``ggproto_parent(Parent, self)`` is preserved verbatim. The instance-as-parent
+
+  form ``ggproto(NULL, inst, method = fn)`` (clone-with-overrides) maps to
+
+  ``ggproto("Name", inst, method=fn)``. The one R idiom that needs a Python name:
+
+  a method whose first formal is not ``self`` won''t auto-bind, so use
+
+  ``bind_method`` (R never had this problem because R passes ``self`` by
+
+  convention, not by the argument''s literal name). For everyday extension you
+
+  will usually write a normal ``class GeomX(Geom):`` instead of calling
+
+  ``ggproto()`` — both produce an equivalent ggproto class.
+
+
+  For Python users:
+
+  Think prototype-based OOP grafted onto normal Python classes. ``GGProto``
+
+  subclasses are regular classes, but the metaclass + custom
+
+  ``__getattribute__`` add two non-Python behaviours: (1) a class doubles as a
+
+  usable singleton, and (2) instances can carry a ``_super_inst`` pointer to
+
+  *another instance* whose attributes they inherit lazily (not via the MRO).
+
+  The ``self``-name binding rule is the one gotcha: a stored function only
+
+  becomes a bound method if its first parameter is spelled ``self``. For
+
+  everything else, just write ``class GeomX(Geom): ...`` and override methods
+
+  normally.
+
+
+  General:
+
+  Use ``ggproto()`` when you need dynamic/name-driven construction, and the
+
+  instance-as-parent form when you want to clone a configured component and
+
+  tweak a method or two without touching the original. Use ``ggproto_parent``
+
+  inside an override to delegate to the parent. Reach for ``bind_method`` only
+
+  when your method''s first arg isn''t ``self``.'
+related_concepts:
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.geom_extension_contract
+- ggplot2_py.stat_extension_contract
+- ggplot2_py.auto_registration
+- ggplot2_py.protocol_contracts
+- ggplot2_py.instance_parent_ggproto
+- ggplot2_py.bind_method_override

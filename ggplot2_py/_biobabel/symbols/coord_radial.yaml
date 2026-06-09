@@ -1,0 +1,84 @@
+id: ggplot2_py.coord_radial
+import_path: ggplot2_py.coord_radial
+kind: function
+signature: coord_radial(theta='x', start=0.0, end=None, thetalim=None, rlim=None, expand=True, clip='off', r_axis_inside=None, rotate_angle=False, inner_radius=0.0, reverse='none')
+purpose: draw partial-arc polar plots, donut/ring charts, or radar plots with finer control than coord_polar; bend one cartesian axis to angle and the other to radius, with an optional inner-radius hole and angular sub-range
+description: 'Create a radial coordinate system — coord_polar''s richer sibling. The plot is
+
+  built in cartesian space and then bent: the axis named by `theta` becomes the
+
+  angular axis, the other becomes the radius. Beyond coord_polar it adds an
+
+  inner-radius hole (`inner_radius`, for donut/ring charts), an angular sub-range
+
+  (`start`/`end`, `thetalim`), a radial sub-range (`rlim`), and axis-placement
+
+  controls (`r_axis_inside`, `rotate_angle`). Rendering is fully implemented.
+
+  '
+parameters:
+- name: theta
+  type: str
+  required: false
+  default: x
+- name: start
+  type: float
+  required: false
+  default: 0.0
+- name: end
+  type: Optional[float]
+  required: false
+  default: null
+- name: thetalim
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: rlim
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: expand
+  type: Union[bool, List[bool]]
+  required: false
+  default: true
+- name: clip
+  type: str
+  required: false
+  default: 'off'
+- name: r_axis_inside
+  type: Any
+  required: false
+  default: null
+- name: rotate_angle
+  type: bool
+  required: false
+  default: false
+- name: inner_radius
+  type: float
+  required: false
+  default: 0.0
+- name: reverse
+  type: str
+  required: false
+  default: none
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Coord; kind=new_object
+requires: []
+writes: []
+examples:
+- 'geom_bar(aes(x=''class'')) + coord_radial(inner_radius=0.2)  # ring bar chart'
+- 'geom_bar(aes(x=1, fill=''cat''), position=''stack'') + coord_radial(theta=''y'', inner_radius=0.4)  # donut'
+failure_fixes:
+- when: want a simple pie/rose and the extra knobs are unneeded
+  suggest:
+  - Use coord_polar(theta=...) — coord_radial adds thetalim/rlim/inner_radius/end on top of it.
+- when: want a donut/ring instead of a filled pie
+  suggest:
+  - Pass inner_radius>0, e.g. coord_radial(theta='y', inner_radius=0.3).
+- when: only part of the circle should be drawn
+  suggest:
+  - Set the angular sub-range with start=/end= (radians) or thetalim=, and the radial sub-range with rlim=.
+related:
+- ggplot2_py.coord_polar
+- ggplot2_py.theme_void
+- ggplot2_py.labs

@@ -1,0 +1,106 @@
+id: ggplot2_py.discrete_scale
+import_path: ggplot2_py.discrete_scale
+kind: function
+signature: discrete_scale(aesthetics, palette=None, name='waiver()', breaks='waiver()', minor_breaks='waiver()', labels='waiver()', limits=None, expand='waiver()', na_translate=True, na_value='np.nan', drop=True, guide="'legend'", position="'left'", fallback_palette=None, super_class='ScaleDiscrete')
+purpose: construct a custom discrete Scale (typically wrapped by scale_color_brewer-style factories); extension entry point for categorical aesthetic mappings
+description: "Low-level factory for building a `ScaleDiscrete` (or user-defined\nsubclass via `super_class=`). Every built-in discrete scale —\n`scale_x_discrete`, `scale_colour_hue`, `scale_color_brewer`,\n`scale_shape`, `scale_linetype`, etc. — bottoms out here.\n\n**For extension authors**: a discrete palette function takes an integer\n*n* (number of levels) and returns *n* aesthetic values::\n\n    def scale_color_mypal(name=None, **kwargs):\n        def palette(n):\n            return _my_palette_list[:n]   # list of n hex strings\n        return discrete_scale(\n            aesthetics=[\"colour\"],\n            palette=palette,\n            name=name,\n            **kwargs,\n        )\n\nDefaults:\n  - `name`, `breaks`, `minor_breaks`, `labels`, `expand` → `waiver()`.\n  - `drop=True` removes unused factor levels from the scale (so a level\n    with zero observations doesn't show in the legend).\n  - `na_translate=True` maps NA to `na_value` (default NaN) before\n    palette application;\
+  \ set False to drop NAs.\n\nNo `transform=` parameter — discrete scales are not transformable.\nFor ordinal data with a custom ordering, set `limits=[...]` to the\ndesired level order.\n\nAesthetic standardisation runs (`standardise_aes_names`); pass\n`'colour'` or `'color'` interchangeably.\n\nSee concept `ggplot2_py.extension_class_hierarchy` and\n`ggplot2_py.waiver_sentinel`.\n"
+parameters:
+- name: aesthetics
+  type: str | list[str]
+  required: true
+  default: null
+  description: Aesthetic name(s) bound by this scale.
+- name: palette
+  type: Callable | None
+  required: false
+  default: null
+  description: palette(n) -> list/array of n aesthetic values.
+- name: name
+  type: str | Waiver
+  required: false
+  default: waiver()
+- name: breaks
+  type: array-like | Callable | Waiver | None
+  required: false
+  default: waiver()
+  description: Subset/order of levels to show. None disables legend ticks.
+- name: minor_breaks
+  type: array-like | Callable | Waiver | None
+  required: false
+  default: waiver()
+- name: labels
+  type: array-like | Callable | Waiver | None
+  required: false
+  default: waiver()
+  description: Labels for each break. Length must match breaks.
+- name: limits
+  type: Sequence | Callable | None
+  required: false
+  default: null
+  description: Explicit level order. Pass to control the order of levels in the legend / x-axis.
+- name: expand
+  type: array-like | Waiver
+  required: false
+  default: waiver()
+- name: na_translate
+  type: bool
+  required: false
+  default: true
+  description: If False, NA rows are dropped (not mapped to na_value).
+- name: na_value
+  type: Any
+  required: false
+  default: np.nan
+  description: Value substituted for NA when na_translate=True. Often a grey colour for discrete fill.
+- name: drop
+  type: bool
+  required: false
+  default: true
+  description: Drop unused factor levels. Set False to keep zero-count levels in the legend (useful for cross-plot consistency).
+- name: guide
+  type: str
+  required: false
+  default: '''legend'''
+  description: '''legend'', ''none'', or a Guide object/factory.'
+- name: position
+  type: str
+  required: false
+  default: '''left'''
+  description: One of 'left', 'right', 'top', 'bottom'.
+- name: fallback_palette
+  type: Callable | None
+  required: false
+  default: null
+- name: super_class
+  type: type[ScaleDiscrete] | None
+  required: false
+  default: ScaleDiscrete
+  description: Subclass to instantiate. Override to attach custom Scale methods.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: ScaleDiscrete; kind=new_object
+requires: []
+writes: []
+examples:
+- 'discrete_scale(aesthetics=''colour'', palette=lambda n: my_palette[:n], name=''Class'')'
+- discrete_scale(aesthetics=['colour','fill'], palette=hue_pal(), drop=False)
+- '# Custom DiscreteScale subclass:
+
+  class ScaleSparse(ScaleDiscrete): ...
+
+  discrete_scale(aesthetics=''shape'', super_class=ScaleSparse)'
+failure_fixes:
+- when: scale_color_X(values=[...]) for manual palette
+  suggest:
+  - 'Use scale_color_manual or write a palette closure that returns the values: palette=lambda n: values[:n].'
+- when: want a missing-data colour different from NaN
+  suggest:
+  - Pass na_value='grey50' (or similar) and keep na_translate=True.
+- when: want unused levels to appear in the legend (cross-plot legend consistency)
+  suggest:
+  - Set drop=False. The level will appear with its palette value even if no row uses it.
+- when: legend labels in wrong order
+  suggest:
+  - Pass limits=[level1, level2, ...] to control level order; do NOT rely on factor.levels alone.
+related:
+- ggplot2_py.ggplot_add

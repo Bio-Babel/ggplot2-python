@@ -1,0 +1,33 @@
+id: ggplot2_py.instance_parent_ggproto
+name: Clone a Geom/Stat instance with overrides via ggproto("Name", instance, ...)
+applicable_to:
+  - ggplot2_py.ggproto_system
+description: |
+  `ggproto()` accepts an *instance* as its parent (R: `ggproto(NULL, inst,
+  method = fn)`). This returns a fresh instance whose class is a dynamic
+  subclass of the parent's class, with the supplied members written onto
+  the clone. Lookups for everything else walk the `_super_inst` chain
+  lazily — so the clone behaves like the original except where you
+  overrode it, and the parent is left untouched.
+
+  Use it to patch a single live geom/stat/scale object (e.g. bump
+  `default_aes`) without defining a whole subclass. `clone.super()` returns
+  the parent instance; `isinstance(clone, type(parent))` still holds.
+code_template: |
+  from ggplot2_py.ggproto import ggproto
+  from ggplot2_py.geom import GeomPoint
+  from ggplot2_py.aes import Mapping
+
+  base = GeomPoint()
+
+  # Clone the instance, overriding default_aes only (R: ggproto(NULL, inst, ...)).
+  patched = ggproto(
+      "GeomPointBig", base,
+      default_aes=Mapping(**{**dict(base.default_aes), "size": 6}),
+  )
+
+  assert patched.default_aes["size"] == 6      # override applied on the clone
+  assert base.default_aes["size"] != 6         # parent untouched
+  assert patched.super() is base               # super-chain points back
+  assert isinstance(patched, GeomPoint)        # isinstance still holds
+typical_use_case: "ggnewscale-style per-layer patching of a geom/stat/scale instance without writing a subclass"

@@ -1,0 +1,82 @@
+id: ggplot2_py.geom_smooth
+import_path: ggplot2_py.geom_smooth
+kind: function
+signature: geom_smooth(mapping=None, data=None, stat='smooth', position='identity', method=None, formula=None, se=True, orientation=None, **kwargs=None, inherit_aes=True)
+purpose: smoothed trend line overlay; loess / lm / gam fit on top of a scatter
+description: 'Fit a smoother and draw the predicted curve plus an optional confidence
+
+  ribbon. Default `method=None` resolves to loess for n<1000 and gam for
+
+  larger; override with `method=''lm''` for a straight line. Composes with
+
+  other layers via `+`; see concept `ggplot2_py.plus_accumulation`.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: smooth
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: method
+  type: str | None
+  required: false
+  default: null
+  description: '''loess'', ''lm'', ''glm'', ''gam'', or None (auto: loess if n<1000, else gam).'
+- name: formula
+  type: str | None
+  required: false
+  default: null
+  description: R-style formula such as 'y ~ x'. Default None lets the stat pick 'y ~ x'.
+- name: se
+  type: bool
+  required: false
+  default: true
+  description: Draw the confidence ribbon.
+- name: orientation
+  type: str | None
+  required: false
+  default: null
+  description: '''x'' or ''y'' to override the auto-detected fit direction.'
+- name: '**kwargs'
+  type: Any
+  required: false
+  default: null
+  description: Forwarded to the stat/geom. Includes `span` (loess smoothness, default 0.75), `level` (CI level, default 0.95), `method_args` (extra method kwargs).
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- geom_smooth(method='lm', se=False)
+- geom_smooth(method='loess', span=0.3)
+failure_fixes:
+- when: smoother is wigglier than wanted
+  suggest:
+  - Pass `span=0.5` or higher (loess) via kwargs, or use method='lm' for a straight line.
+- when: categorical x
+  suggest:
+  - geom_smooth requires a continuous x. For per-group summaries on a categorical x, use stat_summary.
+- when: ValueError on formula
+  suggest:
+  - 'Formula must be R-style: ''y ~ x'' / ''y ~ x + I(x^2)''. Not Python lambdas.'
+related:
+- ggplot2_py.labs
+- ggplot2_py.facet_wrap
+- ggplot2_py.theme

@@ -1,0 +1,45 @@
+id: ggplot2_py.geom_line
+import_path: ggplot2_py.geom_line
+kind: function
+signature: geom_line(mapping=None, data=None, linetype='solid', inherit_aes=True)
+purpose: connect points by a line (time series, trend lines)
+description: 'Connect observations sorted by x with a line segment. For unsorted x,
+
+  reach for geom_path() instead.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: linetype
+  type: str
+  required: false
+  default: solid
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(econ, aes(x='date', y='unemploy')) + geom_line()
+failure_fixes:
+- when: lines zigzag instead of going left-to-right
+  suggest:
+  - Sort data by x before plotting, or use geom_path() which preserves row order
+- when: want separate lines per group
+  suggest:
+  - Map color, linetype, or group to a grouping column in aes()
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.facet_wrap
+- ggplot2_py.scale_x_log10

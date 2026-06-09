@@ -1,0 +1,25 @@
+id: ggplot2_py.aes_mapping
+name: aes mapping — bind data columns to visual properties
+category: data-to-visual-mapping
+description: "`aes()` creates a Mapping object that binds aesthetic names (x, y, color,\nfill, size, shape, alpha, group, ...) to column names. Mappings can live\nat two levels:\n\n  1. `ggplot(df, aes(...))` — *default* mapping inherited by every layer.\n  2. `geom_X(aes(...))` — *layer-specific* mapping; overrides the default\n     for that layer only.\n\nThe cardinal mistake is putting *constants* inside `aes()`. `aes(color=\"red\")`\nis interpreted as \"there's a column literally named 'red' to map to color\".\nFor constants, move the kwarg *outside* `aes()`: `geom_point(color=\"red\")`.\n"
+invariants:
+- Column references inside aes() are **strings**, not bare identifiers (Python has no NSE).
+- Constants (single color, single size) go *outside* aes() as kwargs.
+- Layer mapping overrides plot mapping for the same aesthetic name.
+- Setting `inherit_aes=False` on a layer drops the plot's default mapping for that layer.
+- 'Aliases: `color` and `colour` both accepted; both refer to outline/stroke color.'
+mental_model: 'For R users:
+
+  Same conceptual model. The only API difference: Python aes() forbids
+
+  positional args and unquoted identifiers; R''s NSE is gone.
+
+
+  For Python users:
+
+  Think of aes as a small dataclass-like mapping. The strings inside are
+
+  *column references* in the data frame, not literal values.'
+related_concepts:
+- ggplot2_py.plus_accumulation
+- ggplot2_py.layer_inheritance

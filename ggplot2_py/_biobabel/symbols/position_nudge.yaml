@@ -1,0 +1,22 @@
+id: ggplot2_py.position_nudge
+import_path: ggplot2_py.position_nudge
+kind: function
+signature: position_nudge(x=None, y=None)
+purpose: Create a nudge position adjustment.
+description: Create a nudge position adjustment.
+parameters:
+- name: x
+  type: Optional[float]
+  required: false
+  default: null
+- name: y
+  type: Optional[float]
+  required: false
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: PositionNudge; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

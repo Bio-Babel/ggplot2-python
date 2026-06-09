@@ -1,0 +1,70 @@
+id: ggplot2_py.geom_point
+import_path: ggplot2_py.geom_point
+kind: function
+signature: geom_point(mapping=None, data=None, stat='identity', position='identity', size=None, alpha=None, color=None, inherit_aes=True)
+purpose: scatter plot; show individual observations as points
+description: 'Add a Layer that draws one point per row of the underlying data,
+
+  positioned by x/y aes mappings and styled by color/fill/size/shape/alpha.
+
+  Used in 70%+ of ggplot examples on Stack Overflow.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Layer-specific aes overrides; inherits from ggplot() default if omitted.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+  description: Layer-specific data; overrides ggplot() default.
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+  description: '''identity'' (default), ''jitter'', ''dodge'', etc.'
+- name: size
+  type: float
+  required: false
+  default: null
+- name: alpha
+  type: float
+  required: false
+  default: null
+- name: color
+  type: str
+  required: false
+  default: null
+  description: Constant color when not mapped via aes().
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(mpg, aes(x='displ', y='hwy')) + geom_point()
+- ggplot(mpg, aes(x='displ', y='hwy', color='class')) + geom_point(size=2, alpha=0.7)
+failure_fixes:
+- when: all points overlap into one circle
+  suggest:
+  - Use position='jitter' or geom_jitter() for discrete x
+  - Lower alpha (e.g. alpha=0.3) for overplotting
+- when: color/size not visible
+  suggest:
+  - 'Move the constant out of aes(): use color=''red'' as a kwarg, not aes(color=''red'')'
+related:
+- ggplot2_py.geom_smooth
+- ggplot2_py.facet_wrap
+- ggplot2_py.labs
+- ggplot2_py.theme_minimal

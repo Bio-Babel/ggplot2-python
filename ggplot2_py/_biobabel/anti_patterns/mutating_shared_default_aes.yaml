@@ -1,0 +1,44 @@
+id: ggplot2_py.mutating_shared_default_aes
+name: "Mutating a class-level `default_aes` dict in place (leaks across instances)"
+applicable_to:
+  - ggplot2_py.geom_extension_contract
+  - ggplot2_py.ggproto_system
+detection:
+  # Item-assignment into a `.default_aes` mapping: `<Anything>.default_aes[...] = ...`
+  # Line-anchored with inline (?m) (the detector runs without re.MULTILINE, so
+  # `^` would otherwise bind to string start). No `$` end-anchor is used.
+  # Assigning the WHOLE attribute (`X.default_aes = Mapping(...)`) is the
+  # correct override and is NOT matched (no `[...]` subscript).
+  regex: '(?m)^\s*\w[\w.]*\.default_aes\s*\[[^\]]+\]\s*='
+  static_only: true
+why_bad: |
+  `default_aes` is a CLASS attribute on every `Geom`/`Stat` (a `Mapping`,
+  which subclasses `dict`). Mutating it in place —
+  `GeomPoint.default_aes["colour"] = "red"` — rebinds the shared dict that
+  EVERY `GeomPoint` instance (and any subclass that didn't redefine it)
+  reads from. The change silently leaks across:
+
+  - every other plot in the process that uses that geom,
+  - other geoms that inherit the same `default_aes` object,
+  - test isolation (one test corrupts the next).
+
+  This is the classic "mutable class attribute" footgun, made worse here
+  because `Mapping` is a real dict and the assignment succeeds without
+  error. The extension idiom (see `geom_chull` in the extending tutorial)
+  is to declare a fresh `default_aes = Mapping(...)` on YOUR subclass, which
+  shadows the parent's without touching it. If you need a per-instance
+  tweak, set the constant outside `aes()` on the layer (`geom_point(colour=
+  "red")`) — never reach into the class dict.
+correct_pattern: ggplot2_py.custom_geom_draw_panel
+code_example_wrong: |
+  from ggplot2_py.geom import GeomPoint
+  GeomPoint.default_aes["colour"] = "red"   # ← mutates the shared class dict
+code_example_right: |
+  from ggplot2_py.geom import GeomPoint, Mapping
+
+  class GeomPointRed(GeomPoint):
+      # Fresh mapping on the subclass — parent's default_aes is untouched:
+      default_aes = Mapping(colour="red", size=1.5, alpha=None, shape=19)
+
+  # Or, for a one-off, set the constant on the layer (outside aes()):
+  # geom_point(colour="red")

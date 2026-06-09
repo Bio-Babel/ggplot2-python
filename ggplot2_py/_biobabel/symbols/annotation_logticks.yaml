@@ -1,0 +1,66 @@
+id: ggplot2_py.annotation_logticks
+import_path: ggplot2_py.annotation_logticks
+kind: function
+signature: annotation_logticks(base=10, sides='bl', outside=False, scaled=True, short=None, mid=None, long=None, colour='black', linewidth=0.5, linetype=1, alpha=1.0, color=None, kwargs)
+purpose: Add log-scale tick marks to a plot.
+description: Add log-scale tick marks to a plot.
+parameters:
+- name: base
+  type: float
+  required: false
+  default: 10
+- name: sides
+  type: str
+  required: false
+  default: bl
+- name: outside
+  type: bool
+  required: false
+  default: false
+- name: scaled
+  type: bool
+  required: false
+  default: true
+- name: short
+  type: Any
+  required: false
+  default: null
+- name: mid
+  type: Any
+  required: false
+  default: null
+- name: long
+  type: Any
+  required: false
+  default: null
+- name: colour
+  type: str
+  required: false
+  default: black
+- name: linewidth
+  type: float
+  required: false
+  default: 0.5
+- name: linetype
+  type: Union[str, int]
+  required: false
+  default: 1
+- name: alpha
+  type: float
+  required: false
+  default: 1.0
+- name: color
+  type: Optional[str]
+  required: false
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

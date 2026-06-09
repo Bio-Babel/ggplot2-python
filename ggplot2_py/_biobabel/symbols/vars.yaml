@@ -1,0 +1,42 @@
+id: ggplot2_py.vars
+import_path: ggplot2_py.vars
+kind: function
+signature: vars(*args=None, **kwargs=None)
+purpose: specify faceting variables in the modern facet_wrap / facet_grid form; wrap one or more column names into a flat list for facet_*
+description: "Collect positional and keyword variable names into a flat list of column\nstrings, suitable for passing to `facet_wrap` / `facet_grid`.\n\nIn R ggplot2 `vars()` exists because the old facet API used a formula\n(`~ cyl + gear`) and the new one uses tidy-eval NSE. In Python neither\nformulas nor NSE exist, so `vars()` is just a sugar constructor — it does\nexactly the same thing as passing a tuple of column-name strings:\n\n    facet_wrap(vars('cyl', 'gear'))\n    facet_wrap(('cyl', 'gear'))          # equivalent\n\nBoth forms work; `vars(...)` exists for API parity with R and to make\nthe intent (\"these are facet vars\") explicit.\n\nNames passed as keyword arguments contribute their *value* (the column\nname); the key is ignored — `vars(rows='cyl')` returns `['cyl']`.\nMapping-style key=value is supported by facet_grid via separate `rows=` /\n`cols=` keyword arguments at the facet_grid level.\n"
+parameters:
+- name: '*args'
+  type: str
+  required: false
+  default: null
+  description: Column names given positionally. e.g. vars('cyl', 'gear').
+- name: '**kwargs'
+  type: str
+  required: false
+  default: null
+  description: Column names given by keyword; only the value is kept, the key is dropped.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Vars; kind=value
+requires: []
+writes: []
+examples:
+- facet_wrap(vars('cyl'))
+- facet_wrap(vars('cyl', 'gear'), scales='free_y')
+- facet_grid(rows=vars('cyl'), cols=vars('gear'))
+failure_fixes:
+- when: passed a bare identifier — NameError before vars() runs
+  suggest:
+  - 'Wrap names in quotes: vars(''cyl'', ''gear''), not vars(cyl, gear). Python has no NSE.'
+  explanation: R's `vars(cyl)` works via NSE; in Python the bare identifier is evaluated before vars() is called.
+- when: passed a tilde-formula string like '~ cyl + gear'
+  suggest:
+  - facet_wrap accepts a plain column name or a tuple of names — drop the '~'. e.g. facet_wrap(vars('cyl', 'gear')).
+- when: want to use vars() with facet_grid
+  suggest:
+  - 'facet_grid takes rows=/cols= keyword args: facet_grid(rows=vars(''cyl''), cols=vars(''gear'')).'
+- when: vars() returns a list, but I expected a special object
+  suggest:
+  - By design — facet_wrap / facet_grid accept either a single string, a tuple/list of strings, or the result of vars(). All three are equivalent.
+related:
+- ggplot2_py.facet_wrap
+- ggplot2_py.facet_grid

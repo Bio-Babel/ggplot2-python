@@ -1,0 +1,74 @@
+id: ggplot2_py.custom_stat_compute_panel
+name: Custom Stat — override compute_panel() (+ setup_data) for a cross-group reshape
+applicable_to:
+  - ggplot2_py.stat_extension_contract
+  - ggplot2_py.ggproto_system
+description: |
+  Override `compute_panel` (not `compute_group`) when the computation
+  SPANS groups — i.e. you need every row in the panel at once. `Stat`
+  splits a panel into groups and calls `compute_group` per group; the
+  default `compute_panel` is just "loop the groups, rbind the results".
+  Replace it when the result of one group depends on the others: a
+  panel-wide denominator (share-of-total), a long↔wide reshape, or a
+  cross-group ordering. This is exactly what ggalluvial's
+  `StatAlluvium.compute_panel` does — it reshapes lodes across all axes,
+  which no per-group view can see.
+
+  Use `compute_group` instead when each group is independent (centroid,
+  per-group regression, hull) — see idiom `custom_stat_compute_group`.
+
+  The three hooks, in call order:
+
+    * `setup_data(self, data, params) -> df` — runs once on the whole layer
+      BEFORE grouping/splitting. Coerce types, drop NA, add helper columns
+      here (ggalluvial does its alluvia→lodes conversion in `setup_data`).
+    * `setup_params(self, data, params) -> dict` — normalise / validate /
+      inject parameter defaults; whatever it returns is forwarded as the
+      `**params` of `compute_panel`.
+    * `compute_panel(self, data, scales, **params) -> df` — the cross-group
+      computation. Whatever columns you return (`x`, `y`, …) become the
+      geom's aesthetics.
+
+  Note: ggplot2_py lets these be `@staticmethod` (matching the R ggproto
+  style); declare `required_aes` so the layer validates inputs. Expose the
+  stat with a thin `layer()` wrapper for the familiar `stat_*()` form.
+code_template: |
+  import pandas as pd
+  from ggplot2_py.stat import Stat
+  from ggplot2_py.layer import layer as Layer
+  from ggplot2_py import ggplot, aes, ggsave
+
+  class StatPanelShare(Stat):
+      """Cross-group reshape: each row's y becomes its share of the panel
+      total. The denominator needs the WHOLE panel, so override
+      compute_panel — compute_group could not see the other groups."""
+      required_aes = ("x", "y")
+
+      @staticmethod
+      def setup_data(data, params):
+          # runs before grouping: coerce + drop NA on the full layer
+          d = data.copy()
+          return d[d["y"].notna()]
+
+      @staticmethod
+      def setup_params(data, params):
+          # validate / inject defaults; forwarded as compute_panel(**params)
+          return params
+
+      @staticmethod
+      def compute_panel(data, scales, **params):
+          out = data.copy()
+          total = out["y"].sum()
+          out["y"] = out["y"] / total if total else 0.0
+          return out
+
+  def stat_panel_share(mapping=None, data=None, geom="col",
+                       position="stack", **kwargs):
+      return Layer(stat=StatPanelShare, geom=geom, data=data,
+                   mapping=mapping, position=position, params=kwargs)
+
+  df = pd.DataFrame({"cat": list("ABCD"), "val": [10, 30, 20, 40]})
+  p = ggplot(df, aes(x="cat", y="val")) + stat_panel_share()  # y now sums to 1
+  ggsave("/tmp/idiom_custom_stat_compute_panel.png", plot=p, width=5, height=4)
+anti_pattern_paired: ggplot2_py.subclass_without_override
+typical_use_case: "a stat whose output depends on the whole panel — share-of-total, long↔wide reshape (ggalluvial), or a cross-group ordering — where per-group compute_group cannot work"

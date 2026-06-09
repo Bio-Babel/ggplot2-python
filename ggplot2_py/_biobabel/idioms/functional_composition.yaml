@@ -1,0 +1,41 @@
+id: ggplot2_py.functional_composition
+name: Compose plots functionally — sum(parts, start=...), reduce(add, ...), list-on-RHS
+applicable_to:
+  - ggplot2_py.singledispatch_composition
+description: |
+  Python-exclusive. Because `GGPlot.__add__` is defined and every
+  component family is registered with the `update_ggplot` generic, the
+  standard Python composition idioms work directly — handy for programmatic
+  plot building:
+
+  * `sum(parts, start=ggplot(data))` — note the keyword `start=`; Python's
+    `sum(iterable, /, start=0)` takes ONE iterable plus `start`, NOT
+    variadic args.
+  * `reduce(add, parts, ggplot(data))` — the canonical functional form.
+  * `ggplot(...) + [geom_point(), theme_minimal()]` — a list on the RHS of
+    `+` is added recursively.
+
+  All three produce the same plot as chaining with `+`.
+code_template: |
+  from functools import reduce
+  from operator import add
+  from ggplot2_py import (
+      ggplot, aes, geom_point, theme_minimal, ggsave,
+  )
+  from ggplot2_py.datasets import mpg
+
+  parts = [aes(x="displ", y="hwy"), geom_point(), theme_minimal()]
+
+  # 1) sum() with the keyword start= (NOT variadic)
+  p_sum = sum(parts, start=ggplot(mpg))
+
+  # 2) functools.reduce over operator.add
+  p_reduce = reduce(add, parts, ggplot(mpg))
+
+  # 3) list on the RHS of + (added recursively)
+  p_list = ggplot(mpg, aes("displ", "hwy")) + [geom_point(), theme_minimal()]
+
+  ggsave("/tmp/idiom_functional_composition.png", plot=p_sum, width=5, height=4)
+  ggsave("/tmp/idiom_functional_composition_2.png", plot=p_list, width=5, height=4)
+anti_pattern_paired: ggplot2_py.sum_without_start
+typical_use_case: "programmatically assembling a plot from a list of components (loops, comprehensions, config-driven layers)"

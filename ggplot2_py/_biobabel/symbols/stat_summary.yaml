@@ -1,0 +1,77 @@
+id: ggplot2_py.stat_summary
+import_path: ggplot2_py.stat_summary
+kind: function
+signature: stat_summary(mapping=None, data=None, geom='pointrange', position='identity', fun_data=None, fun=None, fun_max=None, fun_min=None, fun_args=None, orientation=None)
+purpose: 'summarise y at each unique x and draw the summary (mean +/- SE, median, IQR, ...); most-customizable stat: plug in any aggregation callable'
+description: "Groups data by `(group, x)`, applies an aggregation function, and emits\none row per (group, x) for the downstream geom. Required aesthetics are\n`x` and `y`; default geom is `pointrange` (point at center, line for\nthe interval).\n\nTwo callable APIs — pick exactly one shape:\n\n- **`fun_data`** receives the y values (or the whole sub-DataFrame) and\n  must return a `dict`-like / one-row DataFrame with the columns the\n  downstream geom expects. For `pointrange`/`errorbar` that's\n  `{y, ymin, ymax}`. Helpers shipped: `mean_se`, `mean_cl_normal`,\n  `mean_cl_boot`, `mean_sdl`, `median_hilow`.\n- **`fun` / `fun_min` / `fun_max`** are *scalar* functions over y;\n  each is called separately. Use this when the desired interval cannot\n  be expressed as a single dict-returning helper.\n\nCommon failure: passing `np.mean` to `fun_data=` — `np.mean` returns a\nscalar, not `{y, ymin, ymax}`, so the resulting layer cannot map ymin/ymax.\nUse `fun=np.mean` instead, or wrap with a helper.\n\
+  \n`fun_args` is a dict of extra kwargs forwarded to whichever callable\nyou supplied.\n"
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: DataFrame | None
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: pointrange
+  description: 'Default ''pointrange''. Also common: ''errorbar'', ''crossbar'', ''linerange'', ''point'' (with fun only).'
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: fun_data
+  type: callable | str | None
+  required: false
+  default: null
+  description: Callable returning dict-like {y, ymin, ymax} per group. String name resolves to a built-in helper ('mean_se', 'mean_cl_normal', 'mean_cl_boot', 'mean_sdl', 'median_hilow').
+- name: fun
+  type: callable | None
+  required: false
+  default: null
+  description: Scalar aggregator producing the center y per group (e.g. np.mean, np.median). Use with fun_min/fun_max for intervals.
+- name: fun_max
+  type: callable | None
+  required: false
+  default: null
+  description: Scalar function for the upper interval value (used with fun).
+- name: fun_min
+  type: callable | None
+  required: false
+  default: null
+  description: Scalar function for the lower interval value (used with fun).
+- name: fun_args
+  type: dict | None
+  required: false
+  default: null
+  description: Extra kwargs forwarded to fun_data / fun / fun_min / fun_max.
+- name: orientation
+  type: str | None
+  required: false
+  default: null
+  description: '''x'' or ''y''. Auto-detected by default.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- 'stat_summary(fun_data=''mean_se'')  # default pointrange of mean +/- SE'
+- 'stat_summary(fun=np.median, fun_min=lambda y: np.quantile(y, 0.25), fun_max=lambda y: np.quantile(y, 0.75), geom=''crossbar'')'
+- stat_summary(fun=np.mean, geom='point', size=3)
+failure_fixes:
+- when: 'TypeError: cannot convert ... to DataFrame / KeyError ''ymin'' when using fun_data=np.mean'
+  suggest:
+  - fun_data must return {y, ymin, ymax}-shaped output, not a scalar — pass `fun=np.mean` instead.
+  - 'Or use a helper: fun_data=''mean_se'' (or pass the callable mean_se from ggplot2_py).'
+- when: want a custom CI (e.g. 90%) around the mean
+  suggest:
+  - 'stat_summary(fun_data=''mean_cl_normal'', fun_args={''conf_int'': 0.9})'
+- when: want only the center point, no interval
+  suggest:
+  - stat_summary(fun=np.mean, geom='point')  — leave fun_min/fun_max unset.
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.geom_jitter

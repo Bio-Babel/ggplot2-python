@@ -1,0 +1,18 @@
+id: ggplot2_py.scale_shape_continuous
+import_path: ggplot2_py.scale_shape_continuous
+kind: function
+signature: scale_shape_continuous(kwargs)
+purpose: Raise an error -- continuous data cannot be mapped to shape.
+description: Raise an error -- continuous data cannot be mapped to shape.
+parameters:
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: None; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

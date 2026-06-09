@@ -1,0 +1,42 @@
+id: ggplot2_py.element_rect
+import_path: ggplot2_py.element_rect
+kind: function
+signature: element_rect(fill=None, colour=None, linewidth=None, linetype=None, color=None, linejoin=None, inherit_blank=False)
+purpose: Create a rectangle theme element.
+description: Create a rectangle theme element.
+parameters:
+- name: fill
+  type: Optional[str]
+  required: false
+  default: null
+- name: colour
+  type: Optional[str]
+  required: false
+  default: null
+- name: linewidth
+  type: Optional[float]
+  required: false
+  default: null
+- name: linetype
+  type: Optional[Union[int, str]]
+  required: false
+  default: null
+- name: color
+  type: Optional[str]
+  required: false
+  default: null
+- name: linejoin
+  type: Optional[str]
+  required: false
+  default: null
+- name: inherit_blank
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ElementRect; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

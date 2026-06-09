@@ -1,0 +1,59 @@
+id: ggplot2_py.bind_method
+import_path: ggplot2_py.bind_method
+kind: function
+signature: bind_method(obj, name, fn)
+purpose: install a method on a GGProto object when the callable's first arg isn't literally named 'self'; attach lambdas / partials / closures as bound methods on a geom/stat/etc. at runtime
+description: 'Install `fn` as a bound method on the `GGProto` object `obj` under `name`.
+
+
+  This is the explicit counterpart to the implicit auto-bind in the ggproto
+
+  system: GGProto only auto-binds a function member as a method when its FIRST
+
+  parameter is literally named `self`. `bind_method` removes that requirement —
+
+  it always produces a `types.MethodType` bound to `obj`, accepts ANY callable
+
+  (lambdas, `functools.partial`, closures, callables with an arbitrary
+
+  first-arg name), and does NOT emit the "first arg isn''t ''self''" warning.
+
+
+  Mutates `obj` in place (installs the attribute) and returns None. Mirrors R''s
+
+  `ggproto(NULL, obj, name = fn)` for non-`self` callables.
+
+  '
+parameters:
+- name: obj
+  type: GGProto
+  required: true
+  default: null
+  description: The GGProto class or instance to receive the method.
+- name: name
+  type: str
+  required: true
+  default: null
+  description: The attribute name under which the method is installed.
+- name: fn
+  type: Callable
+  required: true
+  default: null
+  description: Any callable; it is bound to obj so its first positional arg receives obj at call time.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=none
+returns: None; kind=none
+requires: []
+writes: []
+examples:
+- 'bind_method(my_geom, ''draw_key'', lambda data, params, size=None: my_key_grob(data))'
+- bind_method(obj, 'compute', functools.partial(_impl, mode='fast'))
+failure_fixes:
+- when: a lambda member was left unbound or warned about its first arg
+  suggest:
+  - Use bind_method(obj, 'draw_panel', fn) instead of assigning fn directly; it binds any callable regardless of first-arg name.
+- when: you actually want a class-level slot, not a bound method
+  suggest:
+  - Use _set / ggproto member assignment for non-callable slots; bind_method always produces a bound method.
+related:
+- ggplot2_py.ggproto
+- ggplot2_py.fetch_ggproto

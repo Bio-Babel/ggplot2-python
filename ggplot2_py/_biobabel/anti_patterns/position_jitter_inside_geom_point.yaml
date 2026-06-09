@@ -1,0 +1,28 @@
+id: ggplot2_py.position_jitter_inside_geom_point
+name: "`geom_point(position='jitter', width=...)` — `width` is silently dropped"
+applicable_to:
+  - ggplot2_py.plus_accumulation
+detection:
+  regex: 'geom_point\s*\([^\n]*\bposition\s*=\s*[''"]jitter[''"][^\n]*\b(?:width|height)\s*=|geom_point\s*\([^\n]*\b(?:width|height)\s*=[^\n]*\bposition\s*=\s*[''"]jitter[''"]'
+  static_only: true
+why_bad: |
+  `geom_point` (``geom.py:3481``) accepts `position` as a string. When
+  you pass `position="jitter"`, the layer constructs a default
+  `PositionJitter` with no custom amount. Any sibling kwargs like
+  `width=0.2` or `height=0.1` flow through `**kwargs` into the layer's
+  `params` dict and are then interpreted as aesthetic/parameter
+  overrides on `GeomPoint`, which knows nothing about `width` — they
+  are silently ignored. The plot uses the *default* jitter amount, not
+  the value you wrote.
+
+  Pass an instantiated position object so the width/height reach
+  `position_jitter`, or use the dedicated `geom_jitter` (which has
+  `width` / `height` parameters that actually plumb through, see
+  ``geom.py:4530-4550``).
+correct_pattern: ggplot2_py.geom_jitter
+code_example_wrong: |
+  geom_point(position="jitter", width=0.2, height=0.05)   # ← width/height silently dropped
+code_example_right: |
+  geom_point(position=position_jitter(width=0.2, height=0.05))
+  # or, equivalently:
+  geom_jitter(width=0.2, height=0.05)

@@ -1,0 +1,50 @@
+id: ggplot2_py.scale_colour_stepsn
+import_path: ggplot2_py.scale_colour_stepsn
+kind: function
+signature: scale_colour_stepsn(name=None, colours=None, colors=None, values=None, space='Lab', na_value='grey50', guide='coloursteps', aesthetics='colour', kwargs)
+purpose: N-colour binned gradient colour scale.
+description: N-colour binned gradient colour scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: colours
+  type: Optional[Sequence[str]]
+  required: false
+  default: null
+- name: colors
+  type: Optional[Sequence[str]]
+  required: false
+  default: null
+- name: values
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: space
+  type: str
+  required: false
+  default: Lab
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: guide
+  type: str
+  required: false
+  default: coloursteps
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: colour
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleBinned; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

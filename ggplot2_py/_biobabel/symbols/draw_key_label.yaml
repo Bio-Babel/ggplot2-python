@@ -1,0 +1,55 @@
+id: ggplot2_py.draw_key_label
+import_path: ggplot2_py.draw_key_label
+kind: function
+signature: draw_key_label(data, params, size=None)
+purpose: draw the legend key for label geoms (text with rounded-rect background)
+description: 'Render a character with a rounded-rect background as the legend key
+
+  glyph. Used by `geom_label` and ggrepel-python''s `GeomLabelRepel`
+
+  (subclasses `GeomLabel`, inherits this draw_key).
+
+
+  Reads `colour` (text + outline), `fill` (background), `alpha`,
+
+  `family`, `fontface`, `size`, `linewidth`, `linetype`. The outline is
+
+  drawn only when `linewidth > 0` (otherwise `col=None` to hide the
+
+  border).
+
+
+  See `ggplot2_py.draw_key_point` for the full `draw_key_*(data, params,
+
+  size) -> Grob` protocol documentation.
+
+  '
+parameters:
+- name: data
+  type: dict[str, Any]
+  required: true
+  default: null
+  description: 'Single-row aesthetic dict: colour, fill, alpha, family, fontface, size, linewidth, linetype, label.'
+- name: params
+  type: dict[str, Any]
+  required: true
+  default: null
+- name: size
+  type: Any
+  required: false
+  default: null
+mutates: execution_class=plot; no declared in-place mutation; returns_kind=value
+returns: Grob; kind=value
+requires: []
+writes: []
+examples:
+- "class GeomLabel(Geom):\n    draw_key = draw_key_label  # also used by ggrepel's GeomLabelRepel"
+failure_fixes:
+- when: label outline missing
+  suggest:
+  - linewidth must be > 0; the function skips the border at linewidth=0. Set default_aes(linewidth=0.25) or higher in your Geom class.
+- when: want plain text (no background) in the legend
+  suggest:
+  - Use draw_key_text instead — draw_key_label always renders the rounded-rect background.
+related:
+- ggplot2_py.guide_legend

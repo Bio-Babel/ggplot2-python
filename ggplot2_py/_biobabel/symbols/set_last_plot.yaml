@@ -1,0 +1,36 @@
+id: ggplot2_py.set_last_plot
+import_path: ggplot2_py.set_last_plot
+kind: function
+signature: set_last_plot(plot)
+purpose: register a plot as the 'current' plot for ggsave() / last_plot() to read
+description: "Store `plot` in the module-level global `_last_plot` (in\n`ggplot2_py.plot`). `ggsave()` and `last_plot()` read this global to\npick up \"the most recently displayed plot\" when no explicit plot is\ngiven.\n\n**WARNING — process-global side effect.** This mutates module-level\nstate in `ggplot2_py.plot`. It is NOT recorded as `writes:` in this\nYAML because biobabel `writes:` describes adata-slot mutations, not\nmodule globals. The mutation is real:\n  - Threading: not thread-safe (last call wins).\n  - Subprocesses / notebooks: each fresh interpreter starts with None.\n  - Sequence-dependence: ggsave() relying on last_plot() depends on\n    the most recent `set_last_plot` having been your plot.\n\nTypically called implicitly:\n  - `print_plot(p)` calls `set_last_plot(p)` automatically.\n  - Some IDE backends call it after each `plot.show()`.\n\nExtension authors who provide their own display function (e.g.\npatchwork's custom `__repr__`) should call `set_last_plot(p)` so\n\
+  `ggsave()` without an explicit plot continues to work.\n\nNote: `last_plot` is just `get_last_plot`; they share the global.\n"
+parameters:
+- name: plot
+  type: GGPlot
+  required: true
+  default: null
+  description: Plot to record as the 'current' plot.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=none
+returns: None; kind=none
+requires: []
+writes: []
+examples:
+- 'set_last_plot(p)  # explicit; ggsave(''out.png'') will save p'
+- '# usually implicit:
+
+  print_plot(p)  # also calls set_last_plot(p)'
+- 'set_last_plot(None)  # clear'
+failure_fixes:
+- when: ggsave() with no plot arg saves the wrong plot
+  suggest:
+  - 'Call set_last_plot(p) explicitly before ggsave(), or pass the plot directly: ggsave(filename, plot=p). The ''last_plot'' global is fragile across notebook cells and threads.'
+- when: running in a multi-process script — last_plot() returns None in worker
+  suggest:
+  - Module globals don't cross fork/spawn boundaries cleanly. Pass plots explicitly into the worker; don't rely on set_last_plot from the parent.
+- when: want to clear the last plot
+  suggest:
+  - set_last_plot(None) — None is accepted and clears the slot. Subsequent last_plot() returns None.
+related:
+- ggplot2_py.ggsave
+- ggplot2_py.last_plot

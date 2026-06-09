@@ -1,0 +1,48 @@
+id: ggplot2_py.ggplot_add
+import_path: ggplot2_py.ggplot_add
+kind: function
+signature: ggplot_add(obj, plot, object_name="''")
+purpose: implement the + operator hook so a new object type composes with ggplot(); register a custom type with the singledispatch dispatcher
+description: "Generic dispatch entry point for the `+` operator on a `GGPlot`. Python\nport of R's S3 generic `ggplot_add()`. When you write `p + obj`, the\nGGPlot's `__add__` calls `ggplot_add(obj, p)`, which forwards to the\n`update_ggplot` `singledispatch` generic. The slot the object lands in\n(layers, scales, theme, coord, facet, labels, mapping, data) is\ndetermined by `type(obj)`.\n\n**For extension authors**: this is THE hook to make a new object type\ncomposable with `ggplot() + your_object`. There are two ways:\n\n1. Register your type on `update_ggplot` (preferred — open generic)::\n\n      from ggplot2_py.plot import update_ggplot\n\n      @update_ggplot.register(MyType)\n      def _add_my_type(obj, plot, object_name=\"\"):\n          # mutate/clone plot, then return it\n          plot = plot._clone()\n          plot.layers.append(obj.as_layer())\n          return plot\n\n2. Subclass and override — only useful if your object IS a plot-like\n   thing (e.g. patchwork's `Patchwork`\
+  \ extends GGPlot).\n\nBuilt-in registered types (see plot.py): `Layer`, `Scale`, `Theme`,\n`Coord`, `Facet`, `Guides`, `Labels`, `Mapping`, `pd.DataFrame`,\n`list` (each item is added in order), `None` (no-op).\n\nPatchwork-python registers `Patchwork`/`PatchworkPlot` against\n`update_ggplot` so that `ggplot(...) + patchwork(...)` works\nsymmetrically. See concepts `ggplot2_py.plus_accumulation` and\n`ggplot2_py.extension_class_hierarchy`.\n"
+parameters:
+- name: obj
+  type: Any
+  required: true
+  default: null
+  description: Object to add. Must be a registered type, or one of the built-ins.
+- name: plot
+  type: GGPlot
+  required: true
+  default: null
+  description: Plot to extend. Conventionally cloned, mutated, then returned (do NOT mutate in place if you care about referential transparency).
+- name: object_name
+  type: str
+  required: false
+  default: ''''''
+  description: Source-code name of the object — used in error messages (e.g. 'theme_minimal'). Usually injected by GGPlot.__add__ for nicer errors.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: GGPlot; kind=new_object
+requires: []
+writes: []
+examples:
+- "from ggplot2_py.plot import update_ggplot\n@update_ggplot.register(MyAnnotation)\ndef _add(obj, plot, object_name=''):\n    plot.layers.append(obj.to_layer())\n    return plot"
+- 'ggplot_add(theme_minimal(), my_plot)  # equivalent to my_plot + theme_minimal()'
+- 'ggplot_add([geom_point(), theme_bw()], my_plot)  # list is added item-by-item'
+failure_fixes:
+- when: Cannot add `MyType` to a ggplot object
+  suggest:
+  - Register a handler via @update_ggplot.register(MyType). See plot.py:1126.
+  explanation: The default fallback raises with this message. Without a registration, your type is invisible to `+`.
+- when: Cannot add ggproto objects together. Did you forget to add this object to a ggplot object?
+  suggest:
+  - 'You''re trying `GeomX() + GeomY()`. Geoms compose into a GGPlot, not into each other: `ggplot(df) + geom_x() + geom_y()`.'
+- when: Cannot add `foo` to a ggplot object. Did you forget to add parentheses, as in `foo()`?
+  suggest:
+  - 'You passed the factory function itself instead of calling it: `+ geom_point` should be `+ geom_point()`.'
+- when: want symmetric `MyType + ggplot(...)` to work
+  suggest:
+  - Define `__add__` on your type that dispatches when the RHS is a GGPlot — or use `__radd__`. ggplot2_py only handles GGPlot.__add__ (LHS=plot).
+related:
+- ggplot2_py.ggplot_build
+- ggplot2_py.ggplotGrob

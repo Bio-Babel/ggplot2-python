@@ -1,0 +1,46 @@
+id: ggplot2_py.geom_density_2d
+import_path: ggplot2_py.geom_density_2d
+kind: function
+signature: geom_density_2d(mapping=None, data=None, stat='density_2d', contour_var='density')
+purpose: 2D KDE contour lines; scatter density overlay
+description: '2D mirror of geom_density; see geom_density for full failure modes.
+
+  Computes a 2D kernel-density surface from x AND y, then draws contour
+
+  lines. Needs both x and y mapped. For filled contours use
+
+  `geom_density_2d_filled`; alias `geom_density2d` is identical.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Needs x and y (continuous).
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: density_2d
+- name: contour_var
+  type: str
+  required: false
+  default: density
+  description: '''density'', ''ndensity'' (normalised per panel), or ''count''.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(faithful, aes(x='eruptions', y='waiting')) + geom_point() + geom_density_2d()
+failure_fixes:
+- when: only x mapped, error or empty
+  suggest:
+  - geom_density_2d needs BOTH x and y; for 1D use geom_density.
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.facet_wrap

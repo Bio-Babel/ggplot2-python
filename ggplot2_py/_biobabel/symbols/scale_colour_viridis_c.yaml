@@ -1,0 +1,62 @@
+id: ggplot2_py.scale_colour_viridis_c
+import_path: ggplot2_py.scale_colour_viridis_c
+kind: function
+signature: scale_colour_viridis_c(name=None, alpha=1, begin=0, end=1, direction=1, option='D', values=None, space='Lab', na_value='grey50', guide='colourbar', aesthetics='colour', kwargs)
+purpose: Viridis continuous colour scale.
+description: Viridis continuous colour scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: alpha
+  type: float
+  required: false
+  default: 1
+- name: begin
+  type: float
+  required: false
+  default: 0
+- name: end
+  type: float
+  required: false
+  default: 1
+- name: direction
+  type: int
+  required: false
+  default: 1
+- name: option
+  type: str
+  required: false
+  default: D
+- name: values
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: space
+  type: str
+  required: false
+  default: Lab
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: guide
+  type: str
+  required: false
+  default: colourbar
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: colour
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuous; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

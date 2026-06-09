@@ -1,0 +1,25 @@
+id: ggplot2_py.Element
+import_path: ggplot2_py.Element
+kind: class
+signature: Element()
+purpose: author a NEW theme element type by subclassing Element; discover the blank/merge override points for a custom theme element; port an R theme element (element_xxx) to Python
+description: "Base class for theme elements — the styled primitives a theme is built from\n(`element_line`, `element_rect`, `element_text`, `element_blank`, ...). A\ncustom element subclass lets you add a new kind of styleable theme component.\nNote: `Element` is the theme-element base and does NOT inherit from\n`GGProto`; it is its own small hierarchy.\n\nSUBCLASSING — set the element's styling fields as instance attributes in your\n`__init__` (e.g. colour, linewidth, family, size, ...), then OVERRIDE:\n  - `blank(self) -> bool` (PROPERTY): return True for \"draw nothing\" elements\n    (the `element_blank` pattern). The base reports whether the element is a\n    blank element.\n  - `merge(self, other) -> Element`: combine this element with a less-specific\n    one, where fields set on `self` win and unset fields fall back to `other`.\n    This is how theme inheritance resolves an element down the theme tree.\n\nConcrete elements also implement a draw/grob method consumed by the renderer;\n\
+  follow the pattern of the built-in `element_*` classes for your element kind.\n\nReturns a CLASS. See concept `ggplot2_py.extension_class_hierarchy`.\n"
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: type[Element]; kind=new_object
+requires: []
+writes: []
+examples:
+- "class ElementDashed(Element):\n    def __init__(self, colour=\"black\"):\n        self.colour = colour\n    def merge(self, other):\n        ...  # self fields win, fall back to other\n"
+failure_fixes:
+- when: custom theme element does not inherit fields from the parent theme
+  suggest:
+  - Override merge(self, other) so that fields unset on self fall back to the corresponding field on other.
+- when: want an element that draws nothing
+  suggest:
+  - Make blank return True (or just use element_blank); the renderer then skips drawing it.
+related:
+- ggplot2_py.element_line
+- ggplot2_py.element_rect
+- ggplot2_py.element_text

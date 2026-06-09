@@ -1,0 +1,34 @@
+id: ggplot2_py.margin
+import_path: ggplot2_py.margin
+kind: function
+signature: margin(t=0.0, r=0.0, b=0.0, l=0.0, unit='pt')
+purpose: Create a ``Margin`` object.
+description: Create a ``Margin`` object.
+parameters:
+- name: t
+  type: float
+  required: false
+  default: 0.0
+- name: r
+  type: float
+  required: false
+  default: 0.0
+- name: b
+  type: float
+  required: false
+  default: 0.0
+- name: l
+  type: float
+  required: false
+  default: 0.0
+- name: unit
+  type: str
+  required: false
+  default: pt
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Margin; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

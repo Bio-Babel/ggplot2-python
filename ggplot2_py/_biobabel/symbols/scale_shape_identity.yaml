@@ -1,0 +1,30 @@
+id: ggplot2_py.scale_shape_identity
+import_path: ggplot2_py.scale_shape_identity
+kind: function
+signature: scale_shape_identity(name=None, guide='none', aesthetics='shape', kwargs)
+purpose: Shape identity scale.
+description: Shape identity scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: guide
+  type: str
+  required: false
+  default: none
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: shape
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuousIdentity; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

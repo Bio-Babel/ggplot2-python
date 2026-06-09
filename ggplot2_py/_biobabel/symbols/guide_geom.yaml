@@ -1,0 +1,26 @@
+id: ggplot2_py.guide_geom
+import_path: ggplot2_py.guide_geom
+kind: function
+signature: guide_geom(guide, layers=None, default_mapping=None)
+purpose: Legacy S3-style ``guide_geom`` dispatch.
+description: Legacy S3-style ``guide_geom`` dispatch.
+parameters:
+- name: guide
+  type: Any
+  required: true
+  default: null
+- name: layers
+  type: Any
+  required: false
+  default: null
+- name: default_mapping
+  type: Any
+  required: false
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

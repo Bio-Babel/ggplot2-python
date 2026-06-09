@@ -1,0 +1,64 @@
+id: ggplot2_py.ggproto
+import_path: ggplot2_py.ggproto
+kind: function
+signature: ggproto(_class=None, _inherit=None, **members=None)
+purpose: dynamically construct a Geom/Stat/Position/Coord subclass at runtime; port R ggproto(...) code verbatim into Python
+description: "Dynamically construct a `GGProto` subclass. The R idiom\n`ggproto(\"MyGeom\", Geom, draw_panel=..., default_aes=...)` is preserved\nhere as a near-identical call.\n\nIMPORTANT: in idiomatic ggplot2-python, you should prefer a plain\n`class MyGeom(Geom): ...` definition. The `ggproto()` factory exists to\nease R-to-Python porting and to support cases where the parent class is\nonly known at runtime (e.g. plugin loaders). Both forms produce the\nsame kind of object — a class with class-level slots — and both are\nconsumed identically by `layer()`.\n\nReturns a CLASS, not an instance. The class is then either:\n  (a) passed to `layer(geom=MyGeom, ...)` directly, or\n  (b) instantiated via `MyGeom()` and then passed.\n\nSee concept `ggplot2_py.extension_class_hierarchy` for the full base\nclass catalogue and override patterns.\n"
+parameters:
+- name: _class
+  type: str | None
+  required: false
+  default: null
+  description: 'Name for the new class (becomes `__name__`). Signature default is
+
+    `None`, but in practice always pass a name string (e.g. ''MyGeom'') —
+
+    the R idiom `ggproto(''MyGeom'', Geom, ...)` requires it.
+
+    '
+- name: _inherit
+  type: type[GGProto] | None
+  required: false
+  default: null
+  description: Parent class. Defaults to `GGProto`. Pass `Geom`, `Stat`, `Position`, `Coord`, `Facet`, or any of their subclasses.
+- name: '**members'
+  type: Any
+  required: false
+  default: null
+  description: 'Attributes and methods. Functions whose first parameter is `self`
+
+    become bound instance methods. Non-function values become class
+
+    slots (e.g. `required_aes=("x", "y")`, `default_aes=aes(colour="black")`).
+
+    '
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: type[GGProto]; kind=value
+requires: []
+writes: []
+examples:
+- 'MyGeom = ggproto(''MyGeom'', Geom, required_aes=(''x'',''y''), draw_panel=lambda self, data, panel_params, coord: ...)'
+- 'MyStat = ggproto(''MyStat'', Stat, compute_group=staticmethod(lambda data, scales: data))'
+- '# Idiomatic Python alternative — prefer this form:
+
+  # class MyGeom(Geom):
+
+  #     required_aes = (''x'', ''y'')
+
+  #     def draw_panel(self, data, panel_params, coord): ...'
+failure_fixes:
+- when: want to add new methods after class creation
+  suggest:
+  - 'Use a plain `class MyGeom(Geom): ...` block. ggproto() is for cases where parent is dynamic; the Python class statement is more readable for static parents.'
+- when: need to call the parent's method from inside an override
+  suggest:
+  - Use `ggproto_parent(Parent, self).method(...)`. Plain `super()` also works for class-statement subclasses.
+- when: 'TypeError: ggproto() missing required argument: ''_class'''
+  suggest:
+  - 'First positional arg is the class name string: ggproto(''MyGeom'', Geom, ...).'
+- when: TypeError when passing a regular function expecting (data, params) without `self`
+  suggest:
+  - 'GGProto methods need `self` as first arg even when not used: define `def draw_panel(self, data, params, ...)`.'
+related:
+- ggplot2_py.layer
+- ggplot2_py.ggproto_parent

@@ -1,0 +1,66 @@
+id: ggplot2_py.guide_axis_logticks
+import_path: ggplot2_py.guide_axis_logticks
+kind: function
+signature: guide_axis_logticks(long=2.25, mid=1.5, short=0.75, prescale_base=None, negative_small=None, short_theme=None, expanded=True, cap='none', theme=None, title='waiver()', order=0, position='waiver()', kwargs)
+purpose: Create an axis guide with log-spaced tick marks.
+description: Create an axis guide with log-spaced tick marks.
+parameters:
+- name: long
+  type: float
+  required: false
+  default: 2.25
+- name: mid
+  type: float
+  required: false
+  default: 1.5
+- name: short
+  type: float
+  required: false
+  default: 0.75
+- name: prescale_base
+  type: Optional[float]
+  required: false
+  default: null
+- name: negative_small
+  type: Optional[float]
+  required: false
+  default: null
+- name: short_theme
+  type: Any
+  required: false
+  default: null
+- name: expanded
+  type: bool
+  required: false
+  default: true
+- name: cap
+  type: Union[str, bool]
+  required: false
+  default: none
+- name: theme
+  type: Any
+  required: false
+  default: null
+- name: title
+  type: Any
+  required: false
+  default: waiver()
+- name: order
+  type: int
+  required: false
+  default: 0
+- name: position
+  type: Any
+  required: false
+  default: waiver()
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: GuideAxisLogticks; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

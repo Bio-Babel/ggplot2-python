@@ -1,0 +1,18 @@
+id: ggplot2_py.scale_linetype_continuous
+import_path: ggplot2_py.scale_linetype_continuous
+kind: function
+signature: scale_linetype_continuous(kwargs)
+purpose: Raise an error -- continuous data cannot be mapped to linetype.
+description: Raise an error -- continuous data cannot be mapped to linetype.
+parameters:
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: None; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,73 @@
+id: ggplot2_py.geom_extension_contract
+name: Geom extension contract (subclass Geom, override draw_panel / draw_group)
+category: extension
+description: "A custom geometry is a subclass of ``Geom`` (``ggplot2_py.geom.Geom``, a\n``GGProto`` subclass). The contract:\n\n  1. Set class-level \"slots\":\n       - ``required_aes`` — tuple of aesthetics that must be present\n         (e.g. ``(\"x\", \"y\")``).\n       - ``default_aes`` — a ``Mapping`` (alias of ``aes()``) of default\n         aesthetic values, e.g. ``Mapping(colour=\"black\", fill=\"gold\",\n         size=3, alpha=1)``.\n       - ``optional_aes`` — tuple of accepted-but-not-required aesthetics.\n       - ``non_missing_aes`` — aesthetics whose NA values trigger row removal.\n       - ``extra_params`` — extra non-aesthetic parameter names (default\n         ``(\"na_rm\",)``).\n       - ``draw_key`` — a legend-key drawing function. Pick one of the\n         ``draw_key_*`` helpers in ``ggplot2_py.draw_key``\n         (``draw_key_point``, ``draw_key_path``, ``draw_key_rect``,\n         ``draw_key_polygon``, ``draw_key_text``, ``draw_key_label``,\n         ``draw_key_blank``,\
+  \ …) or supply a custom callable.\n       - ``rename_size`` — whether ``size`` is renamed to ``linewidth``.\n  2. Override drawing. ``draw_panel(self, data, panel_params, coord,\n     **params)`` is called once per panel and must return a single grid_py\n     grob. The default ``draw_panel`` splits on the ``group`` column and\n     delegates to ``draw_group(self, data, panel_params, coord, **params)``,\n     so a per-group geom overrides ``draw_group`` instead. ``draw_layer(self,\n     data, params, layout, coord)`` is the top-level orchestrator that splits\n     by ``PANEL`` and calls ``draw_panel`` per panel — override it only when\n     you need to bypass the per-panel split.\n  3. Optionally override ``setup_data(self, data, params) -> data`` and\n     ``setup_params(self, data, params) -> params`` to pre-process before\n     defaults / position adjustment.\n\n**Important draw-time detail**: ``draw_panel`` receives data whose position\naesthetics are still in data space. You must call\
+  \ ``data =\ncoord.transform(data, panel_params)`` first to map positions into the [0, 1]\ndrawing range before building grobs (see the GeomStar tutorial example).\n\nDefining ``class GeomStar(Geom): ...`` AUTO-REGISTERS the class into\n``Geom._registry`` under both ``\"Star\"`` and ``\"star\"`` via\n``__init_subclass__`` — no manual wiring (see auto_registration). You then\npair it with a thin factory ``def geom_star(mapping=None, data=None, *,\nstat=\"identity\", position=\"identity\", ...) -> Layer`` that calls\n``layer(geom=GeomStar, ...)``. The easiest custom geom inherits from an\nexisting concrete geom and only changes ``default_aes`` (e.g.\n``class GeomPolygonHollow(GeomPolygon): default_aes = Mapping(fill=None, ...)``).\n"
+invariants:
+- A concrete `GeomX` subclasses `Geom` (or a concrete `Geom*` like `GeomPolygon`) and overrides at least one of `draw_panel` or `draw_group`; the base `draw_panel` splits on the `group` column and delegates to `draw_group`.
+- '`draw_panel(self, data, panel_params, coord, **params)` must return a grid_py grob and is expected to first call `data = coord.transform(data, panel_params)` to move positions into drawing space.'
+- 'Class slots are inheritable R-style class attributes, not instance state: set `required_aes` (tuple), `default_aes` (a `Mapping`), and `draw_key` (a `draw_key_*` callable) at class level.'
+- Defining `class GeomX(Geom)` whose name starts with `Geom` auto-registers it into `Geom._registry` under both the CamelCase key (`'X'`) and lowercase key (`'x'`) via `__init_subclass__` — no manual registration.
+- The user-facing surface is a paired factory `geom_x(...) -> Layer` that wraps `layer(geom=GeomX, ...)`; the class is what authors subclass, the factory is what users call (two-level pattern).
+- A `GeomX` instance satisfies `isinstance(GeomX(), GeomProtocol)` once it has `required_aes`, `default_aes`, `draw_key`, `setup_params`, `setup_data`, `draw_panel` (inherited from `Geom` by default).
+mental_model: 'For R users:
+
+  Identical to R''s ``GeomFoo <- ggproto("GeomFoo", Geom, required_aes = ...,
+
+  default_aes = aes(...), draw_panel = function(data, panel_params, coord, ...)
+
+  {...})``. In Python you write ``class GeomFoo(Geom):`` with the same slot
+
+  names. The big difference from R: the function whose job is ``draw_panel``
+
+  receives ``self`` and you call ``coord$transform(data, panel_params)`` as
+
+  ``coord.transform(data, panel_params)`` and build grobs with ``grid_py``
+
+  (the Python grid port) instead of R ``grid``. Inheriting-and-tweaking
+
+  (``ggproto("GeomPolygonHollow", GeomPolygon, default_aes = ...)``) becomes
+
+  ``class GeomPolygonHollow(GeomPolygon): default_aes = ...``.
+
+
+  For Python users:
+
+  Subclass ``Geom``, declare a few class attributes, and implement one drawing
+
+  method that returns a grob. The drawing layer is the only unfamiliar part:
+
+  you work with grid_py grobs (``points_grob``, ``rect_grob``, …) and a
+
+  ``Gpar`` graphics-parameter object, and you must transform coordinates via
+
+  ``coord.transform`` before drawing. The subclass auto-registers — there is
+
+  no register call. Wrap it in a ``geom_*`` factory that returns
+
+  ``layer(geom=YourGeom, ...)`` so users get the familiar ``+ geom_star()``
+
+  API.
+
+
+  General:
+
+  Cheapest path: subclass an existing concrete ``Geom*`` and only override
+
+  ``default_aes``. Full path: subclass ``Geom``, set ``required_aes`` /
+
+  ``default_aes`` / ``draw_key``, override ``draw_panel`` (or ``draw_group``
+
+  for per-group marks), and ship a ``geom_*`` factory.'
+related_concepts:
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.ggproto_system
+- ggplot2_py.auto_registration
+- ggplot2_py.stat_extension_contract
+- ggplot2_py.protocol_contracts
+- ggplot2_py.flipped_aes_orientation
+- ggplot2_py.aes_mapping
+- ggplot2_py.layer_inheritance
+- ggplot2_py.custom_geom_draw_panel
+- ggplot2_py.extension_toolkit

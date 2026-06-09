@@ -1,0 +1,35 @@
+id: ggplot2_py.Geom
+import_path: ggplot2_py.Geom
+kind: class
+signature: Geom()
+purpose: author a NEW geom by subclassing Geom (the extension entry point for custom drawing); discover which methods/attrs an extension author must override to render a layer; port an R ggproto Geom (GeomXxx) to a Python class
+description: "Base class for all geoms. A geom turns the post-stat, post-position data\nframe into drawable grobs. To create a custom geom, subclass `Geom`\n(or use `ggproto('GeomFoo', Geom, ...)`), then pass it to `layer(geom=...)`\nor wrap it in a `geom_foo()` constructor.\n\nSUBCLASSING — set these CLASS ATTRIBUTES (slots):\n  - `required_aes`: tuple of aesthetic names the geom needs, e.g. `(\"x\", \"y\")`.\n  - `default_aes`: an `aes(...)` mapping of fallback aesthetics applied via\n    `use_defaults`, e.g. `aes(colour=\"black\", linewidth=0.5, alpha=None)`.\n  - `optional_aes`: tuple of aesthetics that are allowed but not required.\n  - `non_missing_aes`: aesthetics that must be non-NA for a row to be drawn\n    (used by `handle_na`).\n  - `extra_params`: parameter names (beyond aes) the geom consumes\n    (defaults include `\"na_rm\"`).\n  - `rename_size`: bool, legacy `size`->`linewidth` rename support.\n\nSUBCLASSING — OVERRIDE these METHODS:\n  - `draw_panel(self, data, panel_params,\
+  \ coord, **params) -> grob`: the\n    primary override. Receives the whole panel's data; usually splits by\n    group and delegates to `draw_group`, or draws everything at once.\n  - `draw_group(self, data, panel_params, coord, **params) -> grob`: draw a\n    single group; override when per-group drawing is simpler than per-panel.\n  - `draw_key(data, params, size=None) -> grob`: STATICMETHOD-style; draws\n    the legend key glyph. Reuse a `draw_key_*` helper (e.g. `draw_key_point`).\n  - `setup_data(self, data, params) -> data`: massage the data frame before\n    drawing (e.g. compute xmin/xmax). Pure, returns a new/modified frame.\n  - `setup_params(self, data, params) -> params`: finalize params, e.g.\n    resolve `flipped_aes`.\n  - `use_defaults(self, data, params=None, modifiers=None, default_aes=None, theme=None)`:\n    rarely overridden; fills `default_aes` and evaluates `after_scale()`.\n\nSubclasses AUTO-REGISTER into `Geom._registry` via `__init_subclass__`\n(keyed by class\
+  \ name), so `geom`/`layer` can resolve them by string.\n\nReturns a CLASS. Instantiate it (`GeomFoo()`) or pass the class to `layer`.\nSee concept `ggplot2_py.extension_class_hierarchy` and the `ggproto` factory.\n"
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: type[Geom]; kind=new_object
+requires: []
+writes: []
+examples:
+- "class GeomTriangle(Geom):\n    required_aes = (\"x\", \"y\")\n    default_aes = aes(colour=\"black\", fill=\"grey\", linewidth=0.5, alpha=None)\n    draw_key = staticmethod(draw_key_polygon)\n    def draw_panel(self, data, panel_params, coord, **params):\n        ...  # build and return a polygon grob\n"
+- '# R-port form:
+
+  # GeomTriangle = ggproto(''GeomTriangle'', Geom, required_aes=(''x'',''y''), draw_panel=lambda self, data, panel_params, coord, **p: ...)'
+failure_fixes:
+- when: custom geom draws nothing / no grobs appear
+  suggest:
+  - Override draw_panel (or draw_group); the base Geom.draw_panel raises NotImplementedError. Return a grob, not None.
+- when: legend key is blank for the custom geom
+  suggest:
+  - Define draw_key (or set it to a draw_key_* helper like draw_key_point). The base returns a blank key.
+- when: required aesthetic error when using the geom
+  suggest:
+  - List every needed aesthetic in required_aes as a tuple of strings, e.g. required_aes = ('x', 'y').
+- when: want to call the parent geom's draw logic
+  suggest:
+  - Use ggproto_parent(Geom, self).draw_panel(...) or super().draw_panel(...) in a class-statement subclass.
+related:
+- ggplot2_py.layer
+- ggplot2_py.ggproto
+- ggplot2_py.ggproto_parent

@@ -1,0 +1,49 @@
+id: ggplot2_py.after_scale
+import_path: ggplot2_py.after_scale
+kind: function
+signature: after_scale(x)
+purpose: inside aes(), defer an aesthetic until after scale mapping has produced final colours/fills
+description: 'Return an `AfterScale` sentinel. Like `after_stat`, but resolved one
+
+  pipeline phase later — AFTER the scale has converted a data value into
+
+  a rendered aesthetic (e.g. a colour string).
+
+
+  Pipeline phase: stat → after_stat resolves → scale mapping → `after_scale`
+
+  resolves → draw. Use `after_scale` when you want to derive one rendered
+
+  aesthetic from another, e.g. setting fill to a translucent version of
+
+  the just-computed colour: `aes(fill=after_scale(lambda d: alpha(d[''colour''], 0.3)))`.
+
+
+  See concept ggplot2_py.aes_mapping and peer function ggplot2_py.after_stat
+
+  for the earlier phase.
+
+  '
+parameters:
+- name: x
+  type: str | Callable[[DataFrame], ArrayLike]
+  required: true
+  default: null
+  description: Name of a post-scale aesthetic (e.g. 'fill'), or a callable f(scaled_df) -> array.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: AfterScale; kind=value
+requires: []
+writes: []
+examples:
+- 'aes(fill=after_scale(lambda d: alpha(d[''colour''], 0.3)))'
+- aes(colour=after_scale('fill'))
+failure_fixes:
+- when: 'TypeError: AfterScale expects a str or callable'
+  suggest:
+  - Pass a string aesthetic name or a callable; bare numbers/lists are not valid.
+- when: want a stat-computed column instead of a scaled aesthetic
+  suggest:
+  - Use after_stat, not after_scale. after_stat fires before scale mapping (e.g. 'count', 'density'); after_scale fires after (e.g. derive fill from colour).
+related:
+- ggplot2_py.aes
+- ggplot2_py.after_stat

@@ -1,0 +1,27 @@
+id: ggplot2_py.ScaleDiscrete
+import_path: ggplot2_py.ScaleDiscrete
+kind: class
+signature: ScaleDiscrete()
+purpose: author a NEW discrete scale by subclassing ScaleDiscrete; discover the train/map/get_breaks/get_labels override points for a custom discrete scale; port an R ggproto ScaleDiscrete to Python
+description: "Base class for discrete (categorical) scales. A discrete scale accumulates\nthe set of observed levels during training and maps each level to an aesthetic\nvalue via its palette (e.g. a colour per category). To create a custom\ndiscrete scale, subclass `ScaleDiscrete`; for the common case prefer the\n`discrete_scale(...)` factory instead of subclassing.\n\nNOTE: resolves at top level as `ggplot2_py.ScaleDiscrete` (also importable\nas `from ggplot2_py.scale import ScaleDiscrete`).\n\nSUBCLASSING — set these CLASS ATTRIBUTES (slots):\n  - `aesthetics`: list of aesthetics this scale governs, e.g. `[\"fill\"]`.\n  - `palette`: callable taking the number of levels and returning that many\n    aesthetic values.\n  - `drop`: bool, drop unused factor levels from the scale.\n  - `na_translate`: bool, whether NA is mapped (vs dropped).\n  - `na_value`, `name`, `breaks`, `labels`, `limits`, `expand`, `guide`,\n    `position`, `fallback_palette`.\n\nSUBCLASSING — OVERRIDE these METHODS:\n\
+  \  - `train(self, x) -> None`: add the unique levels of `x` to the scale.\n  - `map(self, x, limits=None) -> mapped`: map each level to an aesthetic value\n    via the palette.\n  - `get_breaks(self, limits=None) -> breaks`: which levels to show in the\n    legend/axis.\n  - `get_labels(self, breaks=None) -> labels`: display strings for the breaks.\n\nReturns a CLASS (or, more commonly, an instance from `discrete_scale`).\nSee concept `ggplot2_py.extension_class_hierarchy`.\n"
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: type[ScaleDiscrete]; kind=new_object
+requires: []
+writes: []
+examples:
+- '# Preferred for simple cases:
+
+  # my_scale = discrete_scale(aesthetics=[''fill''], palette=lambda n: my_colours[:n])'
+- "class ScaleFillBrand(ScaleDiscrete):\n    aesthetics = [\"fill\"]\n    palette = staticmethod(lambda n: BRAND_COLOURS[:n])\n"
+failure_fixes:
+- when: for a simple custom discrete scale you only need a different palette
+  suggest:
+  - Use the discrete_scale(...) factory with palette=<n -> values>, not a subclass. Subclass ScaleDiscrete only for new train/map logic.
+- when: an unused category still appears in the legend
+  suggest:
+  - Set drop=True so unused factor levels are removed from the scale.
+related:
+- ggplot2_py.discrete_scale
+- ggplot2_py.ggproto

@@ -1,0 +1,54 @@
+id: ggplot2_py.scale_y_time
+import_path: ggplot2_py.scale_y_time
+kind: function
+signature: scale_y_time(name=None, breaks=None, labels=None, minor_breaks=None, limits=None, expand=None, oob=None, guide=None, position='left', sec_axis=None)
+purpose: Datetime scale for the y position aesthetic.
+description: Datetime scale for the y position aesthetic.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: breaks
+  type: Any
+  required: false
+  default: null
+- name: labels
+  type: Any
+  required: false
+  default: null
+- name: minor_breaks
+  type: Any
+  required: false
+  default: null
+- name: limits
+  type: Optional[Any]
+  required: false
+  default: null
+- name: expand
+  type: Any
+  required: false
+  default: null
+- name: oob
+  type: Optional[Callable]
+  required: false
+  default: null
+- name: guide
+  type: Any
+  required: false
+  default: null
+- name: position
+  type: str
+  required: false
+  default: left
+- name: sec_axis
+  type: Any
+  required: false
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuousPosition; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

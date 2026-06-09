@@ -1,0 +1,32 @@
+id: ggplot2_py.GGProto
+import_path: ggplot2_py.GGProto
+kind: class
+signature: GGProto()
+purpose: understand the base of the ggproto OO system that Geom/Stat/Scale/Coord/Facet/Position/Guide all inherit; subclass GGProto directly for a custom ggproto object with class-level slots and self-bound methods; port R's ggproto(...) object model to Python
+description: "Root of the ggproto object system — the common base of `Geom`, `Stat`,\n`Scale`/`ScaleContinuous`/`ScaleDiscrete`, `Coord`, `Facet`, `Position`,\nand `Guide`. It reproduces R ggproto semantics in Python: a CLASS carries\nthe \"slots\" (class attributes), instances are lightweight, and any function\nassigned as a member whose first parameter is `self` is auto-bound as an\ninstance method on attribute access.\n\nYou normally subclass one of the concrete bases above, not `GGProto`\ndirectly; subclass `GGProto` only when building a brand-new ggproto-style\nobject that does not fit those categories. The `ggproto(...)` factory is the\nruntime-construction equivalent of `class X(GGProto): ...`.\n\nKEY METHODS (inherited by every subclass):\n  - `_set(self, **members) -> None`: imperatively install slots / methods on\n    an instance (functions with a leading `self` become bound methods).\n  - `to_list(self) -> dict`: return the object's members as a plain dict\n    (mirrors R's `as.list.ggproto`),\
+  \ useful for introspection/cloning.\n\nUse `ggproto_parent(Parent, self).method(...)` (or `super()` in a class\nstatement) to call a parent implementation from inside an override, and\n`fetch_ggproto(obj, name)` to read a member walking the super chain.\n\nReturns a CLASS. See concept `ggplot2_py.extension_class_hierarchy`.\n"
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: type[GGProto]; kind=new_object
+requires: []
+writes: []
+examples:
+- '# Prefer a concrete base; subclass GGProto directly only for novel ggproto objects:
+
+  # class MyThing(GGProto):
+
+  #     some_slot = 1
+
+  #     def do(self, x): return x + self.some_slot'
+- 'obj = ggproto(''MyThing'', GGProto, some_slot=1, do=lambda self, x: x + self.some_slot)'
+failure_fixes:
+- when: a function member is not callable as a method / first arg isn't bound
+  suggest:
+  - Name the first parameter 'self', or install it via bind_method(obj, name, fn) for callables whose first arg isn't 'self'.
+- when: want to construct a ggproto object at runtime instead of with a class statement
+  suggest:
+  - 'Use ggproto(''Name'', GGProto, member=...); identical semantics to class Name(GGProto): ...'
+related:
+- ggplot2_py.ggproto
+- ggplot2_py.ggproto_parent
+- ggplot2_py.fetch_ggproto

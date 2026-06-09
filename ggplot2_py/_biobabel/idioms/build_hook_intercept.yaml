@@ -1,0 +1,36 @@
+id: ggplot2_py.build_hook_intercept
+name: Intercept the build pipeline with plot.add_build_hook(timing, stage, fn)
+applicable_to:
+  - ggplot2_py.build_pipeline_stages
+description: |
+  Python-exclusive. The build pipeline runs 16 named `BuildStage`s. Attach
+  a hook with `plot.add_build_hook(timing, stage, fn)` where `timing` is
+  `"before"` or `"after"` and `stage` is a `BuildStage` member. The hook is
+  called `fn(data, **ctx)` with `data` = the list of per-layer DataFrames
+  at that stage.
+
+  Two contracts:
+  * return `None` to inspect/diagnose without modifying anything;
+  * return a new list of DataFrames to transform the data mid-pipeline.
+
+  Hooks fire when `ggplot_build(plot)` (or rendering) runs. Here we inspect
+  layer row-counts right after `COMPUTE_STAT`.
+code_template: |
+  from ggplot2_py import (
+      ggplot, aes, geom_point, ggplot_build, BuildStage, ggsave,
+  )
+  from ggplot2_py.datasets import mpg
+
+  seen = {}
+  def inspect_hook(data, **ctx):
+      seen["rows"] = [len(d) for d in data]   # per-layer row counts
+      return None                              # inspect only
+
+  p = ggplot(mpg, aes("displ", "hwy")) + geom_point()
+  p.add_build_hook("after", BuildStage.COMPUTE_STAT, inspect_hook)
+
+  ggplot_build(p)                  # triggers the pipeline + hook
+  assert seen["rows"][0] == len(mpg)
+
+  ggsave("/tmp/idiom_build_hook_intercept.png", plot=p, width=5, height=4)
+typical_use_case: "debugging the pipeline, logging intermediate shapes, or transforming computed data at a specific stage"

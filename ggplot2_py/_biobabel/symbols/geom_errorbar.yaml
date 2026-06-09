@@ -1,0 +1,68 @@
+id: ggplot2_py.geom_errorbar
+import_path: ggplot2_py.geom_errorbar
+kind: function
+signature: geom_errorbar(mapping=None, data=None, stat='identity', position='identity', orientation=None)
+purpose: vertical error bars with horizontal caps; CI/SE bars on a summary
+description: 'Draw a vertical line at each x from `ymin` to `ymax` with short horizontal
+
+  caps at both ends. The `ymin`/`ymax` aesthetic pair is REQUIRED —
+
+  `geom_errorbar` does NOT compute it. Typical pattern: precompute mean and
+
+  SD/SE in a summary dataframe, then map `ymin = mean - sd`, `ymax = mean + sd`.
+
+  For an in-pipeline summary use `stat_summary(fun_data=mean_se, geom=''errorbar'')`.
+
+  Use `geom_linerange` if you don''t want the horizontal caps; pass
+
+  `orientation=''y''` (or the deprecated `geom_errorbarh`) for horizontal bars.
+
+  Accumulates via `+` (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: 'Needs x, ymin, ymax. Optional: width controls cap length.'
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+  description: Use position_dodge(width=...) to dodge error bars alongside grouped bars/points.
+- name: orientation
+  type: str | None
+  required: false
+  default: null
+  description: '''x'' (default vertical bars at each x); ''y'' draws horizontal bars at each y (needs xmin/xmax).'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(summary, aes(x='group', y='mean')) + geom_col() + geom_errorbar(aes(ymin='mean - se', ymax='mean + se'), width=0.2)
+- geom_errorbar(aes(x='gene', ymin='ci_lo', ymax='ci_hi'), width=0.3)
+failure_fixes:
+- when: blank / nothing drawn
+  suggest:
+  - geom_errorbar needs precomputed ymin and ymax — map both via aes(ymin='lo', ymax='hi').
+  - If you only have raw values, use stat_summary(fun_data=mean_se, geom='errorbar') instead.
+- when: error bars don't dodge alongside grouped bars
+  suggest:
+  - Pass position=position_dodge(width=0.9) to BOTH geom_col(position='dodge') AND geom_errorbar.
+- when: want horizontal error bars
+  suggest:
+  - geom_errorbar(orientation='y') with aes(y='cat', xmin='lo', xmax='hi'). geom_errorbarh is a deprecated alias.
+related:
+- ggplot2_py.geom_col
+- ggplot2_py.geom_point
+- ggplot2_py.facet_wrap

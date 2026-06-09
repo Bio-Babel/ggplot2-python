@@ -1,0 +1,30 @@
+id: ggplot2_py.scale_size_date
+import_path: ggplot2_py.scale_size_date
+kind: function
+signature: scale_size_date(name=None, range=None, aesthetics='size', kwargs)
+purpose: Size date scale.
+description: Size date scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: range
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: size
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuous; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

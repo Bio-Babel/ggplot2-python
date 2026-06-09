@@ -1,0 +1,22 @@
+id: ggplot2_py.guide_old_colourbar
+import_path: ggplot2_py.guide_old_colourbar
+kind: function
+signature: guide_old_colourbar(args, kwargs)
+purpose: Deprecated forwarder to :func:`guide_colourbar`.
+description: Deprecated forwarder to :func:`guide_colourbar`.
+parameters:
+- name: args
+  type: Any
+  required: true
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

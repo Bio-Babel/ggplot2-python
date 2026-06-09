@@ -1,0 +1,56 @@
+id: ggplot2_py.plus_between_two_plots
+name: "`p1 + p2` to compose two GGPlot objects"
+applicable_to:
+  - ggplot2_py.plus_accumulation
+detection:
+  regex: '\)\s*\+\s*ggplot\s*\('
+  static_only: true
+why_bad: |
+  In BASE ggplot2_py (no patchwork imported), `+` adds
+  Layer/Scale/Theme/Facet/Coord/Mapping/Labels components to a single
+  GGPlot — it does NOT place two plots side by side. The `update_ggplot`
+  singledispatch in plot.py has no built-in registration for `GGPlot`, so
+  `p1 + p2` (and `ggplot(...) + ... + ggplot(...)`) falls into the generic
+  fallback and raises:
+
+      Cannot add a `GGPlot` to a ggplot object.
+
+  Users coming from patchwork (R) reach for `+`/`|`/`/` to compose, but
+  whether those work depends on what is imported. Rather than rely on `+`
+  meaning "compose", use an EXPLICIT composition API so the intent is
+  unambiguous:
+
+    - In-ecosystem, no extra dependency: render each plot to a Gtable
+      (`ggplotGrob(p)`) and tile the grobs into an outer `Gtable` with
+      `gtable_add_grob` — see `ggplot2_py.compose_plots_grid`.
+    - With patchwork-python: `import patchwork` registers `GGPlot` on the
+      `+` generic AND monkeypatches `|`/`/`/`-`/`&` onto `GGPlot`, so
+      `p1 + p2`, `p1 | p2`, `wrap_plots(p1, p2, ncol=2)` then COMPOSE. But
+      that behavior is import-dependent and easy to get wrong (Python vs R
+      operator precedence — always parenthesize `(p1 | p2) / p3`).
+
+  So: `)+ggplot(` is a smell that you meant to *compose* plots. Reach for the
+  explicit grid/patchwork composition API instead of leaning on `+`.
+correct_pattern: ggplot2_py.compose_plots_grid
+code_example_wrong: |
+  # In base ggplot2_py, `+` does NOT compose two plots — this raises
+  # "Cannot add `GGPlot` to a ggplot object":
+  ggplot(mpg, aes("displ", "hwy")) + geom_point() + ggplot(mpg, aes("cty", "hwy")) + geom_point()
+  # (the same error occurs with `p1 + p2` between two GGPlot variables —
+  # whether it composes silently depends on whether patchwork is imported,
+  # which is exactly why you should not rely on `+` to mean "compose".)
+code_example_right: |
+  # Compose explicitly. Route 1 — in-ecosystem gtable tiling (no patchwork):
+  from grid_py import Unit
+  from gtable_py import Gtable, gtable_add_grob
+  from ggplot2_py import ggplotGrob, ggplot, aes, geom_point, ggsave
+  p_left = ggplot(mpg, aes("displ", "hwy")) + geom_point()
+  p_right = ggplot(mpg, aes("cty", "hwy")) + geom_point()
+  outer = Gtable(widths=Unit([1, 1], "null"), heights=Unit([1], "null"), name="grid")
+  outer = gtable_add_grob(outer, [ggplotGrob(p_left)], t=1, l=1, name="left")
+  outer = gtable_add_grob(outer, [ggplotGrob(p_right)], t=1, l=2, name="right")
+  ggsave("/tmp/grid.png", plot=outer)
+
+  # Route 2 — patchwork (explicit high-level API; `import patchwork` first):
+  from patchwork import wrap_plots
+  fig = wrap_plots(p_left, p_right, ncol=2)   # or (p_left | p_right); parenthesize mixes

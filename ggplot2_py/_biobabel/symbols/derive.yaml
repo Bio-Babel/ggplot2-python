@@ -1,0 +1,44 @@
+id: ggplot2_py.scale.derive
+import_path: ggplot2_py.scale.derive
+kind: function
+signature: derive()
+purpose: request that a secondary axis inherit a setting (breaks/labels/limits) from its primary axis
+description: 'Return a `derive()` sentinel that tells a secondary axis (`sec_axis` /
+
+  `dup_axis`) to INHERIT a setting from the primary axis instead of specifying
+
+  it explicitly. Mirrors R ggplot2''s `derive()`: pass it as the `breaks`,
+
+  `labels`, or other argument of a secondary axis to say "use whatever the
+
+  primary axis uses".
+
+
+  Takes no arguments and returns an opaque `_Derived` sentinel object whose only
+
+  role is to be recognised downstream by the secondary-axis machinery.
+
+
+  NOTE: resolves at `ggplot2_py.scale.derive` (it is exported at top level only
+
+  as a placeholder, so import it from `ggplot2_py.scale`). It is NOT an
+
+  orientation/flip helper — those (`flip_data`, `has_flipped_aes`) are internal.
+
+  '
+parameters: []
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: _Derived; kind=value
+requires: []
+writes: []
+examples:
+- 'from ggplot2_py.scale import derive
+
+  sec_axis(transform=lambda x: x * 9/5 + 32, breaks=derive())'
+failure_fixes:
+- when: ImportError / None when using ggplot2_py.derive at top level
+  suggest:
+  - 'Import from the scale module: from ggplot2_py.scale import derive. The top-level name is a placeholder.'
+related:
+- ggplot2_py.sec_axis
+- ggplot2_py.dup_axis

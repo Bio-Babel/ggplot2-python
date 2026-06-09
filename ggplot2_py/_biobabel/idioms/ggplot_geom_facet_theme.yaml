@@ -1,0 +1,23 @@
+id: ggplot2_py.ggplot_geom_facet_theme
+name: The four-line plot — data, geom, facet, theme
+applicable_to:
+  - ggplot2_py.plus_accumulation
+description: |
+  Most publication-quality ggplot scripts follow the same 4-line structure:
+  start with ggplot(data, aes), add one or more geoms, add a facet for
+  small multiples, finish with a theme. Reach for this skeleton first; only
+  deviate when the data forces you to.
+code_template: |
+  from ggplot2_py import ggplot, aes, geom_point, geom_smooth, facet_wrap, theme_minimal, labs
+  from ggplot2_py.datasets import mpg
+
+  p = (
+      ggplot(mpg, aes(x="displ", y="hwy", color="class"))
+      + geom_point(alpha=0.6)
+      + geom_smooth(method="loess", se=False)
+      + facet_wrap("drv")
+      + labs(title="Fuel efficiency by engine displacement",
+             x="Displacement (L)", y="Highway MPG", color="Vehicle class")
+      + theme_minimal()
+  )
+typical_use_case: "scatter + trend + small-multiples by a categorical variable"

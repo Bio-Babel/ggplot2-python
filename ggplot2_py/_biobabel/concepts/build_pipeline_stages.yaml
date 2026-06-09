@@ -1,0 +1,65 @@
+id: ggplot2_py.build_pipeline_stages
+name: The 16-stage build pipeline and build hooks (BuildStage / add_build_hook)
+category: pipeline
+description: "``ggplot_build(plot)`` turns a ``GGPlot`` (declarative spec) into a\n``BuiltGGPlot`` (computed per-layer data ready to render). It runs a fixed\npipeline of **16 named stages**, exposed as string constants on the\n``BuildStage`` class (``ggplot2_py.BuildStage``). Every stage name corresponds\nto a real operation in R's ``plot-build.R`` ``ggplot_build.ggplot()`` method,\nin the same order. The 16 stages, **in execution order**:\n\n  1.  ``LAYER_DATA``        (``\"layer_data\"``)\n  2.  ``SETUP_LAYER``       (``\"setup_layer\"``)\n  3.  ``SETUP_LAYOUT``      (``\"setup_layout\"``)\n  4.  ``COMPUTE_AESTHETICS``(``\"compute_aesthetics\"``)\n  5.  ``TRANSFORM_SCALES``  (``\"transform_scales\"``)\n  6.  ``TRAIN_POSITION``    (``\"train_position\"``)\n  7.  ``COMPUTE_STAT``      (``\"compute_stat\"``)\n  8.  ``MAP_STAT``          (``\"map_stat\"``)\n  9.  ``COMPUTE_GEOM_1``    (``\"compute_geom_1\"``)\n  10. ``COMPUTE_POSITION``  (``\"compute_position\"``)\n  11. ``RETRAIN_POSITION``\
+  \  (``\"retrain_position\"``)\n  12. ``SETUP_GUIDES``      (``\"setup_guides\"``)\n  13. ``TRAIN_NONPOSITION`` (``\"train_nonposition\"``)\n  14. ``COMPUTE_GEOM_2``    (``\"compute_geom_2\"``)\n  15. ``FINISH_STAT``       (``\"finish_stat\"``)\n  16. ``FINISH_DATA``       (``\"finish_data\"``)\n\n(``BuildStage`` defines exactly these 16 members and no others.)\n\n**Build hooks** are a Python-exclusive interception mechanism (R has no\nper-stage hooks). ``plot.add_build_hook(timing, stage, fn)`` registers a\ncallback where:\n  - ``timing`` is ``\"before\"`` or ``\"after\"`` (anything else raises);\n  - ``stage`` is a ``BuildStage`` constant;\n  - ``fn(data, **ctx)`` receives the current **per-layer data list** (one\n    DataFrame per layer). It must return a new ``list`` to REPLACE the data;\n    any non-list return (including ``None``) leaves the data unchanged.\n\n``**ctx`` carries stage-specific side context (``layout``, ``scales``,\n``guides``, ``theme`` — the set depends on the stage).\
+  \ Hook signatures are\nintrospected, so ``lambda data: ...``, ``def f(data, layout=None): ...``, and\n``lambda data, **kw: ...`` all coexist — only the ctx kwargs a hook can accept\nare forwarded. ``add_build_hook`` returns ``self`` for chaining. Hooks are\nper-plot-instance and travel through ``_clone()`` (so they survive ``+``).\n\nUse hooks for tracing/diagnostics and ad-hoc data tweaks; use a custom\nStat/Geom for reusable transforms.\n"
+invariants:
+- '`BuildStage` defines EXACTLY 16 string-constant members: LAYER_DATA, SETUP_LAYER, SETUP_LAYOUT, COMPUTE_AESTHETICS, TRANSFORM_SCALES, TRAIN_POSITION, COMPUTE_STAT, MAP_STAT, COMPUTE_GEOM_1, COMPUTE_POSITION, RETRAIN_POSITION, SETUP_GUIDES, TRAIN_NONPOSITION, COMPUTE_GEOM_2, FINISH_STAT, FINISH_DATA.'
+- The stages execute in the order listed above; `ggplot_build` runs them on a `GGPlot` and returns a `BuiltGGPlot`.
+- '`plot.add_build_hook(timing, stage, fn)` requires `timing` in {''before'',''after''} (other values raise ValueError) and `stage` to be a `BuildStage` constant; it returns `self` for chaining.'
+- A hook is called as `fn(data, **ctx)` where `data` is the current per-layer list of DataFrames; returning a `list` REPLACES the data, returning any non-list (including None) leaves it unchanged.
+- '`**ctx` is stage-dependent (e.g. SETUP_LAYOUT/COMPUTE_STAT/COMPUTE_POSITION provide `layout`; TRANSFORM_SCALES/TRAIN_NONPOSITION provide `scales`; SETUP_GUIDES provides `guides`; COMPUTE_GEOM_2 provides `theme`); the hook runner introspects each hook and forwards only the kwargs it declares (or all of them if it has `**kwargs`).'
+- Multiple hooks on the same (timing, stage) run in registration order; hooks are stored per GGPlot instance in `_build_hooks` and are carried through `_clone()`.
+mental_model: 'For R users:
+
+  The 16 stages ARE R''s ``ggplot_build.ggplot()`` steps in order
+
+  (``plot-build.R``): layer data, ``setup_layer``, layout setup, compute
+
+  aesthetics, ``Scales$transform_df``, train x/y, compute stat, map stat,
+
+  first geom pass, position adjust, retrain, guides, train non-position
+
+  scales, second geom pass, ``finish_statistics``, ``finish_data``. R exposes
+
+  none of these for interception; the ``add_build_hook`` "before"/"after"
+
+  callbacks are the Python-only addition. ``ggplot_build`` is the same generic
+
+  you know (here a ``functools.singledispatch`` — see singledispatch_composition).
+
+
+  For Python users:
+
+  ``ggplot_build`` is a 16-step transform from spec to drawable data, and
+
+  ``BuildStage`` names every step. Hooks are listeners on those steps:
+
+  ``plot.add_build_hook("after", BuildStage.COMPUTE_STAT, fn)``. Your ``fn``
+
+  takes the list of per-layer DataFrames; return a new list to mutate the
+
+  pipeline, return ``None`` to just observe. The runner only passes the
+
+  ``**ctx`` kwargs your function declares, so write ``def fn(data, **ctx)`` or
+
+  ``def fn(data, layout=None)`` freely.
+
+
+  General:
+
+  Know the 16-stage order to choose the right insertion point (e.g. normalise
+
+  after ``COMPUTE_STAT``, scale positions after ``COMPUTE_AESTHETICS``). Return
+
+  a list from a hook to modify data, ``None`` to observe. Prefer a Stat/Geom
+
+  when the transform is reusable.'
+related_concepts:
+- ggplot2_py.singledispatch_composition
+- ggplot2_py.stat_extension_contract
+- ggplot2_py.geom_extension_contract
+- ggplot2_py.plus_accumulation
+- ggplot2_py.build_hook_intercept
+- ggplot2_py.functional_composition

@@ -1,0 +1,56 @@
+id: ggplot2_py.geom_col
+import_path: ggplot2_py.geom_col
+kind: function
+signature: geom_col(mapping=None, data=None, position='stack', just=0.5, inherit_aes=True)
+purpose: bar chart from pre-summarized data; show y values per x category as bars
+description: 'Identical to `geom_bar(stat=''identity'')` — uses the y aesthetic as the
+
+  *raw* bar height instead of counting rows. Use `geom_col` whenever your
+
+  data has one row per bar with the height in a column. Use `geom_bar`
+
+  whenever your data has one row per observation and you want to count.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: position
+  type: str
+  required: false
+  default: stack
+  description: '''stack'' (default), ''dodge'' (side-by-side), ''fill'' (stacked to 100%).'
+- name: just
+  type: float
+  required: false
+  default: 0.5
+  description: 'Bar alignment: 0=left, 0.5=center, 1=right of its x position.'
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- geom_col(aes(x='class', y='count_col'))
+- ggplot(summary_df, aes(x='gene', y='log2fc', fill='direction')) + geom_col(position='dodge')
+failure_fixes:
+- when: bars are all the same height (NaN or 0)
+  suggest:
+  - geom_col REQUIRES a y aesthetic — pass aes(x='cat', y='height_col').
+  - If your data has one row per observation, use geom_bar (no y) instead.
+- when: want grouped bars side-by-side rather than stacked
+  suggest:
+  - position='dodge'
+related:
+- ggplot2_py.facet_wrap
+- ggplot2_py.theme_minimal

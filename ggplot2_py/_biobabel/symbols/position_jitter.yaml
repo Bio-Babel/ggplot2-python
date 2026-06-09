@@ -1,0 +1,26 @@
+id: ggplot2_py.position_jitter
+import_path: ggplot2_py.position_jitter
+kind: function
+signature: position_jitter(width=None, height=None, seed=nan)
+purpose: Create a jitter position adjustment.
+description: Create a jitter position adjustment.
+parameters:
+- name: width
+  type: Optional[float]
+  required: false
+  default: null
+- name: height
+  type: Optional[float]
+  required: false
+  default: null
+- name: seed
+  type: Any
+  required: false
+  default: .nan
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: PositionJitter; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

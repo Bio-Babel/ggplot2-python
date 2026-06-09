@@ -1,0 +1,22 @@
+id: ggplot2_py.forgetting_parens_on_geom
+name: Adding a geom factory without calling it (missing `()`)
+applicable_to:
+  - ggplot2_py.plus_accumulation
+detection:
+  regex: '\+\s*(?:geom_\w+|stat_\w+|scale_\w+|facet_\w+|theme_\w+|coord_\w+|position_\w+)\b(?!\s*\()'
+  static_only: true
+why_bad: |
+  In Python, `geom_point` (no parens) is the *function object* itself, not a
+  layer. `p + geom_point` therefore tries to add a callable to a GGPlot,
+  which `update_ggplot` catches at plot.py:1142-1148 with a helpful raise:
+
+      Did you forget to add parentheses, as in `geom_point()`?
+
+  This bug is extra confusing because the standalone `geom_point` line in a
+  notebook prints the function repr (`<function geom_point at 0x...>`) which
+  may look harmless until the `+` operation triggers the actual failure.
+correct_pattern: ggplot2_py.ggplot_geom_facet_theme
+code_example_wrong: |
+  p = ggplot(mpg, aes(x="displ", y="hwy")) + geom_point   # ← no ()
+code_example_right: |
+  p = ggplot(mpg, aes(x="displ", y="hwy")) + geom_point()   # ← parenthesized call

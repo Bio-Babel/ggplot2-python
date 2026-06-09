@@ -1,0 +1,30 @@
+id: ggplot2_py.scale_fill_identity
+import_path: ggplot2_py.scale_fill_identity
+kind: function
+signature: scale_fill_identity(name=None, guide='none', aesthetics='fill', kwargs)
+purpose: Identity fill scale.
+description: Identity fill scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: guide
+  type: str
+  required: false
+  default: none
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: fill
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleDiscreteIdentity; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

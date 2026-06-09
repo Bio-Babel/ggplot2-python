@@ -1,0 +1,39 @@
+id: ggplot2_py.complete_theme
+import_path: ggplot2_py.complete_theme
+kind: function
+signature: complete_theme(theme_obj=None, default=None)
+purpose: fill a partial theme() with defaults from the active global theme; extension authors call to resolve a user-supplied theme before rendering
+description: "Take an incomplete `Theme` and fill every unresolved element from a\ndefault theme (typically the active global theme set by `theme_set` /\n`theme_grey`). Returns a fully-resolved Theme where `complete=True`.\n\n**For extension authors**: call this before reading individual elements\nout of a user-supplied theme — without it, `theme(legend_position='bottom')`\nhas no axis-text/panel-background/etc. and downstream lookups silently\nreturn `None`.\n\nResolution order (from `complete_theme` in `theme.py:345-395`):\n  1. If `default=None`, fall back to the result of `get_theme()` (the\n     global current theme).\n  2. If the user theme is already `complete`, only fill MISSING keys\n     from default.\n  3. Otherwise, merge: `default + theme_obj` (theme_obj overrides\n     per-key).\n  4. As a last resort, fill from `_ggplot_global.theme_default`\n     (typically `theme_grey()` set at import time).\n\nUsed internally by `ggplot_gtable` and by patchwork to harmonise theme\nstate\
+  \ across nested plots. See concept `ggplot2_py.plus_accumulation`.\n"
+parameters:
+- name: theme_obj
+  type: Theme | None
+  required: false
+  default: null
+  description: Partial theme. None → start from the default.
+- name: default
+  type: Theme | None
+  required: false
+  default: null
+  description: Theme to fill missing elements from. None → `get_theme()` (global current).
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=new_object
+returns: Theme; kind=new_object
+requires: []
+writes: []
+examples:
+- 'complete_theme(theme(axis_text=element_text(size=14)))  # fill from active theme'
+- 'complete_theme(my_partial, default=theme_minimal())  # fill from theme_minimal'
+- 'complete_theme(None)  # equivalent to a copy of the active global theme'
+failure_fixes:
+- when: calc_element() returns None for an element you expect to exist
+  suggest:
+  - Run the theme through complete_theme() first. A bare theme(...) has only the keys the user set; everything else is unset until completion.
+- when: want to verify which elements were defaulted vs user-set
+  suggest:
+  - After completion, `.complete` is True but individual elements don't carry provenance. To check, diff `theme_obj.keys()` before vs after.
+- when: running before reset_theme_settings() at import time
+  suggest:
+  - Don't. complete_theme falls back to _ggplot_global.theme_default, which is None until reset_theme_settings() runs. ggplot2_py/__init__.py calls it at import.
+related:
+- ggplot2_py.calc_element
+- ggplot2_py.element_render

@@ -1,0 +1,28 @@
+id: ggplot2_py.theme_gray
+import_path: ggplot2_py.theme_gray
+kind: function
+signature: theme_gray(base_size=11, base_family='')
+purpose: US-spelling alias of theme_grey
+description: 'Direct alias: `theme_gray = theme_grey` (theme_defaults.py:392). Identical
+
+  behavior, identical signature. Use whichever spelling matches the rest of
+
+  your codebase. See `ggplot2_py.theme_grey` for the full contract.
+
+  '
+parameters:
+- name: base_size
+  type: float
+  required: false
+  default: 11
+- name: base_family
+  type: str
+  required: false
+  default: ''
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Theme; kind=new_object
+requires: []
+writes: []
+examples:
+- p + theme_gray()
+failure_fixes: []

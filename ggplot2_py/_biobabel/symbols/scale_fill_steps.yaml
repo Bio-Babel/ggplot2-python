@@ -1,0 +1,46 @@
+id: ggplot2_py.scale_fill_steps
+import_path: ggplot2_py.scale_fill_steps
+kind: function
+signature: scale_fill_steps(name=None, low='#132B43', high='#56B1F7', space='Lab', na_value='grey50', guide='coloursteps', aesthetics='fill', kwargs)
+purpose: Binned two-colour gradient fill scale.
+description: Binned two-colour gradient fill scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: low
+  type: str
+  required: false
+  default: '#132B43'
+- name: high
+  type: str
+  required: false
+  default: '#56B1F7'
+- name: space
+  type: str
+  required: false
+  default: Lab
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: guide
+  type: str
+  required: false
+  default: coloursteps
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: fill
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleBinned; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

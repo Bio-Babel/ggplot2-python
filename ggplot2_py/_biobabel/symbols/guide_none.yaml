@@ -1,0 +1,22 @@
+id: ggplot2_py.guide_none
+import_path: ggplot2_py.guide_none
+kind: function
+signature: guide_none(title='waiver()', position='waiver()')
+purpose: Create a guide that draws nothing.
+description: Create a guide that draws nothing.
+parameters:
+- name: title
+  type: Any
+  required: false
+  default: waiver()
+- name: position
+  type: Any
+  required: false
+  default: waiver()
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: GuideNone; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

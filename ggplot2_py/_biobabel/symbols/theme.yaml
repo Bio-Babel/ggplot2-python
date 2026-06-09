@@ -1,0 +1,49 @@
+id: ggplot2_py.theme
+import_path: ggplot2_py.theme
+kind: function
+signature: theme(**kwargs=None, complete=False)
+purpose: override individual theme elements; tweak axis text, legend position, panel grid, etc.
+description: '`theme()` is the granular override for any visual element of a plot. Pass
+
+  any number of `element_xxx_param=element_text(...)` / `element_line(...)` /
+
+  `element_rect(...)` / `element_blank()` kwargs. R uses dot-separated names
+
+  (`axis.text.x`); Python uses **underscores** (`axis_text_x`).
+
+  '
+parameters:
+- name: '**kwargs'
+  type: element
+  required: false
+  default: null
+  description: 'Each kwarg name is the element identifier (underscore-separated). Each
+
+    value is one of: element_text(), element_line(), element_rect(),
+
+    element_blank(), or a numeric / string scalar where applicable.
+
+    '
+- name: complete
+  type: bool
+  required: false
+  default: false
+  description: If True, this theme replaces (rather than merges with) inherited theme.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Theme; kind=new_object
+requires: []
+writes: []
+examples:
+- theme(legend_position='bottom')
+- theme(axis_text_x=element_text(angle=45, hjust=1))
+- theme(panel_grid_minor=element_blank())
+failure_fixes:
+- when: user passes R dot-syntax name (e.g. axis.text.x)
+  suggest:
+  - 'Use underscores in Python: axis_text_x= (not axis.text.x=).'
+- when: passes a plain string for an element
+  suggest:
+  - 'Wrap in element_text(...): axis_text_x=element_text(angle=45).'
+- when: want to hide an element entirely
+  suggest:
+  - 'Use element_blank(): axis_text_x=element_blank().'

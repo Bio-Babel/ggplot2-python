@@ -1,0 +1,22 @@
+id: ggplot2_py.guide_merge
+import_path: ggplot2_py.guide_merge
+kind: function
+signature: guide_merge(guide, new_guide)
+purpose: Legacy S3-style ``guide_merge`` dispatch.
+description: Legacy S3-style ``guide_merge`` dispatch.
+parameters:
+- name: guide
+  type: Any
+  required: true
+  default: null
+- name: new_guide
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

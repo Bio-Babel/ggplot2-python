@@ -1,0 +1,50 @@
+id: ggplot2_py.rel
+import_path: ggplot2_py.rel
+kind: function
+signature: rel(x)
+purpose: set a theme size relative to its parent; scale text or line size by a multiplier instead of absolute units
+description: 'Wrap a numeric multiplier in a ``Rel`` object so that a theme element''s size
+
+  is computed *relative to the parent element* rather than as an absolute
+
+  value. ``rel(1.2)`` means "1.2x the inherited size". Verified:
+
+  ``rel(1.2)`` returns a ``Rel`` whose repr is ``rel(1.2)``. Typically used
+
+  inside ``element_text`` / ``element_line``, e.g.
+
+  ``theme(axis_title=element_text(size=rel(1.2)))`` makes axis titles 20%
+
+  larger than the base font size without hard-coding a point size.
+
+  '
+parameters:
+- name: x
+  type: float
+  required: true
+  default: null
+  description: Multiplier relative to the parent element's size (e.g. 1.2 = 120%).
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Rel; kind=new_object
+requires: []
+writes: []
+examples:
+- 'from ggplot2_py import rel
+
+  r = rel(1.2)
+
+  assert repr(r) == "rel(1.2)"
+
+  '
+- 'from ggplot2_py import theme, element_text, rel
+
+  theme(axis_title=element_text(size=rel(1.2)))   # axis titles 1.2x base size
+
+  '
+failure_fixes:
+- when: size does not scale as expected
+  suggest:
+  - rel() is relative to the inherited size; the parent must have a resolvable size
+related:
+- ggplot2_py.element_text
+- ggplot2_py.theme

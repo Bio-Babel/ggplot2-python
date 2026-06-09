@@ -1,0 +1,160 @@
+id: ggplot2_py.custom_geom_draw_panel
+name: Custom Geom — override draw_panel() to build grid grobs per row
+applicable_to:
+  - ggplot2_py.geom_extension_contract
+  - ggplot2_py.ggproto_system
+description: |
+  A `Geom` turns the layer's computed data into grobs. For fully custom
+  drawing, subclass `ggplot2_py.geom.Geom`, declare `required_aes` /
+  `default_aes` (a `Mapping`, built with `aes(...)`) and `draw_key` (the
+  legend-key drawer), then override:
+
+      draw_panel(self, data, panel_params, coord, **params) -> grob
+
+  The body is always the same shape (the pattern every real extension —
+  ggalluvial `GeomStratum`, ggh4x `GeomBox` — follows):
+
+    1. `df = coord.transform(data, panel_params)` maps the data columns
+       (`x`, `y`, `xmin`, …) into the [0,1] panel-relative space the grid
+       device draws in. ALWAYS transform first; never hand grid raw data
+       coordinates.
+    2. Loop the rows of `df`, reading aesthetic columns (`x`, `y`, `colour`,
+       `fill`, `linewidth`, `alpha`, …) and building one or more grid grobs
+       per row with the PUBLIC `grid_py` builders (`rect_grob`,
+       `segments_grob`, `text_grob`, `points_grob`) and a `Gpar(...)` for
+       the graphical parameters. Resolve fill+alpha with `gg.fill_alpha`
+       and stroke colour+alpha with `gg.alpha`.
+    3. `grob_tree(*grobs)` collects them; stamp a name with
+       `grob_name(tree, "geom_x")` and return the tree.
+
+  Note on `linewidth`: grid `lwd` is in points-ish device units, so scale
+  ggplot's `linewidth` by 96/25.4 the way R's `.pt` constant does.
+
+  SUB-GEOM DELEGATION variant — when your geom mostly draws like an
+  existing one, do the per-row reshape yourself then hand the frame to the
+  built-in geom's `draw_panel` instead of re-building grobs by hand:
+
+      from ggplot2_py import GeomPoint
+      class GeomJitterTop(Geom):
+          required_aes = ("x", "y")
+          default_aes = aes(shape="o", colour="black", size=1.5,
+                            fill=None, alpha=None, stroke=0.5)
+          draw_key = draw_key_point
+          @staticmethod
+          def draw_panel(data, panel_params, coord, **params):
+              d = data.copy()
+              d["y"] = d["y"] + 0.0          # any per-row transform here
+              return GeomPoint().draw_panel(d, panel_params, coord)
+
+  This is what ggalluvial's `GeomStratum.draw_panel` does — it builds a
+  polygon frame per stratum and delegates to `GeomPolygon().draw_panel(...)`
+  rather than emitting raw polygon grobs.
+
+  DRAW_GROUP variant — when each GROUP is one connected mark (an alluvial
+  ribbon, a filled band, a smoother envelope) rather than a per-row mark,
+  override `draw_group` INSTEAD of `draw_panel`:
+
+      draw_group(self, data, panel_params, coord, **params) -> grob
+
+  It has the identical signature to `draw_panel` but is called ONCE PER
+  GROUP: the base `Geom.draw_panel` splits the panel data on the `group`
+  column and dispatches each subframe to `draw_group`, then collects the
+  results into a `grob_tree`. So inside `draw_group` you receive a single
+  group's rows already isolated — `coord.transform(data, panel_params)`,
+  read the shared aesthetics off `df.iloc[0]`, and emit ONE grob (e.g. a
+  `polygon_grob` whose outline is `x` forward then `x` reversed between
+  `ymax`/`ymin`). This is the geom_alluvium pattern (`geom_alluvium.py:247`):
+  one ribbon polygon per alluvium group. Override `draw_group` when the mark
+  spans the whole group; override `draw_panel` when you draw per row.
+
+  Expose either form with a thin `layer()` wrapper so users get the
+  familiar `geom_*()` constructor. The subclass auto-registers via
+  `__init_subclass__` (no manual wiring).
+code_template: |
+  import numpy as np
+  import pandas as pd
+  import ggplot2_py as gg
+  from ggplot2_py.geom import Geom
+  from ggplot2_py.aes import aes
+  from ggplot2_py.layer import layer as Layer
+  from ggplot2_py.draw_key import draw_key_rect, draw_key_polygon
+  from ggplot2_py import ggplot, ggsave
+  from grid_py import (
+      rect_grob, segments_grob, polygon_grob, Gpar, grob_tree, grob_name,
+  )
+
+  class GeomBarpole(Geom):
+      """Lollipop: a stem from y=0 up to y, with a rect cap at the top."""
+      required_aes = ("x", "y")
+      default_aes = aes(colour="grey30", fill="steelblue",
+                        linewidth=0.5, alpha=None, width=0.4)
+      draw_key = draw_key_rect
+
+      @staticmethod
+      def draw_panel(data, panel_params, coord, **params):
+          df = coord.transform(data, panel_params)   # -> [0,1] panel space
+          grobs = []
+          for _, row in df.iterrows():
+              x, y = float(row["x"]), float(row["y"])
+              w = float(row.get("width", 0.4)) * 0.05
+              fill = gg.fill_alpha(row.get("fill", "steelblue"),
+                                   row.get("alpha"))
+              col = gg.alpha(row.get("colour", "grey30"), row.get("alpha"))
+              lwd = float(row.get("linewidth", 0.5)) * 96 / 25.4
+              grobs.append(segments_grob(x0=x, y0=0.0, x1=x, y1=y,
+                                         gp=Gpar(col=col, lwd=lwd)))
+              grobs.append(rect_grob(x=x, y=y, width=w, height=0.02,
+                                     just="centre",
+                                     gp=Gpar(col=col, fill=fill)))
+          tree = grob_tree(*grobs)
+          tree.name = grob_name(tree, "geom_barpole")
+          return tree
+
+  def geom_barpole(mapping=None, data=None, stat="identity",
+                   position="identity", **kwargs):
+      return Layer(geom=GeomBarpole, stat=stat, data=data, mapping=mapping,
+                   position=position, params=kwargs)
+
+  df = pd.DataFrame({"cat": list("ABCDE"), "val": [3, 7, 2, 5, 4]})
+  p = ggplot(df, gg.aes(x="cat", y="val")) + geom_barpole()
+  ggsave("/tmp/idiom_custom_geom_draw_panel.png", plot=p, width=5, height=4)
+
+  # ----- draw_group variant: ONE polygon PER GROUP (geom_alluvium shape) ----
+  # Override draw_group instead of draw_panel: the base Geom.draw_panel splits
+  # the panel on `group` and calls this once per group with that group's rows.
+  class GeomBandGroup(Geom):
+      """A filled band per group: outline = x forward (ymax) then x reversed (ymin)."""
+      required_aes = ("x", "ymin", "ymax")
+      default_aes = aes(fill="steelblue", colour=None, alpha=0.5)
+      draw_key = draw_key_polygon
+
+      @staticmethod
+      def draw_group(data, panel_params, coord, **params):
+          d = coord.transform(data, panel_params)        # one group's rows
+          xs = list(d["x"].values) + list(d["x"].values[::-1])
+          ys = list(d["ymax"].values) + list(d["ymin"].values[::-1])
+          alpha = d["alpha"].iloc[0] if "alpha" in d.columns else 0.5
+          fill = gg.fill_alpha(d["fill"].iloc[0], alpha)
+          g = polygon_grob(x=xs, y=ys, default_units="native",
+                           gp=Gpar(fill=fill, col=None))
+          tree = grob_tree(g)
+          tree.name = grob_name(tree, "geom_bandgroup")
+          return tree
+
+  def geom_bandgroup(mapping=None, data=None, stat="identity",
+                     position="identity", **kwargs):
+      return Layer(geom=GeomBandGroup, stat=stat, data=data, mapping=mapping,
+                   position=position, params=kwargs)
+
+  x = np.linspace(0, 1, 20)
+  dfb = pd.DataFrame({
+      "x": np.tile(x, 2),
+      "lo": np.concatenate([x * 0.2, x * 0.2 + 0.3]),
+      "hi": np.concatenate([x * 0.2 + 0.1, x * 0.2 + 0.5]),
+      "grp": np.repeat(["a", "b"], 20),
+  })
+  pb = (ggplot(dfb, gg.aes(x="x", ymin="lo", ymax="hi", fill="grp", group="grp"))
+        + geom_bandgroup())
+  ggsave("/tmp/idiom_custom_geom_draw_group.png", plot=pb, width=5, height=4)
+anti_pattern_paired: ggplot2_py.subclass_without_override
+typical_use_case: "a geom that draws fully custom grobs per row (lollipop, stratum, sashimi arc) via draw_panel, or that reshapes data then delegates to an existing geom's draw_panel"

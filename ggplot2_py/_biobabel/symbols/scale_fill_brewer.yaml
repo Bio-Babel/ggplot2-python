@@ -1,0 +1,42 @@
+id: ggplot2_py.scale_fill_brewer
+import_path: ggplot2_py.scale_fill_brewer
+kind: function
+signature: scale_fill_brewer(type='seq', palette=1, direction=1)
+purpose: categorical fill scale using a ColorBrewer palette
+description: 'Fill aesthetic mirror of `ggplot2_py.scale_color_brewer`. Same `type=` choice
+
+  (''qual'' / ''seq'' / ''div''), same palette names, same qualitative-cap caveats
+
+  (Set1=9, Set2=8, Dark2=8, Paired=12). See `ggplot2_py.scale_color_brewer` for
+
+  the full discussion. For continuous fill data with Brewer palettes use
+
+  `scale_fill_distiller`.
+
+  '
+parameters:
+- name: type
+  type: str
+  required: false
+  default: seq
+  description: '''qual'', ''seq'', or ''div''. Use ''qual'' for categorical.'
+- name: palette
+  type: int | str
+  required: false
+  default: 1
+  description: Palette index or name ('Set2', 'Paired', 'RdBu', ...).
+- name: direction
+  type: int
+  required: false
+  default: 1
+  description: +1 native order, -1 reversed.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_fill_brewer(type='qual', palette='Set2')
+failure_fixes:
+- when: 'warning: n too large for palette ''<X>'''
+  suggest:
+  - Switch to 'Paired' (12 colors) or use `scale_fill_manual()` for more levels.

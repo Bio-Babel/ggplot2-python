@@ -1,0 +1,39 @@
+id: ggplot2_py.scale_type
+import_path: ggplot2_py.scale_type
+kind: function
+signature: scale_type(x)
+purpose: decide whether a data vector gets a continuous or discrete scale; drive find_scale's choice of scale_<aes>_<type>
+description: "Return the candidate scale-type names for a data vector, in priority order;\nthe first usable one is how ggplot picks a default scale for an aesthetic\n(consumed by :func:`find_scale`). VERIFIED behavior (by calling on samples):\n\n- pandas string Series -> ``['discrete']``; pandas Categorical ->\n  ``['discrete']``.\n- pandas/numpy numeric (int or float) -> ``['continuous']``; bool ->\n  ``['continuous']``.\n- datetime Series -> ``['datetime', 'continuous']`` (multiple candidates).\n- CAVEAT: a plain Python ``list`` is treated as ``['continuous']`` REGARDLESS\n  of element type (even ``[\"a\",\"b\",\"c\"]`` -> ``['continuous']``); the\n  discrete detection relies on pandas/numpy dtype, so wrap character data in a\n  ``pd.Series`` / ``pd.Categorical`` to get ``['discrete']``.\n"
+parameters:
+- name: x
+  type: Any
+  required: true
+  default: null
+  description: Array-like data values (pandas Series/Categorical, numpy array, or list).
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: List[str]; kind=value
+requires: []
+writes: []
+examples:
+- 'import pandas as pd
+
+  from ggplot2_py import scale_type
+
+  assert scale_type(pd.Series([1, 2, 3])) == ["continuous"]
+
+  assert scale_type(pd.Series(["a", "b", "c"])) == ["discrete"]
+
+  '
+- 'import pandas as pd
+
+  from ggplot2_py import scale_type
+
+  assert scale_type(pd.Series(pd.to_datetime(["2020-01-01", "2020-02-01"]))) == ["datetime", "continuous"]
+
+  '
+failure_fixes:
+- when: categorical data gets a continuous scale
+  suggest:
+  - A bare Python list of strings is read as continuous — pass a pd.Series or pd.Categorical to get ['discrete']
+related:
+- ggplot2_py.find_scale

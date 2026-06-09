@@ -1,0 +1,33 @@
+id: ggplot2_py.constant_inside_aes
+name: Putting a constant (color/size/alpha) inside aes()
+applicable_to:
+  - ggplot2_py.aes_mapping
+detection:
+  # The two negative lookbehinds `(?<!=)(?<!=\s)` exclude the assignment form
+  # `default_aes = aes(colour="grey30", ...)`, which is the CORRECT way to
+  # declare a custom Geom/Stat's default aesthetics (constants belong there).
+  # A constant inside a LAYER/PLOT mapping — `geom_point(aes(color="red"))`,
+  # `ggplot(df, aes(color="red"))` — is still matched (the `aes(` there is not
+  # the RHS of an `=`). Runs without re.MULTILINE; no `^`/`$` anchors used.
+  regex: '(?<!=)(?<!=\s)aes\s*\([^)]*\b(?:color|colour|fill|size|alpha|shape|linetype|linewidth|stroke)\s*=\s*(?:["''](?:red|blue|green|black|white|grey|gray|orange|purple|yellow|pink|brown|cyan|magenta|firebrick|steelblue|darkgreen|navy|gold|coral|teal|salmon|#[0-9a-fA-F]{3,8})["'']|\d+(?:\.\d+)?|TRUE|FALSE|True|False)'
+  static_only: true
+why_bad: |
+  `aes(color="red")` is *not* "draw red points." It's "there's a column
+  literally named 'red' in my data; map it to the color aesthetic." Since
+  no such column exists, ggplot creates a synthetic group named "red" and
+  picks the *default discrete palette* (a coral-ish color), then adds a
+  one-entry legend. Bug: the user thinks they set red, but the legend is
+  cluttered and the color is wrong.
+
+  The same trap applies to numeric constants — `aes(size=3)` is
+  interpreted as "map size to a column named (the string) '3'", not "every
+  point has size 3". `aes(alpha=0.5)` is even more deceptive because
+  alpha=0.5 *might* visually approximate the intended effect from the
+  legend mapping alone, masking the bug.
+correct_pattern: ggplot2_py.constants_outside_aes
+code_example_wrong: |
+  geom_point(aes(color="red"))     # ← creates a phantom "red" group + bad legend
+  geom_point(aes(size=3))          # ← maps size to a column named "3" (NameError)
+  geom_point(aes(alpha=0.5))       # ← maps alpha to column "0.5" — silent bug
+code_example_right: |
+  geom_point(color="red", size=3, alpha=0.5)    # ← kwargs outside aes(): actually constant

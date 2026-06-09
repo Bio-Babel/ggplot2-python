@@ -1,0 +1,68 @@
+id: ggplot2_py.guide_axis
+import_path: ggplot2_py.guide_axis
+kind: function
+signature: guide_axis(title='waiver()', theme=None, check_overlap=False, angle='waiver()', n_dodge=1, minor_ticks=False, cap='none', order=0, position='waiver()')
+purpose: 'fine-tune axis labels: rotate, dodge overlapping ticks, change caps'
+description: "Build a `GuideAxis` for the x or y axis. Attach via `guides()` or a\nscale's `guide=`:\n\n    ggplot(...) + guides(x=guide_axis(angle=45))\n    scale_x_discrete(guide=guide_axis(n_dodge=2))\n\nCommon uses: rotate long category labels (`angle=45`), stagger labels\ninto two rows when they collide (`n_dodge=2`), drop overlapping labels\nsilently (`check_overlap=True`), or trim the axis line at the data\nextent (`cap='both'`).\n"
+parameters:
+- name: title
+  type: str | Waiver
+  required: false
+  default: waiver()
+- name: theme
+  type: Theme | None
+  required: false
+  default: null
+- name: check_overlap
+  type: bool
+  required: false
+  default: false
+  description: Silently drop labels that would overlap.
+- name: angle
+  type: float | Waiver
+  required: false
+  default: waiver()
+  description: Label rotation in degrees.
+- name: n_dodge
+  type: int
+  required: false
+  default: 1
+  description: Number of rows/columns to stagger labels across.
+- name: minor_ticks
+  type: bool
+  required: false
+  default: false
+- name: cap
+  type: str | bool
+  required: false
+  default: none
+  description: '''none'', ''both'', ''upper'', ''lower''. True ⇒ ''both''; False ⇒ ''none''.'
+- name: order
+  type: int
+  required: false
+  default: 0
+- name: position
+  type: str | Waiver
+  required: false
+  default: waiver()
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Guide; kind=new_object
+requires: []
+writes: []
+examples:
+- guides(x=guide_axis(angle=45))
+- guides(x=guide_axis(n_dodge=2, check_overlap=True))
+- scale_x_discrete(guide=guide_axis(cap='both'))
+failure_fixes:
+- when: long x-axis labels overlap
+  suggest:
+  - 'Either rotate: guides(x=guide_axis(angle=45)), or stagger: guides(x=guide_axis(n_dodge=2)).'
+- when: '`cap` must be one of ''none'',''both'',''upper'',''lower'''
+  suggest:
+  - Pass one of those strings, or True/False as shorthand for 'both'/'none'.
+- when: want secondary axes
+  suggest:
+  - guide_axis configures one axis; a secondary axis is built by passing sec_axis=dup_axis() to the scale, then guide_axis can theme it.
+related:
+- ggplot2_py.guides
+- ggplot2_py.scale_x_discrete

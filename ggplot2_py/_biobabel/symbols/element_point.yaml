@@ -1,0 +1,42 @@
+id: ggplot2_py.element_point
+import_path: ggplot2_py.element_point
+kind: function
+signature: element_point(shape=None, colour=None, fill=None, size=None, stroke=None, color=None, inherit_blank=False)
+purpose: Create a point theme element.
+description: Create a point theme element.
+parameters:
+- name: shape
+  type: Optional[Union[int, str]]
+  required: false
+  default: null
+- name: colour
+  type: Optional[str]
+  required: false
+  default: null
+- name: fill
+  type: Optional[str]
+  required: false
+  default: null
+- name: size
+  type: Optional[float]
+  required: false
+  default: null
+- name: stroke
+  type: Optional[float]
+  required: false
+  default: null
+- name: color
+  type: Optional[str]
+  required: false
+  default: null
+- name: inherit_blank
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ElementPoint; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

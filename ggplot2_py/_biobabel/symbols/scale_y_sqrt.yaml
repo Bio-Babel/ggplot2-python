@@ -1,0 +1,29 @@
+id: ggplot2_py.scale_y_sqrt
+import_path: ggplot2_py.scale_y_sqrt
+kind: function
+signature: scale_y_sqrt(**kwargs=None)
+purpose: square-root y axis
+description: 'y-axis mirror of scale_x_sqrt; see scale_x_sqrt for behaviour / failure
+
+  modes. Forwards `**kwargs` to scale_y_continuous with
+
+  `transform=transform_sqrt()` as the default.
+
+  '
+parameters:
+- name: '**kwargs'
+  type: any
+  required: false
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_y_sqrt()
+failure_fixes:
+- when: 'warning: sqrt produced NaN — negative input'
+  suggest:
+  - sqrt is undefined for y<0; filter negatives or pick a sign-preserving transform.
+related:
+- ggplot2_py.scale_x_sqrt

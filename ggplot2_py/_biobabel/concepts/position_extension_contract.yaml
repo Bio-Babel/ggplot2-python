@@ -1,0 +1,58 @@
+id: ggplot2_py.position_extension_contract
+name: Position extension contract (subclass Position, override compute_panel / compute_layer)
+category: extension
+description: "A position adjustment is a subclass of ``Position``\n(``ggplot2_py.position.Position``, a ``GGProto`` subclass). It nudges\noverlapping geom data (dodging, stacking, jittering, nudging). Concrete\nexamples: ``PositionStack``, ``PositionDodge``, ``PositionFill``,\n``PositionJitter``, ``PositionNudge``, ``PositionIdentity``. The methods that\ndefine a position:\n\n  - ``compute_panel(self, data, params, scales=None) -> DataFrame`` — apply\n    the adjustment to one panel's data. The base ``compute_panel`` raises, so\n    every concrete position must implement it (or override ``compute_layer``).\n  - ``compute_layer(self, data, params, layout) -> DataFrame`` — the\n    orchestrator: it splits the data by ``PANEL`` and calls ``compute_panel``\n    per panel. Override it when the adjustment must see all panels at once\n    (e.g. ``PositionNudgeRepel`` exposes nudge offsets to a downstream geom).\n  - ``setup_params(self, data) -> dict`` — validate inputs / read constructor\n   \
+  \ options (e.g. the dodge width) into a params dict.\n  - ``setup_data(self, data, params) -> DataFrame`` — validate / pre-process;\n    the base checks ``required_aes``.\n\nClass slots: ``required_aes`` (tuple) and ``default_aes`` (dict). ``Position``\nsubclasses auto-register into ``Position._registry`` via ``__init_subclass__``\n(the ``Position`` prefix is stripped), so ``layer(position=\"dodge\", ...)``\nresolves ``PositionDodge``. A position is attached per-layer (``geom_bar(...,\nposition=\"dodge\")`` or ``position=position_dodge(width=0.9)``), not added to\nthe plot with ``+``.\n"
+invariants:
+- A concrete `PositionX` subclasses `Position` and overrides `compute_panel(self, data, params, scales=None)` (per-panel) — the base `compute_panel` raises; override `compute_layer(self, data, params, layout)` only when the adjustment must span panels.
+- The base `compute_layer` splits data by `PANEL` (groupby, observed) and dispatches each panel to `compute_panel`, concatenating results.
+- '`setup_params(self, data)` reads constructor options into a params dict that is passed to `compute_panel`; `setup_data(self, data, params)` validates and the base checks `required_aes`.'
+- Class slots `required_aes` (tuple) and `default_aes` (dict) are inheritable class attributes.
+- Defining `class PositionX(Position)` whose name starts with `Position` auto-registers it into `Position._registry` under both the CamelCase and lowercase keys (the `Position` prefix is stripped).
+- A position is supplied per-layer via `position=` (a string name resolved through the registry, or a `position_*()` instance), not added to the plot with `+`.
+mental_model: 'For R users:
+
+  Same ggproto methods as R''s ``Position``: ``setup_params``, ``setup_data``,
+
+  ``compute_layer``, ``compute_panel``. ``PositionFoo <- ggproto("PositionFoo",
+
+  Position, compute_panel = function(data, params, scales) {...})`` becomes
+
+  ``class PositionFoo(Position): def compute_panel(self, data, params,
+
+  scales=None): ...``. Overriding ``compute_layer`` to expose information to a
+
+  downstream geom (as ggrepel''s ``PositionNudgeRepel`` does) is the same
+
+  pattern in both languages. Positions are auto-registered here, so
+
+  ``position = "dodge"`` resolves by name with no manual registry edit.
+
+
+  For Python users:
+
+  Subclass ``Position`` and write ``compute_panel`` taking a per-panel pandas
+
+  DataFrame and returning the nudged DataFrame. Read constructor options in
+
+  ``setup_params``. Override ``compute_layer`` only if you need every panel at
+
+  once. The class auto-registers; expose it through a ``position_*()`` factory
+
+  and let users pass ``position="yourname"`` or the instance.
+
+
+  General:
+
+  Override ``compute_panel`` for per-panel adjustment; ``compute_layer`` for
+
+  cross-panel. Read options in ``setup_params``. Attach per-layer via
+
+  ``position=`` (string or instance), not via ``+``.'
+related_concepts:
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.ggproto_system
+- ggplot2_py.auto_registration
+- ggplot2_py.protocol_contracts
+- ggplot2_py.geom_extension_contract
+- ggplot2_py.custom_position_compute

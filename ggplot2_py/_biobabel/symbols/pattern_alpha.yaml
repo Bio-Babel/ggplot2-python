@@ -1,0 +1,22 @@
+id: ggplot2_py.pattern_alpha
+import_path: ggplot2_py.pattern_alpha
+kind: function
+signature: pattern_alpha(x, alpha)
+purpose: Apply *alpha* to a grid pattern's colour stops.
+description: Apply *alpha* to a grid pattern's colour stops.
+parameters:
+- name: x
+  type: Any
+  required: true
+  default: null
+- name: alpha
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,47 @@
+id: ggplot2_py.labs
+import_path: ggplot2_py.labs
+kind: function
+signature: labs(title=None, subtitle=None, caption=None, x=None, y=None, color=None)
+purpose: set plot labels (title, subtitle, caption, axis titles)
+description: 'Attach human-readable labels to the plot''s structural slots. Pass any of
+
+  title, subtitle, caption, x, y, color, fill, size, etc. — anything in aes
+
+  can have a legend title overridden here.
+
+  '
+parameters:
+- name: title
+  type: str | None
+  required: false
+  default: null
+- name: subtitle
+  type: str | None
+  required: false
+  default: null
+- name: caption
+  type: str | None
+  required: false
+  default: null
+- name: x
+  type: str | None
+  required: false
+  default: null
+- name: y
+  type: str | None
+  required: false
+  default: null
+- name: color
+  type: str | None
+  required: false
+  default: null
+  description: Title of the color legend (overrides the aes column name).
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Labels; kind=new_object
+requires: []
+writes: []
+examples:
+- labs(title="Fuel efficiency by engine size", x="Engine displacement (L)", y="Highway MPG")
+failure_fixes: []
+related:
+- ggplot2_py.theme_minimal

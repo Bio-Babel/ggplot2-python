@@ -1,0 +1,22 @@
+id: ggplot2_py.max_width
+import_path: ggplot2_py.max_width
+kind: function
+signature: max_width(grobs, value_only=False)
+purpose: Largest width over a list of grobs / units, returned in cm.
+description: Largest width over a list of grobs / units, returned in cm.
+parameters:
+- name: grobs
+  type: Any
+  required: true
+  default: null
+- name: value_only
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

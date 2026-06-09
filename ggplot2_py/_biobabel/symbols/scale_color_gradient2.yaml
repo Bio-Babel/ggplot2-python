@@ -1,0 +1,119 @@
+id: ggplot2_py.scale_color_gradient2
+import_path: ggplot2_py.scale_color_gradient2
+kind: function
+signature: scale_color_gradient2(low="muted('red')", mid='white', high="muted('blue')", midpoint=0.0, name=None, limits=None, breaks=None, labels=None, na_value='grey50', guide='colourbar', transform='identity', space='Lab', aesthetics='colour')
+purpose: three-color diverging gradient with a midpoint; data crossing a meaningful center (log2 fold change, correlation, residual)
+description: 'Three-color diverging gradient: `low` → `mid` (at `midpoint=`) → `high`. Use
+
+  this whenever the numeric data has a **meaningful center value** that
+
+  should be visually neutral — typically 0 (log2FC, residuals, z-scores) or
+
+  0.5 / 1 (probabilities, ratios).
+
+
+  Choosing between the gradient family:
+
+
+  - `scale_color_gradient`  — 2 colors, sequential (no midpoint).
+
+  - `scale_color_gradient2` — **3 colors with midpoint, for diverging data**.
+
+  - `scale_color_gradientn` — N custom colors.
+
+
+  Symmetry around `midpoint=` is your responsibility: if your data is
+
+  [-1, 5], the colorbar will be visually lop-sided unless you pass
+
+  `limits=(-5, 5)` (or similar) to force symmetry.
+
+  '
+parameters:
+- name: low
+  type: str
+  required: false
+  default: muted('red')
+  description: Color at the data minimum.
+- name: mid
+  type: str
+  required: false
+  default: white
+  description: Color at `midpoint=`.
+- name: high
+  type: str
+  required: false
+  default: muted('blue')
+  description: Color at the data maximum.
+- name: midpoint
+  type: float
+  required: false
+  default: 0.0
+  description: Data value mapped to `mid`. Default 0 (correct for log2FC, residuals, signed correlation).
+- name: name
+  type: str | None
+  required: false
+  default: null
+  description: Colorbar title.
+- name: limits
+  type: tuple[float, float] | None
+  required: false
+  default: null
+  description: Data range. **Set to a symmetric range around `midpoint=` for a balanced colorbar.**
+- name: breaks
+  type: list[float] | callable | None
+  required: false
+  default: null
+  description: Tick positions on the colorbar.
+- name: labels
+  type: callable | list | None
+  required: false
+  default: null
+  description: Tick formatter.
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+  description: Color for NA. Python uses `na_value=` (not R's `na.value=`).
+- name: guide
+  type: str | Guide
+  required: false
+  default: colourbar
+  description: '''colourbar'' or ''legend''.'
+- name: transform
+  type: str | Transform
+  required: false
+  default: identity
+  description: Pre-transform of the data scale.
+- name: space
+  type: str
+  required: false
+  default: Lab
+  description: Color interpolation space; 'Lab' recommended.
+- name: aesthetics
+  type: str | list[str]
+  required: false
+  default: colour
+  description: '''color'' / ''colour'' are aliases.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_color_gradient2(low='blue', mid='white', high='red', midpoint=0, limits=(-3, 3))
+- 'p + scale_color_gradient2(low=''#2166ac'', mid=''#f7f7f7'', high=''#b2182b'', midpoint=0)  # log2FC'
+failure_fixes:
+- when: colorbar is lop-sided (one side much darker than the other)
+  suggest:
+  - 'Force symmetry: `limits=(-m, m)` where `m = max(abs(df[col].min()), abs(df[col].max()))`.'
+  - Add `oob=scales.squish` (from scales) so values past `limits` are clamped instead of dropped.
+  explanation: gradient2 interpolates linearly on each side of `midpoint=`; asymmetric data ranges produce asymmetric color emphasis.
+- when: midpoint color (white) is barely visible — points near zero blend into the panel background
+  suggest:
+  - Pick a darker `mid=` (e.g. 'lightgrey', '#eeeeee') or switch to a non-white midpoint like '#f7f7f7'.
+- when: data does not actually cross `midpoint=`
+  suggest:
+  - Use `scale_color_gradient()` — gradient2 only makes sense when data spans both sides of the midpoint.
+- when: 'TypeError: got an unexpected keyword argument ''na.value'''
+  suggest:
+  - Use `na_value=` (Python underscore form).

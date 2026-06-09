@@ -1,0 +1,26 @@
+id: ggplot2_py.guide_train
+import_path: ggplot2_py.guide_train
+kind: function
+signature: guide_train(guide, scale, aesthetic=None)
+purpose: Legacy S3-style ``guide_train`` dispatch.
+description: Legacy S3-style ``guide_train`` dispatch.
+parameters:
+- name: guide
+  type: Any
+  required: true
+  default: null
+- name: scale
+  type: Any
+  required: true
+  default: null
+- name: aesthetic
+  type: Optional[str]
+  required: false
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

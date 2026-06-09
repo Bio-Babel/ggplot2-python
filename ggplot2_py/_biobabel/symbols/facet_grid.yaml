@@ -1,0 +1,60 @@
+id: ggplot2_py.facet_grid
+import_path: ggplot2_py.facet_grid
+kind: function
+signature: facet_grid(rows=None, cols=None, scales='fixed', space='fixed', labeller=None)
+purpose: small multiples in a rows × cols grid; faceting on two variables
+description: '`facet_grid(rows=''row_var'', cols=''col_var'')` produces a 2-D matrix of
+
+  panels. Use when you have TWO faceting variables that should index rows
+
+  and columns independently. For 1-D wrapping, use facet_wrap instead.
+
+
+  R uses formula syntax `rows ~ cols`; Python uses explicit kwargs.
+
+  '
+parameters:
+- name: rows
+  type: str | None
+  required: false
+  default: null
+  description: Column name for the row facets. Pass None for single row.
+- name: cols
+  type: str | None
+  required: false
+  default: null
+  description: Column name for the column facets. Pass None for single col.
+- name: scales
+  type: str
+  required: false
+  default: fixed
+  description: '''fixed'', ''free'', ''free_x'', ''free_y''.'
+- name: space
+  type: str
+  required: false
+  default: fixed
+  description: 'Relative panel size: ''fixed'' (equal) or ''free''/''free_x''/''free_y''.'
+- name: labeller
+  type: callable | None
+  required: false
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Facet; kind=new_object
+requires: []
+writes: []
+examples:
+- facet_grid(rows='cyl', cols='drv')
+- facet_grid(rows='cyl', cols='drv', scales='free_y')
+failure_fixes:
+- when: passed `~ rowvar` or `rows ~ cols` as a string (R formula syntax)
+  suggest:
+  - 'Use explicit kwargs: facet_grid(rows=''row_var'', cols=''col_var'').'
+- when: only one variable to facet on
+  suggest:
+  - Use facet_wrap('var') for a 1-D wrap; facet_grid expects 2-D.
+- when: axes don't line up between panels
+  suggest:
+  - scales='fixed' (default) shares axes across panels. Use 'free_x' / 'free_y' / 'free' only when each panel truly has different ranges.
+related:
+- ggplot2_py.labs
+- ggplot2_py.theme_minimal

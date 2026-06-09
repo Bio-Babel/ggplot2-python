@@ -1,0 +1,50 @@
+id: ggplot2_py.stat_count
+import_path: ggplot2_py.stat_count
+kind: function
+signature: stat_count(mapping=None, data=None, geom='bar', position='stack', na_rm=False, orientation=None, show_legend=None, inherit_aes=True, kwargs)
+purpose: Count unique x values.
+description: Count unique x values.
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: bar
+- name: position
+  type: str
+  required: false
+  default: stack
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: orientation
+  type: Any
+  required: false
+  default: null
+- name: show_legend
+  type: Optional[bool]
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

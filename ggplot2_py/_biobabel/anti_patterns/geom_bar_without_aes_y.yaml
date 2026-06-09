@@ -1,0 +1,29 @@
+id: ggplot2_py.geom_bar_without_aes_y
+name: "`geom_bar(aes(y=...))` without `stat='identity'` — re-counts rows"
+applicable_to:
+  - ggplot2_py.aes_mapping
+detection:
+  regex: 'aes\s*\([^)]*\by\s*=[\s\S]*?geom_bar\s*\((?![^)]*stat\s*=\s*[''"]identity[''"])'
+  static_only: true
+why_bad: |
+  `geom_bar()` defaults to ``stat="count"`` (see ``geom.py:3579``). That
+  stat *replaces* the `y` aesthetic with `..count..` (the number of rows
+  per `x` group), so a `y` mapping in `aes()` is silently ignored:
+
+  - If your data is already summarized (one row per category with a
+    `count` column), every bar will have height 1 (one row per group),
+    not the value you put in `y`.
+  - The displayed axis label is still your `y` column name, hiding the
+    bug at a glance.
+
+  When the data is pre-summarized, use `geom_col()` (which is
+  `geom_bar(stat="identity")` — see ``geom.py:3600``). When the data is
+  raw and you want counts, drop the `y` mapping entirely.
+correct_pattern: ggplot2_py.geom_col
+code_example_wrong: |
+  # df has columns ["category", "count"] already aggregated
+  ggplot(df, aes(x="category", y="count")) + geom_bar()      # ← height = 1 per bar
+code_example_right: |
+  ggplot(df, aes(x="category", y="count")) + geom_col()      # ← uses y directly
+  # or, equivalently:
+  ggplot(df, aes(x="category", y="count")) + geom_bar(stat="identity")

@@ -1,0 +1,59 @@
+id: ggplot2_py.geom_area
+import_path: ggplot2_py.geom_area
+kind: function
+signature: geom_area(mapping=None, data=None, stat='align', position='stack', outline_type='upper', inherit_aes=True)
+purpose: area chart; filled region between y and zero baseline
+description: 'Baseline-zero mirror of geom_ribbon; see geom_ribbon for full failure modes.
+
+  Fills from `y=0` to the y aesthetic. Default `position=''stack''` makes
+
+  multiple groups stack — pass `position=''identity''` to overlay them.
+
+  Default `stat=''align''` ensures groups share an x grid.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Needs x and y. ymin is implicit (=0); no need to map it.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: align
+- name: position
+  type: str
+  required: false
+  default: stack
+  description: '''stack'' (default), ''identity'' (overlay), ''fill'' (normalised).'
+- name: outline_type
+  type: str
+  required: false
+  default: upper
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(df, aes(x='year', y='count', fill='group')) + geom_area()
+failure_fixes:
+- when: groups stack when you wanted overlay
+  suggest:
+  - Default position='stack' — pass position='identity' (and alpha<1) to overlay.
+- when: negative y values disappear
+  suggest:
+  - geom_area fills toward zero; for arbitrary baselines use geom_ribbon with ymin/ymax.
+related:
+- ggplot2_py.geom_line
+- ggplot2_py.facet_wrap
+- ggplot2_py.scale_fill_viridis_d

@@ -1,0 +1,22 @@
+id: ggplot2_py.label_value
+import_path: ggplot2_py.label_value
+kind: function
+signature: label_value(labels, multi_line=True)
+purpose: Return only the factor values.
+description: Return only the factor values.
+parameters:
+- name: labels
+  type: Dict[str, List[str]]
+  required: true
+  default: null
+- name: multi_line
+  type: bool
+  required: false
+  default: true
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: List[str]; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

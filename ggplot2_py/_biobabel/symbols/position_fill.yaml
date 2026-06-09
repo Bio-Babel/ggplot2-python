@@ -1,0 +1,22 @@
+id: ggplot2_py.position_fill
+import_path: ggplot2_py.position_fill
+kind: function
+signature: position_fill(vjust=1.0, reverse=False)
+purpose: Create a fill position adjustment (stack + normalise).
+description: Create a fill position adjustment (stack + normalise).
+parameters:
+- name: vjust
+  type: float
+  required: false
+  default: 1.0
+- name: reverse
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: PositionFill; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

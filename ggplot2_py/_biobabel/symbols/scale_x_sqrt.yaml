@@ -1,0 +1,39 @@
+id: ggplot2_py.scale_x_sqrt
+import_path: ggplot2_py.scale_x_sqrt
+kind: function
+signature: scale_x_sqrt(**kwargs=None)
+purpose: square-root x axis; compress large positive values
+description: 'Shortcut for `scale_x_continuous(transform=transform_sqrt(), ...)`. Useful
+
+  for skewed nonnegative data (e.g. counts, areas) where log is too aggressive
+
+  but identity is too crowded.
+
+
+  All kwargs are forwarded to `scale_x_continuous` (see that contract for
+
+  name/breaks/labels/limits/expand/position/sec_axis behaviour, including the
+
+  `limits=` filtering pitfall).
+
+  '
+parameters:
+- name: '**kwargs'
+  type: any
+  required: false
+  default: null
+  description: Forwarded to scale_x_continuous(). `transform=` defaults to transform_sqrt().
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_x_sqrt()
+- p + scale_x_sqrt(name='Area (m²)', limits=(0, None))
+failure_fixes:
+- when: 'warning: sqrt produced NaN — negative input'
+  suggest:
+  - sqrt is undefined for x<0; either filter negative rows or use a sign-preserving transform.
+- when: user passes transform= explicitly
+  suggest:
+  - That overrides the sqrt default. If you want sqrt, drop the kwarg; if you want a different transform, call scale_x_continuous() directly for clarity.

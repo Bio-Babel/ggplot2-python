@@ -1,0 +1,41 @@
+id: ggplot2_py.scale_x_reverse
+import_path: ggplot2_py.scale_x_reverse
+kind: function
+signature: scale_x_reverse(**kwargs=None)
+purpose: reverse the direction of the x axis; right-to-left or high-to-low x ordering
+description: 'Shortcut for `scale_x_continuous(transform=transform_reverse(), ...)`. Flips
+
+  the visual direction of the x axis — useful for rank plots (rank 1 on the
+
+  right), pH/depth/age axes, or any case where lower values should appear at
+
+  the right.
+
+
+  All kwargs are forwarded to `scale_x_continuous`; the `limits=` pitfall
+
+  (filters data, not zoom) still applies. For pure zoom that ALSO flips,
+
+  use `coord_cartesian(xlim=(high, low))` — note the reversed tuple.
+
+  '
+parameters:
+- name: '**kwargs'
+  type: any
+  required: false
+  default: null
+  description: Forwarded to scale_x_continuous(). `transform=` defaults to transform_reverse().
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_x_reverse()
+- p + scale_x_reverse(name='Rank (1 = best)')
+failure_fixes:
+- when: axis didn't flip — added coord_cartesian after this scale
+  suggest:
+  - 'coord_cartesian(xlim=) replaces, doesn''t combine; pass limits via the scale, or pass coord limits in reversed order: coord_cartesian(xlim=(high, low)).'
+- when: tried to combine scale_x_reverse() with scale_x_log10()
+  suggest:
+  - 'Adding two x scales replaces the first with a warning. Compose manually: scale_x_continuous(transform=transform_compose(transform_log10(), transform_reverse())).'

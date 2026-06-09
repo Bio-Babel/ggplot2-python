@@ -1,0 +1,26 @@
+id: ggplot2_py.guide_transform
+import_path: ggplot2_py.guide_transform
+kind: function
+signature: guide_transform(guide, coord, panel_params)
+purpose: Legacy S3-style ``guide_transform`` dispatch.
+description: Legacy S3-style ``guide_transform`` dispatch.
+parameters:
+- name: guide
+  type: Any
+  required: true
+  default: null
+- name: coord
+  type: Any
+  required: true
+  default: null
+- name: panel_params
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

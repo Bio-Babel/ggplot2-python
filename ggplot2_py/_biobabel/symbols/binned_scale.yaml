@@ -1,0 +1,122 @@
+id: ggplot2_py.binned_scale
+import_path: ggplot2_py.binned_scale
+kind: function
+signature: binned_scale(aesthetics, palette=None, name='waiver()', breaks='waiver()', labels='waiver()', limits=None, rescaler='rescale', oob='squish', expand='waiver()', na_value='np.nan', n_breaks=None, nice_breaks=True, right=True, transform="'identity'", trans=None, show_limits=False, guide="'bins'", position="'left'", fallback_palette=None, super_class='ScaleBinned')
+purpose: construct a custom binned (intermediate continuous→discrete) Scale; extension entry point for stepped colour/size scales
+description: "Low-level factory for a `ScaleBinned` (or a `super_class=` subclass).\nBinned scales sit between continuous and discrete: input is continuous,\nbut the data is bucketed into discrete bins before the palette runs.\nBuilt-in users: `scale_x_binned`, `scale_color_steps`,\n`scale_color_fermenter`, `scale_color_viridis_b`, `scale_size_binned`.\n\n**For extension authors**: a binned palette function maps a numeric in\n[0, 1] to an aesthetic value, exactly like a continuous palette — the\nbinning step happens BEFORE the palette is invoked, so the palette\ndoesn't need to be bin-aware::\n\n    def scale_color_mybins(name=None, n_breaks=5, **kwargs):\n        return binned_scale(\n            aesthetics=[\"colour\"],\n            palette=my_continuous_pal,\n            name=name,\n            n_breaks=n_breaks,\n            guide=\"coloursteps\",\n            **kwargs,\n        )\n\nDefaults follow R `ggplot2::binned_scale` (scale-binned.R:31+):\n  - `oob` defaults to `squish` (clip)\
+  \ — distinct from continuous's\n    `censor`, because losing rows to NaN inside a binning step is\n    almost always wrong.\n  - `nice_breaks=True` requests pretty break locations.\n  - `right=True` makes bins closed on the right (matches `pd.cut`\n    default).\n  - `show_limits=False` hides the outer endpoints in the legend.\n\nSame waiver-based defaults as continuous_scale for name/breaks/labels/\nexpand. See concepts `ggplot2_py.waiver_sentinel` and\n`ggplot2_py.extension_class_hierarchy`.\n"
+parameters:
+- name: aesthetics
+  type: str | list[str]
+  required: true
+  default: null
+- name: palette
+  type: Callable | None
+  required: false
+  default: null
+  description: palette(x in [0,1]) -> aesthetic values (same shape as continuous).
+- name: name
+  type: str | Waiver
+  required: false
+  default: waiver()
+- name: breaks
+  type: array-like | Callable | Waiver | None
+  required: false
+  default: waiver()
+  description: Bin edges. If supplied, n_breaks is ignored.
+- name: labels
+  type: array-like | Callable | Waiver | None
+  required: false
+  default: waiver()
+- name: limits
+  type: Sequence[float] | Callable | None
+  required: false
+  default: null
+- name: rescaler
+  type: Callable | None
+  required: false
+  default: rescale
+- name: oob
+  type: Callable | None
+  required: false
+  default: squish
+  description: 'Default `squish` (NOT `censor`): out-of-range values clip to nearest bin.'
+- name: expand
+  type: array-like | Waiver
+  required: false
+  default: waiver()
+- name: na_value
+  type: Any
+  required: false
+  default: np.nan
+- name: n_breaks
+  type: int | None
+  required: false
+  default: null
+  description: Approximate number of bins. Ignored if breaks= is supplied.
+- name: nice_breaks
+  type: bool
+  required: false
+  default: true
+  description: Use pretty-printed break locations.
+- name: right
+  type: bool
+  required: false
+  default: true
+  description: 'Bins closed on the right: (a, b] vs [a, b).'
+- name: transform
+  type: str | Transform
+  required: false
+  default: '''identity'''
+- name: trans
+  type: str | Transform | None
+  required: false
+  default: null
+  description: DEPRECATED alias for transform.
+- name: show_limits
+  type: bool
+  required: false
+  default: false
+  description: If True, show the outer endpoints (min, max) as ticks/legend entries.
+- name: guide
+  type: str
+  required: false
+  default: '''bins'''
+  description: 'Default ''bins'' (NOT ''legend''): renders a stepped guide. Use ''coloursteps'' for filled stepped colour.'
+- name: position
+  type: str
+  required: false
+  default: '''left'''
+- name: fallback_palette
+  type: Callable | None
+  required: false
+  default: null
+- name: super_class
+  type: type[ScaleBinned] | None
+  required: false
+  default: ScaleBinned
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: ScaleBinned; kind=new_object
+requires: []
+writes: []
+examples:
+- binned_scale(aesthetics='colour', palette=my_pal, n_breaks=7)
+- binned_scale(aesthetics=['colour','fill'], palette=viridis_pal, n_breaks=5, show_limits=True, guide='coloursteps')
+- '# manual bin edges:
+
+  binned_scale(aesthetics=''size'', palette=my_pal, breaks=[0, 10, 50, 200])'
+failure_fixes:
+- when: data has rows clipped to NaN when crossing bin edges
+  suggest:
+  - Default `oob=squish` keeps them; if you see NaN, your code overrode oob to censor. Set oob=squish or remove the override.
+- when: bins close-on-left vs close-on-right inconsistency
+  suggest:
+  - Pass right=True for (a, b] (R/pd.cut default), or right=False for [a, b). Match the convention of your data.
+- when: want to show the outermost (min, max) endpoints in the legend
+  suggest:
+  - Pass show_limits=True. Default hides them because the outer bins extend beyond min/max.
+- when: guide='legend' renders as continuous gradient instead of stepped
+  suggest:
+  - Use guide='bins' (default) or guide='coloursteps' for stepped legends.
+related:
+- ggplot2_py.ggplot_add

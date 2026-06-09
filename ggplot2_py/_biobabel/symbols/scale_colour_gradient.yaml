@@ -1,0 +1,46 @@
+id: ggplot2_py.scale_colour_gradient
+import_path: ggplot2_py.scale_colour_gradient
+kind: function
+signature: scale_colour_gradient(name=None, low='#132B43', high='#56B1F7', space='Lab', na_value='grey50', guide='colourbar', aesthetics='colour', kwargs)
+purpose: Two-colour gradient colour scale.
+description: Two-colour gradient colour scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: low
+  type: str
+  required: false
+  default: '#132B43'
+- name: high
+  type: str
+  required: false
+  default: '#56B1F7'
+- name: space
+  type: str
+  required: false
+  default: Lab
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: guide
+  type: str
+  required: false
+  default: colourbar
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: colour
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuous; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

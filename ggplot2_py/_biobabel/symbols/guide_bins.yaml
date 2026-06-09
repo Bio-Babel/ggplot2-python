@@ -1,0 +1,54 @@
+id: ggplot2_py.guide_bins
+import_path: ggplot2_py.guide_bins
+kind: function
+signature: guide_bins(title='waiver()', theme=None, angle=None, position=None, direction=None, override_aes=None, reverse=False, order=0, show_limits=None, kwargs)
+purpose: Create a binned legend guide.
+description: Create a binned legend guide.
+parameters:
+- name: title
+  type: Any
+  required: false
+  default: waiver()
+- name: theme
+  type: Any
+  required: false
+  default: null
+- name: angle
+  type: Optional[float]
+  required: false
+  default: null
+- name: position
+  type: Optional[str]
+  required: false
+  default: null
+- name: direction
+  type: Optional[str]
+  required: false
+  default: null
+- name: override_aes
+  type: Optional[Dict[str, Any]]
+  required: false
+  default: null
+- name: reverse
+  type: bool
+  required: false
+  default: false
+- name: order
+  type: int
+  required: false
+  default: 0
+- name: show_limits
+  type: Optional[bool]
+  required: false
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: GuideBins; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

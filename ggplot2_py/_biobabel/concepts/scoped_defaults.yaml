@@ -1,0 +1,59 @@
+id: ggplot2_py.scoped_defaults
+name: Scoped defaults (ggplot_defaults context manager, contextvar-based)
+category: pipeline
+description: "``ggplot_defaults(*, theme=None, coord=None, facet=None, mapping=None)`` is a\nPython-exclusive context manager that sets defaults applied to every\n``ggplot()`` call inside its ``with`` block, and ONLY inside it. It is backed\nby a ``contextvars.ContextVar`` (``_ggplot_context``), which makes it\nthread-safe and async-task-local — concurrent code does not leak defaults\ninto each other.\n\n    with ggplot_defaults(theme=theme_minimal(), coord=coord_fixed()):\n        p1 = ggplot(df, aes(\"x\", \"y\")) + geom_point()   # theme_minimal + coord_fixed\n        p2 = ggplot(df, aes(\"x\", \"y\")) + geom_bar()     # same defaults\n    # outside the block: no defaults applied\n\nMechanics: the context defaults are applied at the END of the ``ggplot()``\nfactory (via ``_apply_context_defaults``), AFTER the plot's intrinsic defaults\n(``CoordCartesian(default=True)``, ``FacetNull()``, empty ``Theme``) are set,\nso they override them cleanly. Each value is shallow-copied before assignment\n\
+  so the same ``coord_fixed()`` instance can be reused across calls without\nbeing mutated. The context-provided ``coord`` is marked ``default=True``, so a\nlater ``plot + coord_polar()`` replaces it silently (matching the\n``update_ggplot.Coord`` short-circuit on default coords). A context ``mapping``\nis merged UNDER the plot's own mapping (the plot's explicit aes wins).\n\nImportant scope note: application happens in the ``ggplot()`` factory, not in\n``GGPlot.__init__`` and not in ``_clone()`` — so a direct ``GGPlot(...)`` call\nor a ``+``-driven clone is unaffected by the active context. The defaults only\nattach when you go through ``ggplot()``.\n\nThis is the scoped alternative to the global ``theme_set()`` anti-pattern (the\nR idiom): ``theme_set()`` mutates process-wide state that every subsequent\nplot inherits until reset; ``ggplot_defaults`` confines the override to a\nlexical/dynamic block and restores the previous context on exit.\n"
+invariants:
+- '`ggplot_defaults` is a context manager taking keyword-only `theme`, `coord`, `facet`, `mapping` (any subset); inside the `with` block those defaults apply to every `ggplot()` call, and they are removed on exit.'
+- It is backed by a `contextvars.ContextVar`, so the defaults are thread-safe / task-local and do not leak across threads or async tasks (unlike a global).
+- Context defaults are applied at the END of the `ggplot()` factory, after the plot's intrinsic defaults (`CoordCartesian(default=True)`, `FacetNull()`, empty `Theme`), so they override the intrinsics.
+- Each context value is shallow-copied before assignment, so reusing the same `coord_fixed()`/`facet_wrap(...)` instance across `ggplot()` calls does not mutate the caller's object.
+- The context-provided `coord` is given `default=True`, so a later `plot + coord_X()` replaces it silently; a context `mapping` is merged under the plot's own mapping (the plot's explicit aes wins on key conflicts).
+- Application happens only in the `ggplot()` factory — direct `GGPlot(...)` construction and `_clone()` (used by `+`) are NOT affected by the active context.
+mental_model: 'For R users:
+
+  R only offers ``theme_set()`` (and ``theme_update()``), which mutate GLOBAL
+
+  state: every plot built afterwards inherits the change until you reset it —
+
+  easy to leak across a script or notebook. ``ggplot_defaults`` is the scoped
+
+  version R lacks: ``with ggplot_defaults(theme=theme_minimal()): ...`` applies
+
+  the default only to plots created inside the block and restores the prior
+
+  state on exit. It also covers ``coord``, ``facet``, and ``mapping`` defaults,
+
+  not just theme. Prefer it over the global ``theme_set`` mutation pattern.
+
+
+  For Python users:
+
+  A ``contextvars``-based ``with`` block that injects defaults into
+
+  ``ggplot()`` calls made inside it. Thread-safe and async-safe by
+
+  construction. Use it to apply a house theme / fixed coord / shared mapping to
+
+  a batch of plots without repeating yourself and without touching global
+
+  state. Remember it only affects plots built via ``ggplot()`` within the
+
+  block — not pre-existing plots or direct ``GGPlot(...)`` calls.
+
+
+  General:
+
+  Use ``with ggplot_defaults(theme=..., coord=..., facet=..., mapping=...):``
+
+  to scope shared defaults to a block instead of mutating global state. It''s
+
+  thread-safe, overrides intrinsic defaults, and a later explicit ``+`` of the
+
+  same component family still wins.'
+related_concepts:
+- ggplot2_py.plus_accumulation
+- ggplot2_py.singledispatch_composition
+- ggplot2_py.build_pipeline_stages
+- ggplot2_py.aes_mapping
+- ggplot2_py.scoped_defaults_context

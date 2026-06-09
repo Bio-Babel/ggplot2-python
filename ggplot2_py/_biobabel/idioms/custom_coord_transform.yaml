@@ -1,0 +1,38 @@
+id: ggplot2_py.custom_coord_transform
+name: Custom Coord — subclass CoordCartesian, override transform()
+applicable_to:
+  - ggplot2_py.coord_extension_contract
+  - ggplot2_py.ggproto_system
+description: |
+  A `Coord` maps panel-space data to the rendered surface. The robust way
+  to write one is to subclass `CoordCartesian` (a fully-working linear
+  coord) and override only `transform(self, data, panel_params)`, calling
+  `super().transform(...)` to do the actual rescaling into [0,1]. This is
+  exactly how the built-in `CoordFlip` is implemented (it rewrites columns
+  then defers to the parent). Subclassing the abstract `Coord` directly is
+  far more work (you'd have to implement `setup_panel_params`, `range`,
+  `backtransform_range`, rendering, …) — prefer extending `CoordCartesian`.
+
+  Here `CoordSwap` swaps the x and y columns before the Cartesian
+  transform, transposing the plot without touching any stat.
+code_template: |
+  from ggplot2_py.coord import CoordCartesian
+  from ggplot2_py import ggplot, aes, geom_point, ggsave
+  from ggplot2_py.datasets import mpg
+
+  class CoordSwap(CoordCartesian):
+      """Swap x and y at draw time (like coord_flip, the manual way)."""
+      def transform(self, data, panel_params):
+          data = data.copy()
+          if "x" in data.columns and "y" in data.columns:
+              data = (data.rename(columns={"x": "__t", "y": "x"})
+                          .rename(columns={"__t": "y"}))
+          return super().transform(data, panel_params)
+
+  p = (
+      ggplot(mpg, aes(x="displ", y="hwy"))
+      + geom_point()
+      + CoordSwap()
+  )
+  ggsave("/tmp/idiom_custom_coord_transform.png", plot=p, width=5, height=4)
+typical_use_case: "a coordinate system that bends/transposes/reprojects the panel without altering layer statistics"

@@ -1,0 +1,44 @@
+id: ggplot2_py.scale_by_column_dtype
+name: Pick a continuous vs discrete scale at runtime from the column dtype
+applicable_to:
+  - ggplot2_py.plus_accumulation
+description: |
+  When the column mapped to an aesthetic is chosen at runtime (a user passes a
+  gene name, a metadata field, …), you don't know in advance whether it is
+  numeric or categorical — so you can't hard-code `scale_color_viridis_c()`
+  vs `scale_color_viridis_d()`. Branch on the column's dtype with
+  `pd.api.types.is_numeric_dtype(df[col])`: numeric → the CONTINUOUS scale
+  (`*_c`, a smooth gradient), otherwise → the DISCRETE scale (`*_d`, one
+  swatch per level). This is how Monocle2 colours a trajectory by either an
+  expression value or a cluster label from the same code path
+  (`trajectory.py:170-203`).
+
+  The same `_c` / `_d` split exists across the viridis family and the other
+  built-in continuous/discrete scale pairs; pick the family once, then let the
+  dtype pick the suffix.
+code_template: |
+  import numpy as np, pandas as pd
+  from ggplot2_py import (
+      ggplot, aes, geom_point, ggsave,
+      scale_color_viridis_c, scale_color_viridis_d,
+  )
+
+  df = pd.DataFrame({
+      "x": np.arange(12),
+      "y": np.random.RandomState(0).rand(12),
+      "expression": np.linspace(0, 5, 12),     # numeric  -> continuous
+      "cluster": list("AABBCCDDAABB"),         # category -> discrete
+  })
+
+  def colour_by(df, col):
+      p = ggplot(df, aes("x", "y", color=col)) + geom_point(size=3)
+      if pd.api.types.is_numeric_dtype(df[col]):
+          return p + scale_color_viridis_c()   # smooth gradient
+      return p + scale_color_viridis_d()        # one swatch per level
+
+  ggsave("/tmp/idiom_scale_by_dtype_cont.png",
+         plot=colour_by(df, "expression"), width=5, height=4)
+  ggsave("/tmp/idiom_scale_by_dtype_disc.png",
+         plot=colour_by(df, "cluster"), width=5, height=4)
+anti_pattern_paired: null
+typical_use_case: "a plotting helper whose colour column is supplied at runtime (gene expression vs cluster label) and must pick a continuous or discrete colour scale from the column's dtype"

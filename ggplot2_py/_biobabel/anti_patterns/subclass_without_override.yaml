@@ -1,0 +1,56 @@
+id: ggplot2_py.subclass_without_override
+name: "Subclassing Stat/Geom/Position with an empty (`pass`) body — no required method override"
+applicable_to:
+  - ggplot2_py.stat_extension_contract
+  - ggplot2_py.geom_extension_contract
+  - ggplot2_py.position_extension_contract
+detection:
+  # `class X(Stat|Geom|Position|GeomPoint|...):` whose body reaches a `pass`
+  # without ever defining a method — the copy-paste scaffold with no
+  # override. Inline (?m) anchors `class` to a line start (detector runs
+  # without re.MULTILINE). The body run tolerates a docstring and plain
+  # attribute lines (e.g. `required_aes = [...]`) but the negative
+  # lookaheads `(?!\1def\b)(?!\1class\b)` bail out the moment a method (or
+  # nested class) appears at the body indent, so a real override is NOT
+  # matched. `\1` back-references the class's own indentation.
+  regex: '(?m)^([ \t]*)class\s+\w+\s*\(\s*(?:Stat|Geom|Position|GeomPoint|GeomPath|GeomPolygon|StatIdentity)\w*\s*\)\s*:[ \t]*(?:#[^\n]*)?\n(?:(?!\1def\b)(?!\1class\b)[ \t]+\S.*\n|\s*\n)*?[ \t]+pass\b'
+  static_only: true
+why_bad: |
+  The base `Stat.compute_group` (and `Geom.draw_panel`, `Position.*`) raise
+  `NotImplementedError` by design — they are abstract hooks:
+
+      raise NotImplementedError(f"{type(self).__name__}.compute_group() is not implemented.")
+
+  A subclass with an empty `pass` body inherits that stub, so the FIRST plot
+  using it blows up at build time, not at definition time. The error message
+  points at your subclass name, which is confusing because the file looks
+  complete. This is the most common extension mistake: writing the
+  `class MyStat(Stat): ...` scaffold and forgetting to fill in the one method
+  that actually does the work.
+
+  The extension contract: a custom `Stat` MUST override
+  `compute_group(self, data, scales, **params)` (return a new DataFrame); a
+  custom `Geom` MUST override `draw_panel(...)` (return grobs); a custom
+  `Position` MUST override its compute method. Declare `required_aes` too so
+  the layer validates inputs.
+
+  Scope: this regex only catches the trivially-empty (`pass` / docstring +
+  `pass`) body; a subclass that defines unrelated attributes but still omits
+  the required method is not statically detectable and fails the same way at
+  build time.
+correct_pattern: ggplot2_py.custom_stat_compute_group
+code_example_wrong: |
+  class MyStat(Stat):     # ← inherits the NotImplementedError stub
+      pass
+code_example_right: |
+  import pandas as pd
+  from ggplot2_py.stat import Stat
+
+  class StatMeanXY(Stat):
+      required_aes = ["x", "y"]
+
+      def compute_group(self, data, scales, **params):
+          return pd.DataFrame({
+              "x": [data["x"].mean()],
+              "y": [data["y"].mean()],
+          })

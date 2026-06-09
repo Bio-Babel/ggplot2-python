@@ -1,0 +1,41 @@
+id: ggplot2_py.discover_extensions
+import_path: ggplot2_py.discover_extensions
+kind: function
+signature: discover_extensions()
+purpose: scan installed packages for ggplot2_py entry-point extensions and register them; make 'mygeom' resolvable as a string in layer(geom='mygeom') from third-party packages
+description: "Scan `importlib.metadata.entry_points()` for entries in the\n`ggplot2_py.{geoms,stats,positions,scales,coords,facets}` groups, load\neach class, and register it under both its declared name and a\nCamelCase variant on the corresponding base class's `_registry`. After\ndiscovery, the class is reachable via string lookup inside `layer(...)`,\n`scale_*`, etc.\n\n**For extension package authors**: declare an entry point in your\n`pyproject.toml`::\n\n    [project.entry-points.\"ggplot2_py.geoms\"]\n    mygeom = \"mypkg.geoms:MyGeom\"\n\n    [project.entry-points.\"ggplot2_py.stats\"]\n    mystat = \"mypkg.stats:MyStat\"\n\nThen `from ggplot2_py import *` will auto-call `discover_extensions()`\nat import time (see `ggplot2_py/__init__.py:987-989`). Users can then\nwrite `layer(geom='mygeom', stat='mystat')` without importing your\npackage directly.\n\nIdempotent: classes already in the registry (e.g. via `__init_subclass__`)\nare skipped. Entry points that fail to load emit a warning\
+  \ but do not\nraise — partial extension ecosystems still import cleanly.\n\nReturns a dict `{group: [discovered_names]}` for the entry points\nsuccessfully registered in this call. The function caches in\n`_discovered` so repeated calls do not double-register.\n\nNote: this is auto-called at `ggplot2_py` import. Users RARELY need to\ncall it manually — only relevant if a plugin was installed mid-session\n(then `importlib.reload(ggplot2_py)` is a saner approach).\n"
+parameters: []
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: dict[str, list[str]]; kind=value
+requires: []
+writes: []
+examples:
+- '# auto-runs at import time:
+
+  import ggplot2_py  # → discover_extensions() runs once'
+- 'from ggplot2_py import discover_extensions
+
+  found = discover_extensions()
+
+  # {''ggplot2_py.geoms'': [''mygeom''], ...}'
+- '# pyproject.toml:
+
+  # [project.entry-points.''ggplot2_py.geoms'']
+
+  # mygeom = ''mypkg.geoms:MyGeom'''
+failure_fixes:
+- when: your geom isn't found via layer(geom='myname')
+  suggest:
+  - Check pyproject entry point group name (must be ggplot2_py.geoms, plural) and that the value points to a Class, not a function. Run `discover_extensions()` manually to surface any load warnings.
+- when: 'warning: ggplot2_py: failed to load extension ''X'''
+  suggest:
+  - The entry-point target raised on import. Fix the underlying ImportError; ggplot2_py won't block its own import for one bad plugin.
+- when: extension installed after ggplot2_py imported
+  suggest:
+  - Restart the interpreter, or call discover_extensions() manually. The discovery cache is process-global.
+- when: name collision with built-in
+  suggest:
+  - Built-ins are registered first (via __init_subclass__); plugins with the same name are SKIPPED, not overwritten. Rename your plugin entry point.
+related:
+- ggplot2_py.layer

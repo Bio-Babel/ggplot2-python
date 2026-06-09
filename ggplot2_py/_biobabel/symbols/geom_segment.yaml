@@ -1,0 +1,72 @@
+id: ggplot2_py.geom_segment
+import_path: ggplot2_py.geom_segment
+kind: function
+signature: geom_segment(mapping=None, data=None, stat='identity', position='identity', arrow=None, lineend='butt', inherit_aes=True)
+purpose: draw straight line segments between (x,y) and (xend,yend); arrows, lollipop sticks, deltas
+description: 'Draw one straight line per row from `(x, y)` to `(xend, yend)`. All four
+
+  aesthetics are REQUIRED — missing `xend` or `yend` produces a cryptic
+
+  error during build. Common patterns: lollipop charts (segment + point),
+
+  arrow annotations (pass `arrow=arrow()`), gantt-style timelines.
+
+  For a curved analogue use `geom_curve`. Accumulates via `+`
+
+  (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: REQUIRES x, y, xend, yend. Optional color, linewidth, linetype, alpha.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: arrow
+  type: Arrow
+  required: false
+  default: null
+  description: grid arrow() object to add arrowheads at one or both ends. Passed via **kwargs.
+- name: lineend
+  type: str
+  required: false
+  default: butt
+  description: '''butt'', ''round'', ''square''. Passed via **kwargs.'
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(df, aes(x='gene', xend='gene', y=0, yend='log2fc')) + geom_segment() + geom_point()
+- geom_segment(aes(x='x0', y='y0', xend='x1', yend='y1'), arrow=arrow())
+failure_fixes:
+- when: KeyError or 'missing aesthetic' for xend/yend
+  suggest:
+  - geom_segment needs ALL of x, y, xend, yend. Map them via aes(x=..., y=..., xend=..., yend=...).
+- when: want an arrowhead
+  suggest:
+  - Pass arrow=arrow(length=unit(0.2, 'cm')) (imported from ggplot2_py or grid_py).
+- when: drawing a lollipop — segments cut through the points
+  suggest:
+  - Add geom_point AFTER geom_segment in the + chain; later layers cover earlier.
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.coord_equal
+- ggplot2_py.theme_minimal

@@ -1,0 +1,55 @@
+id: ggplot2_py.geom_curve
+import_path: ggplot2_py.geom_curve
+kind: function
+signature: geom_curve(mapping=None, data=None, curvature=0.5, angle=90, ncp=5)
+purpose: curved line segments between (x,y) and (xend,yend); labeled arrows / annotation curves
+description: 'Like geom_segment with a curvature parameter; see geom_segment for full failure modes.
+
+  The only extra knob is `curvature` — positive arcs right-handed, negative
+
+  left-handed, 0 collapses to a straight line (equivalent to `geom_segment`).
+
+  Same four-aesthetic requirement (x, y, xend, yend).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: REQUIRES x, y, xend, yend.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: curvature
+  type: float
+  required: false
+  default: 0.5
+  description: Signed; 0 = straight, positive = right, negative = left. Common range -1..1.
+- name: angle
+  type: float
+  required: false
+  default: 90
+  description: Angle in degrees between connecting line and control-point line.
+- name: ncp
+  type: int
+  required: false
+  default: 5
+  description: Number of control points used to draw the bezier-style curve; higher = smoother.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- geom_curve(aes(x='x0', y='y0', xend='x1', yend='y1'), curvature=0.3, arrow=arrow())
+failure_fixes:
+- when: curve looks like a straight line
+  suggest:
+  - Increase |curvature| (e.g. curvature=1) — default 0.5 is mild.
+- when: missing xend/yend error
+  suggest:
+  - 'Map all four: aes(x=''x0'', y=''y0'', xend=''x1'', yend=''y1'').'
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.annotate

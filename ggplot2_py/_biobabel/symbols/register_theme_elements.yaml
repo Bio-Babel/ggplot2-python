@@ -1,0 +1,58 @@
+id: ggplot2_py.register_theme_elements
+import_path: ggplot2_py.register_theme_elements
+kind: function
+signature: register_theme_elements(element_tree=None, complete=True)
+purpose: register custom themeable elements so users can theme(my.element=...); set new global default theme element values
+description: 'Register custom theme elements globally so that a user can later target them
+
+  with ``+ theme(your_element=...)`` and so they carry a default value /
+
+  inheritance. Mirrors R''s ``register_theme_elements()``. Two things happen:
+
+  (1) element *default values* passed via ``**kwargs`` are merged into the
+
+  global ``theme_default`` (wholesale ``%+replace%`` semantics), so any theme
+
+  completed against the default surfaces them; and (2) the ``element_tree``
+
+  argument adds inheritance definitions (name -> :func:`el_def` spec), merged
+
+  new-wins (``dict.update``) into the global element tree. Pair with
+
+  :func:`el_def` to describe each new element''s class and parent. Returns
+
+  ``None`` (R returns the previous default invisibly).
+
+  '
+parameters:
+- name: element_tree
+  type: Optional[Dict[str, Dict[str, Any]]]
+  required: false
+  default: null
+  description: Mapping of element name -> el_def(...) spec adding inheritance definitions; keys already present are overwritten (new-wins).
+- name: complete
+  type: bool
+  required: false
+  default: true
+  description: Whether the registered kwargs form a complete theme block; passed through to theme(). R default True.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=none
+returns: None; kind=none
+requires: []
+writes: []
+examples:
+- "from ggplot2_py import register_theme_elements, el_def, element_blank\nregister_theme_elements(\n    element_tree={\"ggh4x.facet.nestline\": el_def(\"element_line\", inherit=\"line\")},\n)\n"
+- 'from ggplot2_py import register_theme_elements, element_rect
+
+  register_theme_elements(plot_background=element_rect(fill="white"))   # new global default
+
+  '
+failure_fixes:
+- when: theme(my.element=...) raises that the element is unknown
+  suggest:
+  - 'Register it first: register_theme_elements(element_tree={''my.element'': el_def(''element_text'', inherit=''text'')})'
+- when: registered default does not appear
+  suggest:
+  - Pass the default value as a kwarg (e.g. register_theme_elements(plot_background=element_rect(...)))
+related:
+- ggplot2_py.el_def
+- ggplot2_py.theme

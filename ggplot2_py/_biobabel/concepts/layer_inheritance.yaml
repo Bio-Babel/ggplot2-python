@@ -1,0 +1,12 @@
+id: ggplot2_py.layer_inheritance
+name: Plot-level vs layer-level data/mapping inheritance
+category: builder-DSL
+description: "A layer can either *inherit* the plot's default data and mapping, or\ndeclare its own. The resolution rule is:\n\n  final_data    = layer.data    if layer.data is not None    else plot.data\n  final_mapping = layer.mapping (merged into plot.mapping)\n                                if layer.mapping is not None else plot.mapping\n\nSetting `inherit_aes=False` on a layer drops the plot's mapping entirely\nfor that layer — useful when you want one layer to be sourced from a\ncompletely different data frame with no aesthetic inheritance.\n"
+invariants:
+- If a plot has no default data and a layer also has no data, that layer raises at draw time.
+- Layer mapping merges into plot mapping; same-name keys overwrite.
+- '`inherit_aes=False` is a hard cutoff — no mapping is inherited (not even x/y).'
+mental_model: "General:\nThree patterns dominate:\n  (a) ggplot(df, aes(...)) + geom_point()  — both inherited\n  (b) ggplot(df) + geom_point(aes(...))    — data inherited, mapping local\n  (c) ggplot() + geom_point(df, aes(...), inherit_aes=False) — fully isolated"
+related_concepts:
+- ggplot2_py.aes_mapping
+- ggplot2_py.plus_accumulation

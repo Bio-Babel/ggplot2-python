@@ -1,0 +1,57 @@
+id: ggplot2_py.geom_abline
+import_path: ggplot2_py.geom_abline
+kind: function
+signature: geom_abline(mapping=None, data=None, slope=None, intercept=None, stat='identity')
+purpose: slanted reference line; y = a + bx overlay (e.g. y=x diagonal)
+description: 'Like geom_hline/geom_vline but uses `intercept` AND `slope` (different math).
+
+  Pass both as direct arguments — `geom_abline(slope=1, intercept=0)` draws
+
+  the y=x diagonal. When either is given directly, the constructor synthesises
+
+  a one-row dataframe with `inherit_aes=False`. Default (no args, no mapping)
+
+  is the y=x line.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: 'Per-row case: aes(intercept=''a'', slope=''b'').'
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: slope
+  type: float | list[float]
+  required: false
+  default: null
+  description: Defaults to 1 when only intercept is given (and to 1 in the no-arg case).
+- name: intercept
+  type: float | list[float]
+  required: false
+  default: null
+  description: Defaults to 0 when only slope is given.
+- name: stat
+  type: str
+  required: false
+  default: identity
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- geom_abline(slope=1, intercept=0, linetype='dashed')
+- ggplot(df, aes(x='actual', y='pred')) + geom_point() + geom_abline() + coord_equal()
+failure_fixes:
+- when: passed slope/intercept inside aes() with literal numbers — no line
+  suggest:
+  - 'Use direct args: geom_abline(slope=1, intercept=0). aes() takes column-name strings, not numbers.'
+- when: want y=x diagonal for predicted-vs-actual plot
+  suggest:
+  - 'geom_abline()  # default slope=1, intercept=0; pair with coord_equal().'
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.coord_equal

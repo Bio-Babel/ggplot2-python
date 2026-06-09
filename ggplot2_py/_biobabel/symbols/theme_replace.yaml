@@ -1,0 +1,18 @@
+id: ggplot2_py.theme_replace
+import_path: ggplot2_py.theme_replace
+kind: function
+signature: theme_replace(kwargs)
+purpose: Replace elements in the current global theme.
+description: Replace elements in the current global theme.
+parameters:
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Optional[Theme]; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,105 @@
+id: ggplot2_py.layer
+import_path: ggplot2_py.layer
+kind: function
+signature: layer(geom="'blank'", stat="'identity'", data=None, mapping=None, position="'identity'", params=None, inherit_aes=True, check_aes=True, check_param=True, show_legend=None, key_glyph=None, layout=None, layer_class='Layer', **kwargs=None)
+purpose: low-level layer constructor used inside custom geom_X / stat_X factories; wire a Geom + Stat + Position + Mapping into a Layer object
+description: "Low-level constructor that builds a `Layer` from a geom, stat, position,\ndata, mapping, and a `params` dict. Every user-facing `geom_X()` /\n`stat_X()` factory funnels through this — the layer object is what is\nadded to a `GGPlot` via `+`.\n\n**This is the canonical entry point for extension authors writing a new\ngeom or stat factory.** Real downstream pattern (ggrepel-python,\nggalluvial-python) — import as `from ggplot2_py.layer import layer as\n_layer` and call inside the factory::\n\n    def geom_text_repel(mapping=None, data=None, *, stat=\"identity\",\n                        position=\"identity\", show_legend=None,\n                        inherit_aes=True, **kwargs):\n        params = {\"box_padding\": ..., \"force\": ..., \"na_rm\": False, **kwargs}\n        return _layer(\n            geom=GeomTextRepel, stat=stat, data=data, mapping=mapping,\n            position=position, show_legend=show_legend,\n            inherit_aes=inherit_aes, params=params,\n        )\n\
+  \nStrings (`\"identity\"`, `\"bin\"`, `\"dodge\"`) are resolved against\n`Geom._registry` / `Stat._registry` / `Position._registry` —\n`discover_extensions()` populates these at import time. Pass a class\ndirectly to skip the registry lookup. See concept\n`ggplot2_py.extension_class_hierarchy` for how to subclass the base\nGeom/Stat/Position.\n\nValidation: when `check_param=True`, unknown keys in `params` not\nrecognised by either the geom OR the stat (and not one of the\nlayer-infrastructure keys like `na_rm`, `show_legend`, `inherit_aes`,\n`key_glyph`, `layout`, `name`, `orientation`) trigger a\n\"Ignoring unknown parameters\" warning. Same for unknown aesthetics in\n`mapping` when `check_aes=True`.\n"
+parameters:
+- name: geom
+  type: str | type[Geom] | Geom
+  required: false
+  default: '''blank'''
+  description: Geom class, instance, or registry name. None → 'blank'.
+- name: stat
+  type: str | type[Stat] | Stat
+  required: false
+  default: '''identity'''
+  description: Stat class, instance, or registry name. None → 'identity'.
+- name: data
+  type: DataFrame | Callable | None
+  required: false
+  default: null
+  description: Layer data. None becomes `waiver()` internally — inherit from plot.
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+  description: Layer-level aesthetic mapping. Merged with plot mapping unless inherit_aes=False.
+- name: position
+  type: str | type[Position] | Position | dict
+  required: false
+  default: '''identity'''
+  description: 'Position adjustment. Dict form `{''name'': ''jitter'', ''width'': 0.2}` is supported.'
+- name: params
+  type: dict | None
+  required: false
+  default: null
+  description: Combined geom/stat/aes parameters. `**kwargs` get merged in. `na_rm` defaults to False.
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, the plot-level default mapping is dropped for this layer.
+- name: check_aes
+  type: bool
+  required: false
+  default: true
+  description: Warn on aesthetics in mapping not known to the geom/stat/position.
+- name: check_param
+  type: bool
+  required: false
+  default: true
+  description: Warn on params keys not known to the geom/stat.
+- name: show_legend
+  type: bool | None
+  required: false
+  default: null
+  description: None=auto (legend only if a scale binds it); True/False forces.
+- name: key_glyph
+  type: Callable | str | None
+  required: false
+  default: null
+  description: Override the legend key drawer; pass `draw_key_point`/`draw_key_path`/etc., or a custom callable.
+- name: layout
+  type: Any
+  required: false
+  default: null
+  description: Custom layout specification (advanced).
+- name: layer_class
+  type: type[Layer]
+  required: false
+  default: Layer
+  description: Class to instantiate. Override only to introduce a Layer-subclass with custom hooks (rare).
+- name: '**kwargs'
+  type: Any
+  required: false
+  default: null
+  description: Merged into params. The recommended way to forward user-facing geom/stat options from a factory.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- 'from ggplot2_py.layer import layer as _layer
+
+  _layer(geom=GeomStratum, stat=''stratum'', position=''identity'', params={''width'': 1/3, ''na_rm'': False})'
+- '_layer(geom=GeomTextRepel, stat=''identity'', position=''identity'', mapping=mapping, data=data, params={''force'': 1.0, ''na_rm'': False})'
+- '_layer(geom=''point'', stat=''identity'')  # string resolution via Geom._registry'
+failure_fixes:
+- when: 'warning: Ignoring unknown parameters: `foo`'
+  suggest:
+  - '`foo` is in params but not in geom.parameters() / stat.parameters() / infra. Either add it to the Geom''s `extra_params` slot, or remove it from the params dict.'
+  explanation: layer() runs an unknown-param check after rename_aes; see layer.py lines around 905-930.
+- when: 'warning: Ignoring unknown aesthetics: `foo`'
+  suggest:
+  - Add `foo` to the Geom's `default_aes`/`required_aes` or the Stat's `aesthetics()`, or remove it from `mapping`.
+- when: KeyError or registry-miss when passing geom='myname'
+  suggest:
+  - 'Either register the class via entry point `ggplot2_py.geoms = mygeom = mypkg:MyGeom` (then call `discover_extensions()`), or pass the class directly: `layer(geom=MyGeom, ...)`.'
+- when: 'TypeError: layer() got an unexpected keyword argument'
+  suggest:
+  - Extension-specific options should go into `params=` or be merged via `**kwargs` (which layer() forwards into params).
+related:
+- ggplot2_py.ggplot_add
+- ggplot2_py.ggplotGrob

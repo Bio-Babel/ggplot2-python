@@ -1,0 +1,95 @@
+id: ggplot2_py.compose_plots_grid
+name: Compose multiple ggplots into one figure (gtable tiling / patchwork)
+applicable_to:
+  - ggplot2_py.singledispatch_composition
+description: |
+  ggplot2_py's `+` accumulates components onto ONE plot — it does not place
+  two plots side by side (see the `plus_between_two_plots` anti-pattern). To
+  arrange several plots in a grid you need an explicit composition API. There
+  are two routes:
+
+  1. In-ecosystem, no extra dependency — render each plot to a Gtable grob
+     and tile the grobs into a pre-sized outer Gtable. This is exactly how
+     the `templates/geom_gallery.py` template builds its 3x2 panel grid, and how
+     patchwork itself assembles plots internally (an empty `Gtable` filled by
+     repeated absolute-cell `gtable_add_grob` calls):
+
+         from grid_py import Unit
+         from gtable_py import Gtable, gtable_add_grob
+         from ggplot2_py import ggplotGrob       # GGPlot -> Gtable
+         # (equivalently: ggplot_gtable(ggplot_build(p)))
+
+         outer = Gtable(widths=Unit([1, 1], "null"),
+                        heights=Unit([1], "null"), name="composite")
+         outer = gtable_add_grob(outer, [ggplotGrob(p1)], t=1, l=1, name="p0")
+         outer = gtable_add_grob(outer, [ggplotGrob(p2)], t=1, l=2, name="p1")
+         ggsave("grid.png", plot=outer)         # ggsave accepts any gtable
+
+     `gtable_add_grob` is functional — it returns a NEW gtable each call, so
+     capture the return value. Cells are 1-based and inclusive; `t/l` (and
+     optional `b/r`) address the cell, `z=` sets paint order, `name=` labels
+     the placement. For the underlying placement primitive see
+     `gtable_py.build_then_add_grob`.
+
+  2. With patchwork-python (`import patchwork`) — a higher-level layout DSL.
+     Importing patchwork monkeypatches layout dunders onto `GGPlot`
+     (`|`, `/`, `-`, `&`) and registers `GGPlot` on the `+`-composition
+     generic, so once imported these COMPOSE rather than raise:
+
+         from patchwork import wrap_plots
+         fig = wrap_plots(p1, p2, ncol=2)        # grid by count
+         fig = (p1 | p2) / p3                     # | = beside, / = stacked
+
+     Python operator precedence differs from R's, so ALWAYS parenthesize
+     mixed expressions like `(p1 | p2) / p3`. patchwork's own assembly still
+     bottoms out in the gtable tiling of route 1.
+
+  Prefer route 1 when you want a self-contained figure with no patchwork
+  dependency; reach for patchwork when you want its alignment, shared guides,
+  tagging, and ergonomic operators.
+code_template: |
+  import numpy as np
+  import pandas as pd
+  from grid_py import Unit
+  from gtable_py import Gtable, gtable_add_grob
+  from ggplot2_py import aes, geom_col, geom_point, ggplot, ggplotGrob, ggsave, labs, theme_minimal
+  from ggplot2_py.datasets import mpg
+
+  # 1. Build each panel as its own GGPlot.
+  p1 = (
+      ggplot(mpg, aes("displ", "hwy"))
+      + geom_point(size=0.8)
+      + labs(title="A: displ vs hwy")
+      + theme_minimal()
+  )
+  summ = mpg.groupby("class", as_index=False)["hwy"].mean()
+  p2 = (
+      ggplot(summ, aes("class", "hwy"))
+      + geom_col(fill="#4C72B0")
+      + labs(title="B: mean hwy by class")
+      + theme_minimal()
+  )
+
+  # 2. Render each plot to a Gtable grob (ggplotGrob == ggplot_gtable(ggplot_build(p))).
+  grobs = [ggplotGrob(p1), ggplotGrob(p2)]
+
+  # 3. Tile them into a pre-sized outer Gtable, one absolute cell at a time.
+  #    gtable_add_grob is functional: it returns a NEW gtable, so reassign.
+  ncol, nrow = 2, 1
+  outer = Gtable(
+      widths=Unit([1] * ncol, "null"),
+      heights=Unit([1] * nrow, "null"),
+      name="composite",
+  )
+  for i, g in enumerate(grobs):
+      r, c = i // ncol + 1, i % ncol + 1
+      outer = gtable_add_grob(outer, [g], t=r, l=c, z=i + 1, name=f"panel_{i}")
+
+  # 4. ggsave accepts any gtable, so the composite writes like a normal plot.
+  ggsave("/tmp/composed_grid.png", plot=outer, width=10, height=5, dpi=90)
+
+  # --- patchwork alternative (requires `import patchwork`) ---------------
+  # from patchwork import wrap_plots
+  # fig = wrap_plots(p1, p2, ncol=2)   # or: (p1 | p2); always parenthesize mixes
+anti_pattern_paired: ggplot2_py.plus_between_two_plots
+typical_use_case: "arrange several independent ggplots into one multi-panel figure"

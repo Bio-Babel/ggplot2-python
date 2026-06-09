@@ -1,0 +1,104 @@
+id: ggplot2_py.stat_density
+import_path: ggplot2_py.stat_density
+kind: function
+signature: stat_density(mapping=None, data=None, geom='area', position='stack', bw='nrd0', adjust=1.0, kernel='gaussian', n=512, trim=False, bounds='(-inf, inf)')
+purpose: 1D kernel density estimate (smoothed alternative to a histogram); compare distributions across groups with a continuous curve
+description: 'Evaluates a 1D KDE on an `n`-point grid spanning the data and emits the
+
+  computed columns `density` (the PDF estimate), `count` (`density * n_in_group`),
+
+  `scaled` (density/max(density), per group), and `ndensity` (alias for scaled).
+
+  The stat sets `aes(y=after_stat(''density''))` as default. Default geom is
+
+  `area` — equivalent to `geom_density()`.
+
+
+  Bandwidth `bw` accepts a positive float or an R-style rule string:
+
+  `''nrd0''` (Silverman''s rule, the R default), `''nrd''` (Scott),
+
+  `''ucv''`, `''bcv''`, `''sj''`. Kernel choices: `''gaussian''` (default),
+
+  `''epanechnikov''`, `''rectangular''`, `''triangular''`, `''biweight''`,
+
+  `''cosine''`, `''optcosine''`. `adjust` multiplies the chosen bandwidth
+
+  (>1 smooths more, <1 less).
+
+
+  `trim=False` (default) lets the density tail off the observed range;
+
+  set `trim=True` to clip at min/max — preferred for per-group densities
+
+  when the data range differs.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: DataFrame | None
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: area
+- name: position
+  type: str
+  required: false
+  default: stack
+  description: '''stack'' (default), ''identity'' for overlapping curves, ''fill'' for proportional stacks.'
+- name: bw
+  type: str | float
+  required: false
+  default: nrd0
+  description: 'Bandwidth: positive number or R rule (''nrd0'' Silverman, ''nrd'' Scott, ''ucv'', ''bcv'', ''sj'').'
+- name: adjust
+  type: float
+  required: false
+  default: 1.0
+  description: Multiplier for the chosen bandwidth.
+- name: kernel
+  type: str
+  required: false
+  default: gaussian
+  description: '''gaussian'', ''epanechnikov'', ''rectangular'', ''triangular'', ''biweight'', ''cosine'', ''optcosine''.'
+- name: n
+  type: int
+  required: false
+  default: 512
+  description: Grid resolution. Must be a power of 2 for some bw rules.
+- name: trim
+  type: bool
+  required: false
+  default: false
+  description: Clip density to the observed x range per group. Recommended when comparing groups with different supports.
+- name: bounds
+  type: tuple[float, float]
+  required: false
+  default: (-inf, inf)
+  description: Reflect the density at finite bounds — for variables with hard limits (e.g. [0, 1]).
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- geom_density(aes(fill='species'), alpha=0.4, position='identity')
+- stat_density(aes(y=after_stat('count')), bw=0.5, kernel='epanechnikov')
+failure_fixes:
+- when: want per-group curves overlaid rather than stacked
+  suggest:
+  - position='identity' and set alpha<1 in the geom, e.g. geom_density(alpha=0.5).
+- when: density has support beyond the data (e.g. negative tail for non-negative variable)
+  suggest:
+  - trim=True to clip per group, or bounds=(0, np.inf) to reflect at zero.
+- when: want bar-count comparable y axis
+  suggest:
+  - 'Map y to count via after_stat: aes(y=after_stat(''count'')).'
+related:
+- ggplot2_py.geom_rug
+- ggplot2_py.facet_wrap

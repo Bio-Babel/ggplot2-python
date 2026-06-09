@@ -1,0 +1,39 @@
+id: ggplot2_py.custom_position_compute
+name: Custom Position — subclass Position, override compute_panel()
+applicable_to:
+  - ggplot2_py.position_extension_contract
+  - ggplot2_py.ggproto_system
+description: |
+  A `Position` adjusts already-mapped coordinates (dodge, jitter, stack…).
+  Subclass `ggplot2_py.position.Position` and override
+  `compute_panel(self, data, params, scales=None)` — the base
+  `compute_layer` splits data by PANEL and calls `compute_panel` per panel,
+  so you only handle one panel's DataFrame. The subclass auto-registers via
+  `__init_subclass__` (a `PositionFoo` name registers under `"foo"`).
+
+  Pass the position to a geom via `geom_*(position=YourPosition(...))` — a
+  class, an instance, or its registered string name all work. Here every
+  point is shifted right by a fixed amount along x.
+code_template: |
+  from ggplot2_py.position import Position
+  from ggplot2_py import ggplot, aes, geom_point, ggsave
+  from ggplot2_py.datasets import mpg
+
+  class PositionShiftRight(Position):
+      """Shift every element right by a fixed x offset."""
+      def __init__(self, shift=0.3, **kwargs):
+          super().__init__(**kwargs)
+          self.shift = shift
+
+      def compute_panel(self, data, params, scales=None):
+          data = data.copy()
+          if "x" in data.columns:
+              data["x"] = data["x"] + self.shift
+          return data
+
+  p = (
+      ggplot(mpg, aes(x="displ", y="hwy"))
+      + geom_point(position=PositionShiftRight(shift=0.5))
+  )
+  ggsave("/tmp/idiom_custom_position_compute.png", plot=p, width=5, height=4)
+typical_use_case: "a bespoke positional adjustment (custom nudge/stack/spread) not covered by position_dodge / jitter / stack"

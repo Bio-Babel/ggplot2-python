@@ -1,0 +1,18 @@
+id: ggplot2_py.coord_trans
+import_path: ggplot2_py.coord_trans
+kind: function
+signature: coord_trans(kwargs)
+purpose: Deprecated alias for :func:`coord_transform`.
+description: Deprecated alias for :func:`coord_transform`.
+parameters:
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: CoordTransform; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

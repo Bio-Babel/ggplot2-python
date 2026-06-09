@@ -1,0 +1,58 @@
+id: ggplot2_py.register_guide
+import_path: ggplot2_py.register_guide
+kind: function
+signature: register_guide(name, constructor)
+purpose: make a custom guide resolvable by string so guide='name' / guides(...) works; register an R-faithful guide constructor for a custom Guide subclass
+description: 'Register a guide under `name` so it can be referenced by string in `guides()`,
+
+  `guide=`, scale `guide=` arguments, etc. This is the public, R-faithful
+
+  extension point: it mirrors R, where any exported `guide_<name>()` function is
+
+  found dynamically and CALLED by `validate_guide`. Registering the constructor
+
+  (not the bare class) means `guide="<name>"` yields R-identical defaults.
+
+
+  Matching is case-insensitive and treats `-` as `_`. Note that `Guide`
+
+  subclasses ALSO auto-register their CLASS by name via
+
+  `Guide.__init_subclass__` (`GuideStringlegend -> "stringlegend"`); call
+
+  `register_guide` when you want the string to resolve to a CONSTRUCTOR FUNCTION
+
+  (with its default arguments) rather than a bare `cls()`.
+
+
+  Mutates the global guide registry and returns None.
+
+  '
+parameters:
+- name: name
+  type: str
+  required: true
+  default: null
+  description: The string by which the guide is referenced (e.g. 'stringlegend'); matched case-insensitively with '-' treated as '_'.
+- name: constructor
+  type: Callable | type
+  required: true
+  default: null
+  description: Preferably the guide_<name> constructor function (called with no args at resolution time, like R's guide_<name>()). A Guide class is also accepted and instantiated via cls().
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=none
+returns: None; kind=none
+requires: []
+writes: []
+examples:
+- register_guide('stringlegend', guide_stringlegend)
+- 'register_guide(''myaxis'', GuideMyAxis)  # class form, instantiated via cls()'
+failure_fixes:
+- when: guide='name' yields wrong defaults
+  suggest:
+  - Register the guide_<name> CONSTRUCTOR (a function returning a configured guide), not the bare class; R invokes the constructor, not cls().
+- when: guide='name' is not found
+  suggest:
+  - Check the registered name (case-insensitive, '-' treated as '_'); or rely on the auto-registered class name (GuideFoo -> 'foo').
+related:
+- ggplot2_py.Guide
+- ggplot2_py.guides

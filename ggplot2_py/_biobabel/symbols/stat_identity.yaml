@@ -1,0 +1,44 @@
+id: ggplot2_py.stat_identity
+import_path: ggplot2_py.stat_identity
+kind: function
+signature: stat_identity(mapping=None, data=None, geom='point', position='identity')
+purpose: pass data through unchanged when a geom expects a different default stat
+description: 'Identity stat — emits its input rows verbatim, no transformation. Rarely
+
+  called directly. Useful only to override a geom whose default stat is NOT
+
+  identity (e.g. `geom_bar(stat=''identity'')` or, equivalently, `stat_identity(geom=''bar'')`).
+
+  Idiomatic Python prefers the `geom_*` form; reach for `stat_identity` only
+
+  when an existing pipeline already constructs Layers stat-first.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: DataFrame | None
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: point
+  description: Which geom to draw with the identity-mapped values.
+- name: position
+  type: str
+  required: false
+  default: identity
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- 'stat_identity(geom=''bar'')  # same as geom_col'
+failure_fixes:
+- when: bars all height 1 / unexpected stacking when using stat_identity(geom='bar')
+  suggest:
+  - geom_col is the canonical way to draw bars from pre-summarized y values — prefer it over stat_identity(geom='bar').

@@ -1,0 +1,94 @@
+id: ggplot2_py.geom_dotplot
+import_path: ggplot2_py.geom_dotplot
+kind: function
+signature: geom_dotplot(mapping=None, data=None, position='identity', binwidth=None, binaxis='x', method='dotdensity', binpositions='bygroup', stackdir='up', stackratio=1, dotsize=1, stackgroups=False, origin=None, right=True, width=0.9, drop=False, na_rm=False, show_legend=None, inherit_aes=True, stat='bindot', kwargs)
+purpose: Create a dotplot layer (R geom-dotplot.R:122-139 signature).
+description: Create a dotplot layer (R geom-dotplot.R:122-139 signature).
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: binwidth
+  type: Optional[float]
+  required: false
+  default: null
+- name: binaxis
+  type: str
+  required: false
+  default: x
+- name: method
+  type: str
+  required: false
+  default: dotdensity
+- name: binpositions
+  type: str
+  required: false
+  default: bygroup
+- name: stackdir
+  type: str
+  required: false
+  default: up
+- name: stackratio
+  type: float
+  required: false
+  default: 1
+- name: dotsize
+  type: float
+  required: false
+  default: 1
+- name: stackgroups
+  type: bool
+  required: false
+  default: false
+- name: origin
+  type: Optional[float]
+  required: false
+  default: null
+- name: right
+  type: bool
+  required: false
+  default: true
+- name: width
+  type: float
+  required: false
+  default: 0.9
+- name: drop
+  type: bool
+  required: false
+  default: false
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: show_legend
+  type: Any
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: stat
+  type: str
+  required: false
+  default: bindot
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

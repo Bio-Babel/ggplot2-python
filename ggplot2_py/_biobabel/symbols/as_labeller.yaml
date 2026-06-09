@@ -1,0 +1,37 @@
+id: ggplot2_py.as_labeller
+import_path: ggplot2_py.as_labeller
+kind: function
+signature: as_labeller(x)
+purpose: coerce a string/dict/callable into the canonical labeller(labels, multi_line) signature; extension authors writing facet label_* helpers should funnel through this
+description: "Convert any \"labeller-shaped\" input into the canonical labeller callable\nsignature `labeller(labels: dict[str, list[str]], multi_line: bool=True) -> list[str]`.\nThis is the contract `facet_wrap` and `facet_grid` expect from\n`labeller=` arguments.\n\nAccepted input forms:\n  - `callable` — returned unchanged (assumed to follow the contract).\n  - `str` — looked up in `_LABELLER_REGISTRY`: one of `\"label_value\"`,\n    `\"label_both\"`, `\"label_context\"`, `\"label_parsed\"`, `\"label_bquote\"`.\n    Unknown strings raise `ValueError`.\n  - `dict` — built into a lookup-table labeller: each value is mapped\n    through the dict, with un-matched keys passed through `label_value`.\n\nAnything else raises `TypeError`.\n\n**For extension authors writing custom `label_X` helpers** (e.g.\n`label_percent`, `label_scientific`): make sure your callable accepts\n`(labels: dict, multi_line: bool=True)` and returns `list[str]`. Then\nusers can either pass it directly to `facet_wrap(labeller=my_fn)`\
+  \ or\nwrap it via `as_labeller(my_fn)`.\n\nMirrors R `facet-labeller.R:284-299`. Note: R's behaviour for non-dict\nnon-callable arguments is more lenient (vectorised); the Python port\nraises explicitly.\n"
+parameters:
+- name: x
+  type: str | dict | Callable
+  required: true
+  default: null
+  description: Labeller spec. String name, dict lookup table, or labeller callable.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Callable; kind=value
+requires: []
+writes: []
+examples:
+- 'as_labeller(''label_both'')  # returns label_both'
+- 'as_labeller({''drv4'': ''four-wheel'', ''drvf'': ''front''})  # lookup-table labeller'
+- 'as_labeller(lambda labels, multi_line=True: [''CUSTOM ''+v for vs in labels.values() for v in vs])'
+failure_fixes:
+- when: 'ValueError: Unknown labeller: ''X'''
+  suggest:
+  - Use one of label_value / label_both / label_context / label_parsed / label_bquote, or pass a callable directly.
+- when: 'TypeError: Cannot coerce X to a labeller'
+  suggest:
+  - Pass a string, dict, or callable. Lists/tuples are not labellers — convert to a dict first.
+- when: facet labels render as raw values despite passing a labeller
+  suggest:
+  - 'Make sure the callable has signature (labels, multi_line=True) -> list[str]. A `lambda x: f''{x}''` won''t work; the input is a dict-of-lists.'
+- when: dict-form labeller works for some levels but not others
+  suggest:
+  - Unmatched keys fall back to label_value (raw display). Make the dict exhaustive or wrap in a defaultdict before passing.
+related:
+- ggplot2_py.facet_wrap
+- ggplot2_py.facet_grid

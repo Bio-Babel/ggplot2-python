@@ -1,0 +1,66 @@
+id: ggplot2_py.coord_sf
+import_path: ggplot2_py.coord_sf
+kind: function
+signature: coord_sf(xlim=None, ylim=None, expand=True, crs=None, default_crs=None, datum=4326, label_graticule='waiver()', label_axes='waiver()', lims_method='cross', ndiscr=100, default=False, clip='on', reverse='none')
+purpose: R port of ``coord_sf()`` (coord-sf.R:555-606).
+description: R port of ``coord_sf()`` (coord-sf.R:555-606).
+parameters:
+- name: xlim
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: ylim
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: expand
+  type: Union[bool, List[bool]]
+  required: false
+  default: true
+- name: crs
+  type: Any
+  required: false
+  default: null
+- name: default_crs
+  type: Any
+  required: false
+  default: null
+- name: datum
+  type: Any
+  required: false
+  default: 4326
+- name: label_graticule
+  type: Any
+  required: false
+  default: waiver()
+- name: label_axes
+  type: Any
+  required: false
+  default: waiver()
+- name: lims_method
+  type: str
+  required: false
+  default: cross
+- name: ndiscr
+  type: int
+  required: false
+  default: 100
+- name: default
+  type: bool
+  required: false
+  default: false
+- name: clip
+  type: str
+  required: false
+  default: 'on'
+- name: reverse
+  type: str
+  required: false
+  default: none
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: CoordSf; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

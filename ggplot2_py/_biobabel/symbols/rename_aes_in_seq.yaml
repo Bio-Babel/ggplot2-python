@@ -1,0 +1,45 @@
+id: ggplot2_py.extension.rename_aes_in_seq
+import_path: ggplot2_py.extension.rename_aes_in_seq
+kind: function
+signature: rename_aes_in_seq(seq, old, new)
+purpose: rename an aesthetic inside a sequence of aesthetic names (e.g. required_aes) for the new_scale pattern
+description: 'Return a NEW list built from the iterable `seq` of aesthetic-name strings with
+
+  every occurrence of `old` replaced by `new`. Used by the ggnewscale-style
+
+  toolkit to rewrite list/tuple-shaped aesthetic name collections such as a
+
+  geom/stat `required_aes` or a guide''s `available_aes`. Does not mutate the
+
+  input.
+
+  '
+parameters:
+- name: seq
+  type: Iterable[str]
+  required: true
+  default: null
+  description: An iterable of aesthetic-name strings (e.g. required_aes).
+- name: old
+  type: str
+  required: true
+  default: null
+  description: The existing aesthetic name (e.g. 'colour').
+- name: new
+  type: str
+  required: true
+  default: null
+  description: The replacement aesthetic name (e.g. 'colour_ggnewscale_1').
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=new_object
+returns: List[str]; kind=new_object
+requires: []
+writes: []
+examples:
+- geom.required_aes = rename_aes_in_seq(geom.required_aes, 'colour', 'colour_new')
+failure_fixes:
+- when: required_aes still lists the old aesthetic
+  suggest:
+  - 'Assign the returned list back: geom.required_aes = rename_aes_in_seq(geom.required_aes, ''colour'', ''colour_new'').'
+related:
+- ggplot2_py.extension.rename_aes_in_dict
+- ggplot2_py.extension.rename_aes_in_mapping

@@ -1,0 +1,30 @@
+id: ggplot2_py.scale_size_area
+import_path: ggplot2_py.scale_size_area
+kind: function
+signature: scale_size_area(name=None, max_size=6, aesthetics='size', kwargs)
+purpose: Size scale where 0 maps to size 0.
+description: Size scale where 0 maps to size 0.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: max_size
+  type: float
+  required: false
+  default: 6
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: size
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuous; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

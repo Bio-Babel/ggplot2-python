@@ -1,0 +1,48 @@
+id: ggplot2_py.facet_wrap
+import_path: ggplot2_py.facet_wrap
+kind: function
+signature: facet_wrap(facets, nrow=None, ncol=None, scales='fixed')
+purpose: small multiples; one panel per category
+description: 'Wrap a 1-D ribbon of panels into an n_row × n_col grid; useful when
+
+  there''s one categorical variable to facet on. For 2-D faceting use
+
+  facet_grid.
+
+  '
+parameters:
+- name: facets
+  type: str | tuple[str, ...]
+  required: true
+  default: null
+  description: Column name(s). R's '~ class' becomes 'class'; '~ class + drv' becomes ('class', 'drv').
+- name: nrow
+  type: int
+  required: false
+  default: null
+- name: ncol
+  type: int
+  required: false
+  default: null
+- name: scales
+  type: str
+  required: false
+  default: fixed
+  description: '''fixed'' (default, shared axes), ''free'', ''free_x'', ''free_y''.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Facet; kind=new_object
+requires: []
+writes: []
+examples:
+- facet_wrap('class')
+- facet_wrap(('class', 'drv'), scales='free_y')
+failure_fixes:
+- when: passed a tilde-formula string like '~ class'
+  suggest:
+  - 'Use a plain column name: facet_wrap(''class''), not facet_wrap(''~ class'')'
+- when: axes inconsistent across panels
+  suggest:
+  - scales='fixed' is the default; pass 'free_y' only when panels truly have different y ranges
+related:
+- ggplot2_py.labs
+- ggplot2_py.theme_minimal

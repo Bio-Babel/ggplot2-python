@@ -1,0 +1,62 @@
+id: ggplot2_py.element_text
+import_path: ggplot2_py.element_text
+kind: function
+signature: element_text(family=None, face=None, colour=None, size=None, hjust=None, vjust=None, angle=None, lineheight=None, color=None, margin=None, debug=None, inherit_blank=False)
+purpose: Create a text theme element.
+description: Create a text theme element.
+parameters:
+- name: family
+  type: Optional[str]
+  required: false
+  default: null
+- name: face
+  type: Optional[str]
+  required: false
+  default: null
+- name: colour
+  type: Optional[str]
+  required: false
+  default: null
+- name: size
+  type: Optional[Union[float, Rel]]
+  required: false
+  default: null
+- name: hjust
+  type: Optional[float]
+  required: false
+  default: null
+- name: vjust
+  type: Optional[float]
+  required: false
+  default: null
+- name: angle
+  type: Optional[float]
+  required: false
+  default: null
+- name: lineheight
+  type: Optional[float]
+  required: false
+  default: null
+- name: color
+  type: Optional[str]
+  required: false
+  default: null
+- name: margin
+  type: Optional[Margin]
+  required: false
+  default: null
+- name: debug
+  type: Optional[bool]
+  required: false
+  default: null
+- name: inherit_blank
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ElementText; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

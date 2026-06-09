@@ -1,0 +1,50 @@
+id: ggplot2_py.geom_sf_label
+import_path: ggplot2_py.geom_sf_label
+kind: function
+signature: geom_sf_label(mapping=None, data=None, stat='sf_coordinates', position='nudge', na_rm=False, show_legend=None, inherit_aes=True, parse=False, kwargs)
+purpose: Create a label layer for sf geometries.
+description: Create a label layer for sf geometries.
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: sf_coordinates
+- name: position
+  type: str
+  required: false
+  default: nudge
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: show_legend
+  type: Any
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: parse
+  type: bool
+  required: false
+  default: false
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

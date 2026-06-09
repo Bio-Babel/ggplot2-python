@@ -1,0 +1,68 @@
+id: ggplot2_py.geom_tile
+import_path: ggplot2_py.geom_tile
+kind: function
+signature: geom_tile(mapping=None, data=None, stat='identity', position='identity', na_rm=False, inherit_aes=True)
+purpose: heatmap of fill values; rectangular tiles on an arbitrary x/y grid
+description: 'Draw a rectangle centered at each `(x, y)` with optional per-tile `width`
+
+  and `height` aesthetics. Use `geom_tile` for general heatmaps where
+
+  rows/columns are categorical or unevenly spaced. If your data lies on a
+
+  regular grid (constant dx, dy across all cells), `geom_raster` is
+
+  considerably faster and renders the same picture. Accumulates via `+`
+
+  (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Needs x and y; map fill to color the tiles. width/height are also aesthetics, not direct args.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(df, aes(x='gene', y='sample', fill='log2fc')) + geom_tile() + scale_fill_gradient2()
+- geom_tile(aes(width='w', height='h'))
+failure_fixes:
+- when: tiles have gaps or overlap unpredictably
+  suggest:
+  - Set per-row width/height via aes(width='w', height='h'); default assumes the resolution of x/y.
+  - If grid is regular and you want pixel-perfect rendering, switch to geom_raster.
+- when: no color visible — tiles all the default gray
+  suggest:
+  - Map fill via aes(fill='value'); a constant fill outside aes() works too but loses the legend.
+- when: tiles look squashed in non-square panels
+  suggest:
+  - Add coord_equal() (or coord_fixed()) to enforce 1:1 aspect ratio.
+related:
+- ggplot2_py.scale_fill_viridis_c
+- ggplot2_py.scale_fill_gradient2
+- ggplot2_py.coord_equal
+- ggplot2_py.theme_minimal

@@ -1,0 +1,69 @@
+id: ggplot2_py.stat_extension_contract
+name: Stat extension contract (subclass Stat, override compute_group)
+category: extension
+description: "A custom statistical transform is a subclass of ``Stat``\n(``ggplot2_py.stat.Stat``, a ``GGProto`` subclass). It computes new columns\nfrom the layer data *before* the geom renders. The contract:\n\n  1. Set ``required_aes`` (list of aesthetic names the stat consumes,\n     e.g. ``[\"x\", \"y\"]``) and optionally ``default_aes`` (dict), ``dropped_aes``\n     (aesthetics consumed and removed afterwards), ``non_missing_aes``,\n     ``retransform`` (bool), ``extra_params``.\n  2. Override the computation at the appropriate granularity:\n       - ``compute_group(self, data, scales, **params) -> DataFrame`` — runs\n         once per group; this is what most stats override (e.g. a convex hull\n         returns the hull vertices; a linear fit returns a prediction grid).\n       - ``compute_panel(self, data, scales, **params) -> DataFrame`` — runs\n         once per panel (override when the computation spans groups).\n       - ``compute_layer(self, data, params, layout) -> DataFrame``\
+  \ — the\n         top-level entry point that checks required aesthetics, removes NA\n         rows, and dispatches to ``compute_panel`` → ``compute_group``.\n         Override only to side-step the per-group/panel split (rare).\n  3. Optionally override ``setup_params(self, data, params) -> params`` to do\n     a once-per-dataset calculation (e.g. pick a shared bandwidth across all\n     groups) and ``setup_data(self, data, params) -> data``.\n\nThe columns a stat computes are consumed downstream via ``after_stat(...)`` in\nan ``aes()`` mapping — e.g. ``geom_histogram(aes(y=after_stat(lambda d:\nd[\"count\"] / d[\"count\"].sum())))`` reads the ``count`` column ``StatBin``\nproduced. The stat's *default* output column (``count``, ``density``, …) is\nmapped to the geom's main aesthetic automatically.\n\nDefining ``class StatChull(Stat): ...`` AUTO-REGISTERS into ``Stat._registry``\nunder both ``\"Chull\"`` and ``\"chull\"`` via ``__init_subclass__``, so\n``layer(stat=\"chull\", ...)`` resolves\
+  \ it. Pair the class with a thin factory\n``def stat_chull(mapping=None, data=None, *, geom=\"polygon\",\nposition=\"identity\", ...) -> Layer`` that wraps ``layer(stat=StatChull,\ngeom=..., ...)``. A stat factory chooses a *default geom* (``geom=\"polygon\"``,\n``geom=\"line\"``) that the user can override.\n"
+invariants:
+- A concrete `StatX` subclasses `Stat` and overrides `compute_group` (per-group, the common case) OR `compute_panel` (per-panel) OR `compute_layer` (whole-layer, rare); each returns a DataFrame.
+- '`compute_group(self, data, scales, **params)` receives a per-group DataFrame and returns a DataFrame whose columns become the layer''s post-stat data; row count may change (e.g. a hull or a prediction grid returns a different number of rows).'
+- '`required_aes` (list of str) is checked by the base `compute_layer` before computation; rows with NA in required/non_missing aesthetics are removed there.'
+- '`setup_params(self, data, params)` is the hook for a once-per-dataset calculation shared by all groups (e.g. choosing one bandwidth); it returns the (possibly augmented) params dict that is then passed to each `compute_*` call.'
+- Defining `class StatX(Stat)` whose name starts with `Stat` auto-registers it into `Stat._registry` under both `'X'` and `'x'` via `__init_subclass__`.
+- Stat-computed columns are read downstream via `after_stat(...)` in an aes mapping; the stat does not itself decide the geom — its factory picks a default `geom=` that the user can override.
+- A `StatX` instance satisfies `isinstance(StatX(), StatProtocol)`.
+mental_model: 'For R users:
+
+  Direct port of ``StatFoo <- ggproto("StatFoo", Stat, required_aes =
+
+  c("x","y"), compute_group = function(data, scales) {...})``. In Python:
+
+  ``class StatFoo(Stat): required_aes = ["x","y"]; def compute_group(self,
+
+  data, scales, **params): ...``. R''s ``data[chull(data$x, data$y), ]`` becomes
+
+  pandas ``data.iloc[hull.vertices]``. ``setup_params`` plays the same
+
+  once-per-dataset role as in R (e.g. picking a common bandwidth). The
+
+  default-output-column-to-aesthetic mapping and ``after_stat()`` work exactly
+
+  like R''s ``after_stat()`` / computed-variable mechanism.
+
+
+  For Python users:
+
+  Subclass ``Stat``, declare ``required_aes``, and write one method that takes
+
+  a pandas DataFrame (the group''s rows) plus ``scales`` and returns a new
+
+  DataFrame. That is the whole job for most stats. Use ``compute_panel`` if
+
+  your math needs all groups in a panel at once; use ``setup_params`` to
+
+  compute a shared parameter before the per-group loop. The class
+
+  auto-registers; expose it through a ``stat_*`` factory that picks a sensible
+
+  default geom.
+
+
+  General:
+
+  Pick the smallest granularity that fits: ``compute_group`` (default),
+
+  ``compute_panel`` (cross-group), or ``compute_layer`` (everything). Set
+
+  ``required_aes``. Read computed columns downstream with ``after_stat``. Ship
+
+  a ``stat_*`` factory with a default ``geom=``.'
+related_concepts:
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.ggproto_system
+- ggplot2_py.auto_registration
+- ggplot2_py.geom_extension_contract
+- ggplot2_py.protocol_contracts
+- ggplot2_py.flipped_aes_orientation
+- ggplot2_py.aes_mapping
+- ggplot2_py.custom_stat_compute_group
+- ggplot2_py.callable_aes_expression

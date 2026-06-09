@@ -1,0 +1,36 @@
+id: ggplot2_py.factor_for_categorical_order
+name: Control discrete-axis order with pd.Categorical or scale_x_discrete(limits=...)
+applicable_to:
+  - ggplot2_py.aes
+  - ggplot2_py.scale_x_discrete
+description: |
+  ggplot2-python sorts discrete axes alphabetically by default (mirroring
+  R's factor levels). Two idiomatic ways to override:
+
+  - **Data-side (preferred when the order is intrinsic to the variable):**
+    cast the column to a `pandas.Categorical` with `ordered=True` and an
+    explicit `categories=` list *before* passing the DataFrame to `ggplot()`.
+    Every layer, scale and facet then inherits that order.
+  - **Plot-side (preferred for ad-hoc reordering or subsetting):** pass
+    `limits=[...]` to `scale_x_discrete()` / `scale_y_discrete()`. The same
+    list also acts as a *filter* — categories not in `limits` are dropped.
+code_template: |
+  import pandas as pd
+  from ggplot2_py import ggplot, aes, geom_col, scale_x_discrete
+  from ggplot2_py.datasets import mpg
+
+  df = mpg.groupby("class", as_index=False)["hwy"].mean()
+
+  # Pattern A — order baked into the data:
+  order = ["2seater", "subcompact", "compact", "midsize",
+           "minivan", "suv", "pickup"]
+  df["class"] = pd.Categorical(df["class"], categories=order, ordered=True)
+  p_a = ggplot(df, aes(x="class", y="hwy")) + geom_col()
+
+  # Pattern B — order set (or subset) at the plot level:
+  p_b = (
+      ggplot(df, aes(x="class", y="hwy"))
+      + geom_col()
+      + scale_x_discrete(limits=order)
+  )
+typical_use_case: "bar/box plots where alphabetical category order is misleading (severity, time-of-day, treatment group)"

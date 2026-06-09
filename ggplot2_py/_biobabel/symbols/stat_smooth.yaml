@@ -1,0 +1,90 @@
+id: ggplot2_py.stat_smooth
+import_path: ggplot2_py.stat_smooth
+kind: function
+signature: stat_smooth(mapping=None, data=None, geom='smooth', position='identity', method=None, formula=None, se=True, n=80, span=0.75, fullrange=False, level=0.95, method_args=None)
+purpose: fit a smoother and draw the prediction curve plus optional CI ribbon; statistical engine of geom_smooth — exposes the method/formula knobs
+description: "Fits one of {`lm`, `glm`, `loess`, `gam`, `rlm`, ...} per group and\nevaluates the prediction (and SE band) on an n-point grid spanning x.\nRequired aesthetics are `x` and `y`. The stat returns the computed\ncolumns `y` (the prediction), `ymin`, `ymax` (the CI band), and `se`;\naccess via `after_stat()` if you want to override the default mapping.\n\n`stat_smooth()` and `geom_smooth()` construct the *same* Layer two ways.\nIdiomatic Python prefers `geom_smooth(method=..., formula=...)`; reach\nfor `stat_smooth` only when you need to drive a non-default geom\n(e.g. `stat_smooth(geom='line', se=False)` to draw just the curve).\n\nMethod selection:\n- `method=None` (default): auto — loess for n<1000, gam otherwise. A\n  one-time message is emitted reporting the chosen method.\n- `'lm'`, `'glm'`, `'rlm'`: parametric regression via statsmodels-style\n  backends; `formula` is an R-style string parsed with patsy.\n- `'loess'`: local polynomial regression; controlled by `span`. Loess\n\
+  \  is restricted to `formula='y ~ x'` (or None) — anything else raises.\n- `'gam'`: pygam additive model; default formula `y ~ s(x)`.\n"
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: DataFrame | None
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: smooth
+  description: Default 'smooth' draws curve + ribbon. Use 'line' to suppress the ribbon's geom (also set se=False).
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: method
+  type: str | None
+  required: false
+  default: null
+  description: '''lm'', ''glm'', ''loess'', ''gam'', ''rlm'', or None for auto (loess if n<1000 else gam).'
+- name: formula
+  type: str | None
+  required: false
+  default: null
+  description: R-style string e.g. 'y ~ x', 'y ~ poly(x, 2)', 'y ~ s(x)'. NOT a Python callable.
+- name: se
+  type: bool
+  required: false
+  default: true
+  description: Draw the confidence interval ribbon.
+- name: n
+  type: int
+  required: false
+  default: 80
+  description: Number of x grid points to predict on.
+- name: span
+  type: float
+  required: false
+  default: 0.75
+  description: Loess span (fraction of data per local fit). Smaller => wigglier. Ignored for non-loess methods.
+- name: fullrange
+  type: bool
+  required: false
+  default: false
+  description: If True, extrapolate the curve across the full scale range, not just observed x.
+- name: level
+  type: float
+  required: false
+  default: 0.95
+  description: Confidence level for the SE ribbon (0 < level < 1).
+- name: method_args
+  type: dict | None
+  required: false
+  default: null
+  description: 'Extra kwargs forwarded to the fitting backend (e.g. {''family'': sm.families.Binomial()} for glm).'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- 'geom_smooth(method=''lm'', formula=''y ~ x'', se=True)  # canonical form'
+- stat_smooth(method='loess', span=0.3, geom='line', se=False)
+- 'stat_smooth(method=''glm'', method_args={''family'': sm.families.Binomial()})'
+failure_fixes:
+- when: TypeError / patsy.PatsyError when passing a Python lambda to formula=
+  suggest:
+  - formula= is an R-style string parsed by patsy — pass 'y ~ poly(x, 2)', not a Python callable.
+  - If you want a callable, use stat_function(fun=...) instead — different stat, different purpose.
+- when: 'cli_abort: loess only supports the default formula ''y ~ x'''
+  suggest:
+  - Switch to method='lm' or method='gam' for richer formulas; loess is fixed to y ~ x.
+- when: 'informational message: `geom_smooth()` using method = ''gam'' / ''loess'''
+  suggest:
+  - Pass method= explicitly to silence the message and pin reproducibility.
+- when: fit fails on a group with too few points (loess needs at least span * n observations)
+  suggest:
+  - Increase span (e.g. span=1) or switch to method='lm' for sparse groups.
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.facet_wrap

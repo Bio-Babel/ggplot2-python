@@ -1,0 +1,38 @@
+id: ggplot2_py.annotation_raster
+import_path: ggplot2_py.annotation_raster
+kind: function
+signature: annotation_raster(raster, xmin, xmax, ymin, ymax, interpolate=False)
+purpose: Add a raster image as a plot annotation.
+description: Add a raster image as a plot annotation.
+parameters:
+- name: raster
+  type: Any
+  required: true
+  default: null
+- name: xmin
+  type: float
+  required: true
+  default: null
+- name: xmax
+  type: float
+  required: true
+  default: null
+- name: ymin
+  type: float
+  required: true
+  default: null
+- name: ymax
+  type: float
+  required: true
+  default: null
+- name: interpolate
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

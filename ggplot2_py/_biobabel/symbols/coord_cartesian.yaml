@@ -1,0 +1,73 @@
+id: ggplot2_py.coord_cartesian
+import_path: ggplot2_py.coord_cartesian
+kind: function
+signature: coord_cartesian(xlim=None, ylim=None, expand=True, default=False, clip='on', reverse='none', ratio=None)
+purpose: zoom a plot into a sub-range without filtering data; set axis viewport limits while keeping every data point through stat
+description: "Create a Cartesian coordinate system. This is the default coord — every\nGGPlot already has one — so users typically only call it to **zoom**.\n\nCRITICAL distinction vs `scale_x_*(limits=)`:\n\n- `coord_cartesian(xlim=(a, b))`  zooms the viewport AFTER stats run.\n  All data points still go through binning/smoothing/CI; the result\n  is then *clipped* to the visible window.\n- `scale_x_*(limits=(a, b))` (or `xlim(a, b)`) **drops** any row whose\n  x falls outside `(a, b)` BEFORE stat runs. This silently mutates\n  geom_smooth lines, breaks boxplot whiskers/outliers, and changes\n  geom_histogram bin counts.\n\nUse coord_cartesian to zoom. Use scale limits only when you actually\nwant to discard data.\n"
+parameters:
+- name: xlim
+  type: Sequence[float] | None
+  required: false
+  default: null
+  description: (min, max) viewport limits on x. Does NOT filter data.
+- name: ylim
+  type: Sequence[float] | None
+  required: false
+  default: null
+  description: (min, max) viewport limits on y. Does NOT filter data.
+- name: expand
+  type: bool | list[bool]
+  required: false
+  default: true
+  description: Whether to pad limits with the scale's expansion (avoid data/axis overlap).
+- name: default
+  type: bool
+  required: false
+  default: false
+  description: True if this is the default coord inserted by the plot; user code leaves it False.
+- name: clip
+  type: str
+  required: false
+  default: 'on'
+  description: '''on'' clips marks at panel edge; ''off'' lets them spill outside (useful with annotate).'
+- name: reverse
+  type: str
+  required: false
+  default: none
+  description: '''none'', ''x'', ''y'', or ''xy'' — reverse the named axis/axes.'
+- name: ratio
+  type: float | None
+  required: false
+  default: null
+  description: Aspect ratio (y_units/x_units). For a strict 1:1 use coord_fixed() instead.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Coord; kind=new_object
+requires: []
+writes: []
+examples:
+- 'coord_cartesian(xlim=(2, 6))  # zoom, keep all rows'
+- coord_cartesian(xlim=(0, 100), ylim=(0, 50), expand=False)
+- 'coord_cartesian(clip=''off'')  # allow annotations to spill'
+failure_fixes:
+- when: want to zoom into a sub-range without dropping data points
+  suggest:
+  - Use coord_cartesian(xlim=(a, b)). The scale_x_*(limits=(a,b)) form FILTERS data BEFORE stat runs, breaking geom_smooth lines and dropping boxplot outliers.
+  explanation: coord limits clip the viewport AFTER stat; scale limits discard rows BEFORE stat. See anti-pattern ggplot2_py.using_xlim_to_filter and idiom ggplot2_py.coord_cartesian_for_zoom.
+- when: geom_smooth line stops short of the visible x range
+  suggest:
+  - Switch from scale_x_continuous(limits=...) or xlim(...) to coord_cartesian(xlim=...). The smooth was fit only on the unfiltered slice.
+- when: boxplot whiskers/outliers disappear after setting ylim
+  suggest:
+  - Replace ylim(a, b) with coord_cartesian(ylim=(a, b)). ylim() is a thin scale-limits shortcut and drops out-of-range rows.
+- when: labels/annotations clipped at panel edge
+  suggest:
+  - Pass clip='off' to let annotations extend beyond the data panel.
+- when: want strict 1:1 aspect (one x-unit == one y-unit)
+  suggest:
+  - Use coord_fixed() or coord_equal(); coord_cartesian(ratio=1) is supported but coord_fixed is the idiomatic choice.
+- when: Coord additions REPLACE the previous Coord
+  suggest:
+  - Adding two coord_* layers triggers an info message and the LAST one wins (see concept ggplot2_py.plus_accumulation).
+related:
+- ggplot2_py.labs
+- ggplot2_py.theme_minimal

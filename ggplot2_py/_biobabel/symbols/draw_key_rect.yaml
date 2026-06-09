@@ -1,0 +1,52 @@
+id: ggplot2_py.draw_key_rect
+import_path: ggplot2_py.draw_key_rect
+kind: function
+signature: draw_key_rect(data, params, size=None)
+purpose: draw the legend key for rect/tile geoms (filled rectangle, no outline)
+description: 'Render a borderless filled rectangle as the legend key glyph. Used by
+
+  `geom_tile`, `geom_raster`, `geom_bar` (default), `geom_col`,
+
+  `geom_histogram` (rect form), `geom_rect`, and any geom whose visual
+
+  is a solid filled area.
+
+
+  Reads `fill` (preferred), `colour` (fallback), `alpha`, `linetype`.
+
+  Outline (col) is intentionally `None` — for an outlined version use
+
+  `draw_key_polygon`.
+
+
+  See `ggplot2_py.draw_key_point` for the full `draw_key_*(data, params,
+
+  size) -> Grob` protocol documentation.
+
+  '
+parameters:
+- name: data
+  type: dict[str, Any]
+  required: true
+  default: null
+  description: 'Single-row aesthetic dict: fill, colour, alpha, linetype.'
+- name: params
+  type: dict[str, Any]
+  required: true
+  default: null
+- name: size
+  type: Any
+  required: false
+  default: null
+mutates: execution_class=plot; no declared in-place mutation; returns_kind=value
+returns: Grob; kind=value
+requires: []
+writes: []
+examples:
+- "class MyTileGeom(Geom):\n    draw_key = draw_key_rect"
+failure_fixes:
+- when: want an outlined rect in the legend
+  suggest:
+  - Use draw_key_polygon (renders col + fill with linewidth) — draw_key_rect deliberately drops col.
+related:
+- ggplot2_py.guide_legend

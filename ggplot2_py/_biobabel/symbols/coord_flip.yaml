@@ -1,0 +1,55 @@
+id: ggplot2_py.coord_flip
+import_path: ggplot2_py.coord_flip
+kind: function
+signature: coord_flip(xlim=None, ylim=None, expand=True, clip='on')
+purpose: swap the x and y axes after the plot is built (legacy)
+description: 'Flip x and y after the plot has been assembled. Useful for horizontal
+
+  bar charts and boxplots when written x-vertical first.
+
+
+  Modern ggplot2-python (4.0+) supports building horizontal layers
+
+  directly — `geom_bar(aes(y=''cat''))` for a horizontal bar, or
+
+  `orientation=''y''` on geom_boxplot — and you typically don''t need
+
+  coord_flip. Keep it for porting old R code verbatim.
+
+  '
+parameters:
+- name: xlim
+  type: Sequence[float] | None
+  required: false
+  default: null
+  description: Viewport limits on (post-flip) x. Does NOT filter data.
+- name: ylim
+  type: Sequence[float] | None
+  required: false
+  default: null
+  description: Viewport limits on (post-flip) y. Does NOT filter data.
+- name: expand
+  type: bool | list[bool]
+  required: false
+  default: true
+- name: clip
+  type: str
+  required: false
+  default: 'on'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Coord; kind=new_object
+requires: []
+writes: []
+examples:
+- geom_bar(aes(x='cat')) + coord_flip()
+- 'geom_bar(aes(y=''cat''))  # modern equivalent, no coord_flip needed'
+failure_fixes:
+- when: axis labels (xlab/ylab) appear on the wrong side after flip
+  suggest:
+  - 'Prefer the native horizontal form: geom_bar(aes(y=''cat'')). It keeps xlab/ylab semantically aligned with the visual axes.'
+- when: want to zoom on the visual x axis (the post-flip horizontal)
+  suggest:
+  - coord_flip's xlim refers to the *original* x (the post-flip vertical). Use ylim for the visual horizontal range, or use coord_cartesian on the unflipped plot.
+related:
+- ggplot2_py.geom_bar
+- ggplot2_py.geom_boxplot

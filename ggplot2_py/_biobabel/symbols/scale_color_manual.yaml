@@ -1,0 +1,75 @@
+id: ggplot2_py.scale_color_manual
+import_path: ggplot2_py.scale_color_manual
+kind: function
+signature: scale_color_manual(values, breaks=None, limits=None, name=None, labels=None, na_value='grey50', aesthetics='colour')
+purpose: assign explicit colors to each level of a discrete color aesthetic; publication figure with brand / domain-specific palette
+description: "Manual discrete color scale. You hand-pick the color for each factor level.\nTwo ways to associate colors with levels:\n\n- `values=['#1f77b4', '#ff7f0e', '#2ca02c']` (a list) — pairs colors with\n  levels **by alphabetical / appearance order**, NOT by data semantics. This\n  is the source of the most common scale_color_manual bug: changing the data\n  re-orders the levels and silently re-shuffles your colors. ALWAYS pair a\n  list with explicit `breaks=` (or, better, pass a dict).\n- `values={'ctrl': '#1f77b4', 'trt': '#ff7f0e'}` (a dict) — explicit\n  level→color mapping, robust to level order.\n\nReturns a Scale; combine with the plot via `+` (see\n`ggplot2_py.plus_accumulation`). See also the discrete `scales.Palette`\nconcept — `scale_color_manual` is the \"I already know the colors\" shortcut\nthat skips a palette factory entirely.\n"
+parameters:
+- name: values
+  type: list[str] | dict[str, str]
+  required: true
+  default: null
+  description: 'Colors. Hex string, named color, or rgb(). If `dict`, keys are factor
+
+    levels. If `list`, colors are matched positionally to `breaks` (or to
+
+    sorted unique levels — see failure_fixes).
+
+    '
+- name: breaks
+  type: list[str] | None
+  required: false
+  default: null
+  description: 'Which levels to keep and in what order. **Strongly recommended whenever
+
+    `values=` is a list** so the pairing is unambiguous.
+
+    '
+- name: limits
+  type: list[str] | None
+  required: false
+  default: null
+  description: Restrict levels shown; levels outside `limits` are dropped.
+- name: name
+  type: str | None
+  required: false
+  default: null
+  description: Legend title.
+- name: labels
+  type: list[str] | dict | callable | None
+  required: false
+  default: null
+  description: Display labels for legend entries (separate from data values).
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+  description: 'Color used for NA. Note: R''s `na.value=` becomes `na_value=` in Python.'
+- name: aesthetics
+  type: str | list[str]
+  required: false
+  default: colour
+  description: Which aesthetic(s) this scale targets. Both 'color' and 'colour' work.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- 'p + scale_color_manual(values={''ctrl'': ''#1f77b4'', ''trt'': ''#d62728''})'
+- p + scale_color_manual(values=['#1f77b4', '#d62728'], breaks=['ctrl', 'trt'])
+failure_fixes:
+- when: wrong color assigned to the wrong group (colors look swapped)
+  suggest:
+  - 'Pair `values=` with explicit `breaks=`: scale_color_manual(values=[''red'',''blue''], breaks=[''trt'',''ctrl'']).'
+  - 'Or pass `values=` as a dict: scale_color_manual(values={''ctrl'': ''blue'', ''trt'': ''red''}).'
+  explanation: A bare list is matched to sorted unique levels, not to data order. See anti-pattern `ggplot2_py.scale_color_manual_without_breaks`.
+- when: 'TypeError: scale_color_manual() got an unexpected keyword argument ''na.value'''
+  suggest:
+  - Python uses `na_value=` (underscore), not R's `na.value=`.
+- when: 'warning: Insufficient values in manual scale. N needed but M provided.'
+  suggest:
+  - Extend `values=` to cover every level — count `data[col].nunique()`.
+  - Or trim levels with `limits=` / `breaks=` to match what you have.
+- when: level present in data but missing from legend
+  suggest:
+  - Either add that level as a key in `values=`/`breaks=`, or accept it will fall to `na_value`.

@@ -1,0 +1,47 @@
+id: ggplot2_py.coord_fixed
+import_path: ggplot2_py.coord_fixed
+kind: function
+signature: coord_fixed(ratio=1.0, **kwargs=None)
+purpose: 'force a strict aspect ratio: ratio y-units per x-unit'
+description: 'Fix the aspect ratio of a plot so that one unit of y is `ratio` units of
+
+  x. The default `ratio=1` produces a 1:1 plot — circles look circular,
+
+  diagonal lines have slope 1 in pixels.
+
+
+  Distinct from `coord_cartesian(ratio=...)`: coord_fixed is a `CoordFixed`
+
+  subclass that propagates the ratio through layout calculations; the
+
+  cartesian one only respects ratio if the layout system honours it.
+
+  '
+parameters:
+- name: ratio
+  type: float
+  required: false
+  default: 1.0
+  description: Aspect ratio (y-units per x-unit). 1 = square.
+- name: '**kwargs'
+  type: Any
+  required: false
+  default: null
+  description: Forwarded to CoordFixed (xlim, ylim, expand, clip, default).
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Coord; kind=new_object
+requires: []
+writes: []
+examples:
+- 'geom_point() + coord_fixed()  # ratio=1'
+- 'coord_fixed(ratio=0.5)  # one y-unit == half an x-unit'
+failure_fixes:
+- when: the plot is squashed / stretched after coord_fixed
+  suggest:
+  - ratio is y-units per x-unit, not pixels. ratio=1 means equal *data* units; if x ranges over [0,100] and y over [0,1], the plot will be very wide. Choose ratio to suit the data, or use coord_equal.
+- when: want a square plot regardless of data range
+  suggest:
+  - coord_fixed fixes data-unit ratio, not visual aspect. For a square panel use theme(aspect_ratio=1) instead.
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.geom_abline

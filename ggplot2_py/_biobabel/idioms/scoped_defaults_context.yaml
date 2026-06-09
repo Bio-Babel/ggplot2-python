@@ -1,0 +1,27 @@
+id: ggplot2_py.scoped_defaults_context
+name: Scoped defaults — with ggplot_defaults(theme=..., coord=...)
+applicable_to:
+  - ggplot2_py.scoped_defaults
+description: |
+  Python-exclusive (backed by `contextvars`, so it is thread-safe). Inside
+  a `with ggplot_defaults(...)` block, every `ggplot()` built picks up the
+  supplied defaults (theme, coord, …) automatically; outside the block the
+  defaults revert. This avoids repeating `+ theme_minimal()` on every plot
+  in a notebook section or a plotting function.
+
+  You can set several defaults at once. The plot's `.theme` /
+  `.coordinates` reflect the scoped values while the block is active.
+code_template: |
+  from ggplot2_py import ggplot, aes, geom_point, ggplot_defaults, ggsave
+  from ggplot2_py.theme_defaults import theme_minimal
+  from ggplot2_py.datasets import mpg
+
+  with ggplot_defaults(theme=theme_minimal()):
+      # No explicit + theme_minimal() needed — it's the scoped default.
+      p1 = ggplot(mpg, aes("displ", "hwy")) + geom_point()
+      p2 = ggplot(mpg, aes("cty", "hwy")) + geom_point(colour="red")
+      assert type(p1.theme).__name__ != "NoneType"
+      ggsave("/tmp/idiom_scoped_defaults_context.png", plot=p1, width=5, height=4)
+
+  # Outside the block, the scoped default is gone again.
+typical_use_case: "applying a house theme/coord to a whole batch of plots without repeating + theme(...) on each"

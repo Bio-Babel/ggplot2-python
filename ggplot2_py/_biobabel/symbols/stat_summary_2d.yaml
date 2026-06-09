@@ -1,0 +1,70 @@
+id: ggplot2_py.stat_summary_2d
+import_path: ggplot2_py.stat_summary_2d
+kind: function
+signature: stat_summary_2d(mapping=None, data=None, geom='tile', position='identity', bins=30, binwidth=None, breaks=None, drop=True, fun='mean', fun_args=None, na_rm=False, show_legend=None, inherit_aes=True, kwargs)
+purpose: 2D binning and summary.
+description: 2D binning and summary.
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: tile
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: bins
+  type: int
+  required: false
+  default: 30
+- name: binwidth
+  type: Any
+  required: false
+  default: null
+- name: breaks
+  type: Any
+  required: false
+  default: null
+- name: drop
+  type: bool
+  required: false
+  default: true
+- name: fun
+  type: Any
+  required: false
+  default: mean
+- name: fun_args
+  type: Optional[Dict[str, Any]]
+  required: false
+  default: null
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: show_legend
+  type: Optional[bool]
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,59 @@
+id: ggplot2_py.themed_element_grob
+name: Render a themed grob from the theme — calc_element / element_grob / element_render + measure
+applicable_to:
+  - ggplot2_py.ggproto_system
+  - ggplot2_py.facet_extension_contract
+description: |
+  Extensions that draw their OWN chrome (custom strips, facet labels, axis
+  annotations) must honour the active theme rather than hard-coding fonts
+  and colours. The theme-to-grob path uses four public top-level helpers:
+
+    * `calc_element(name, theme) -> Element` — resolve a theme element by
+      its dotted name (`"strip.text"`, `"axis.text.x"`, …), inheriting
+      from parent elements the way the theme tree does. Returns an
+      `ElementText` / `ElementRect` / … object, NOT a grob.
+    * `element_grob(element, **kwargs) -> grob` — turn that resolved
+      element into a grid grob. Pass `label="..."` for text elements;
+      `margin_x=True, margin_y=True` to include the element's margins (a
+      titleGrob, as ggh4x's strip builder does).
+    * `element_render(theme, name, label=None, **kwargs) -> grob` — the
+      one-step `calc_element` + `element_grob` shortcut; reach for it for
+      backgrounds (`"strip.background"`) and simple labels.
+    * `max_width(grobs) / max_height(grobs) -> Unit` — measure the rendered
+      grob(s) so you can size the gtable cell that will hold them. ggh4x
+      sizes every strip cell this way (`strip_vanilla.py`).
+
+  Composite a background + a text grob into one `grob_tree` to get a
+  drop-in strip/label grob. The block below renders such a grob and proves
+  it is real by drawing it to a PNG via the public grid device API
+  (`grid_newpage` → `grid_draw` → `grid.get_state().get_renderer()
+  .write_to_png(...)`; `get_state` is exported in `grid_py.__all__`).
+code_template: |
+  from ggplot2_py import (
+      theme_grey, calc_element, element_grob, element_render,
+      max_width, max_height,
+  )
+  import grid_py as grid
+  from grid_py import grid_newpage, grid_draw, grob_tree
+
+  theme = theme_grey()
+
+  # 1) resolve a themed text element, render it to a grob with a label
+  strip_el = calc_element("strip.text", theme)        # -> ElementText
+  strip_grob = element_grob(strip_el, label="Condition A")
+
+  # 2) measure it (for sizing the gtable cell that will hold the strip)
+  w = max_width([strip_grob])
+  h = max_height([strip_grob])
+  assert "cm" in repr(w) or "null" in repr(w)         # a grid Unit
+
+  # 3) element_render = the one-step theme -> grob shortcut (backgrounds, axes)
+  bg_grob = element_render(theme, "strip.background")
+  axis_grob = element_render(theme, "axis.text.x", label="2024")
+
+  # 4) composite into a drop-in strip grob and prove it draws
+  tree = grob_tree(bg_grob, strip_grob, name="themed_strip")
+  grid_newpage(width=3, height=1, dpi=150, bg="white")
+  grid_draw(tree)
+  grid.get_state().get_renderer().write_to_png("/tmp/idiom_themed_element_grob.png")
+typical_use_case: "drawing custom strips, facet labels, or axis annotations that must inherit the active theme's fonts/colours, then measuring them to size gtable cells (ggh4x-style strips)"

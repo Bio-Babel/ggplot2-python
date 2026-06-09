@@ -1,0 +1,22 @@
+id: ggplot2_py.position_stack
+import_path: ggplot2_py.position_stack
+kind: function
+signature: position_stack(vjust=1.0, reverse=False)
+purpose: Create a stack position adjustment.
+description: Create a stack position adjustment.
+parameters:
+- name: vjust
+  type: float
+  required: false
+  default: 1.0
+- name: reverse
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: PositionStack; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

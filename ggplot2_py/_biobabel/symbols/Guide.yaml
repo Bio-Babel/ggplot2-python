@@ -1,0 +1,28 @@
+id: ggplot2_py.Guide
+import_path: ggplot2_py.Guide
+kind: class
+signature: Guide()
+purpose: author a NEW guide (legend/colourbar/axis) by subclassing Guide; discover the train/transform/merge/draw override points for a custom guide; port an R ggproto Guide (GuideXxx) to Python
+description: "Base class for guides — the objects that render the inverse of a scale so a\nreader can decode it (legends, colourbars, axes, bins). To create a custom\nguide, subclass `Guide` (or `ggproto('GuideFoo', Guide, ...)`), usually with\na `guide_foo()` constructor, and make it resolvable by string via\n`register_guide(\"foo\", guide_foo)`.\n\nSUBCLASSING — set these CLASS ATTRIBUTES (slots):\n  - `available_aes`: aesthetics this guide can render (e.g. `(\"colour\", \"fill\")`\n    or `(\"any\",)`).\n  - `params`: default parameter dict for the guide.\n  - `elements`: theme-element names the guide reads.\n  - `hashables`: members used to decide guide-merging identity.\n\nSUBCLASSING — OVERRIDE these METHODS:\n  - `train(self, params=None, scale=None, aesthetic=None, **kwargs) -> dict`:\n    build the guide's key (the break->label->aesthetic table) from the scale.\n  - `transform(params, coord, panel_params) -> dict`: position-guide hook;\n    transform key positions through the coord\
+  \ (mostly for axes).\n  - `merge(self, params, new_guide, new_params) -> dict`: combine two guides\n    that map the same breaks (e.g. colour+shape legend into one).\n  - `get_layer_key(self, params, layers, data=None) -> dict`: decide which\n    layers contribute glyphs to the key and how to draw them.\n  - `draw(self, theme=None, position=None, direction=None, params=None) -> grob`:\n    assemble the final guide grob.\n  - `setup_params` / `setup_elements`: finalize params and resolve theme\n    elements before drawing.\n\nSubclasses AUTO-REGISTER their class by name via `__init_subclass__`\n(`GuideFoo -> \"foo\"`); call `register_guide` to also bind a constructor.\n\nReturns a CLASS. See concept `ggplot2_py.extension_class_hierarchy`.\n"
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: type[Guide]; kind=new_object
+requires: []
+writes: []
+examples:
+- "class GuideStringlegend(Guide):\n    available_aes = (\"any\",)\n    def train(self, params=None, scale=None, aesthetic=None, **kwargs):\n        ...  # build break/label/aesthetic key\nregister_guide(\"stringlegend\", lambda: GuideStringlegend())\n"
+failure_fixes:
+- when: guide="foo" does not resolve to the custom guide
+  suggest:
+  - 'Call register_guide(''foo'', guide_foo) so the string resolves to the constructor (R-faithful: the constructor, not the bare class, is invoked).'
+- when: the custom guide shows no keys
+  suggest:
+  - Override train to build the key table from the scale, and get_layer_key to select contributing layers.
+- when: two scales should share one merged legend
+  suggest:
+  - Override merge(self, params, new_guide, new_params) and ensure hashables identify mergeable guides.
+related:
+- ggplot2_py.register_guide
+- ggplot2_py.ggproto
+- ggplot2_py.ggproto_parent

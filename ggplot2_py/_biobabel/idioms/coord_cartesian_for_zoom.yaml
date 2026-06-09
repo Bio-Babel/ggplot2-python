@@ -1,0 +1,32 @@
+id: ggplot2_py.coord_cartesian_for_zoom
+name: Zoom with coord_cartesian(), don't filter with xlim()/scale_x_continuous(limits=)
+applicable_to:
+  - ggplot2_py.coord_cartesian
+  - ggplot2_py.scale_x_continuous
+description: |
+  When you want to "zoom into" a sub-range of the data without changing the
+  statistics, use `coord_cartesian(xlim=..., ylim=...)`. It clips the *view*
+  but every layer is still computed on the full dataset.
+
+  In contrast, `xlim(a, b)` and `scale_x_continuous(limits=(a, b))` *drop*
+  rows outside the range before any stat runs — so a `geom_smooth()` fit
+  changes (re-fit on the subset) and `geom_boxplot()` outliers vanish.
+  The two operations look the same on a static scatter but produce
+  different curves the moment a stat is involved.
+code_template: |
+  from ggplot2_py import ggplot, aes, geom_point, geom_smooth, coord_cartesian
+  from ggplot2_py.datasets import mpg
+
+  # CORRECT — zoom: smoother is fit on the full data, then the view is cropped.
+  p_zoom = (
+      ggplot(mpg, aes(x="displ", y="hwy"))
+      + geom_point()
+      + geom_smooth(method="loess", se=False)
+      + coord_cartesian(xlim=(2, 5), ylim=(15, 40))
+  )
+
+  # WRONG — xlim() filters: rows with displ outside [2, 5] are dropped *before*
+  # the loess fit, so the curve is different (and you'll see a missing-data warning).
+  # p_filter = ... + geom_smooth(method="loess", se=False) + xlim(2, 5)
+typical_use_case: "cropping a scatter+smooth view to a region of interest without re-fitting the stat"
+anti_pattern_paired: ggplot2_py.using_xlim_to_filter

@@ -1,0 +1,79 @@
+id: ggplot2_py.find_scale
+import_path: ggplot2_py.find_scale
+kind: function
+signature: find_scale(aes, x, env=None)
+purpose: resolve the default scale constructor for an aesthetic; inject a custom per-plot scale constructor
+description: 'Resolve the default ``scale_<aes>_<type>`` constructor for an aesthetic and
+
+  data vector, and return the constructed :class:`Scale` (or ``None`` if no
+
+  default exists for that aesthetic, e.g. ``stroke``). The ``<type>`` is
+
+  chosen from :func:`scale_type` of ``x`` (``continuous`` / ``discrete`` /
+
+  ``datetime`` …). Mirrors R''s ``find_scale()``: when ``env`` is supplied it is
+
+  searched first (last-pushed-first for a :class:`PlotEnv`) before falling back
+
+  to the ``ggplot2_py.scales`` namespace, so a plot can override which
+
+  constructor is used for an auto-added scale by pushing a layer onto
+
+  ``plot.plot_env``. This is the extension hook used by e.g. ggnewscale.
+
+  See idiom ``ggplot2_py.plot_env_constructor_injection``.
+
+  '
+parameters:
+- name: aes
+  type: str
+  required: true
+  default: null
+  description: Aesthetic name (already standardised, e.g. 'colour', 'fill', 'size').
+- name: x
+  type: Any
+  required: true
+  default: null
+  description: Data values for the aesthetic; their scale_type picks continuous vs discrete.
+- name: env
+  type: Optional[Any]
+  required: false
+  default: null
+  description: PlotEnv / dict / module searched before ggplot2_py.scales; inject scale_<aes>_<type> here to override.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=new_object
+returns: Optional[Scale]; kind=new_object
+requires: []
+writes: []
+examples:
+- 'from ggplot2_py.scale import find_scale
+
+  from ggplot2_py.datasets import mpg
+
+  sc = find_scale("colour", mpg["cyl"])      # continuous data -> scale_colour_continuous
+
+  assert sc is not None
+
+  '
+- 'from ggplot2_py import ggplot, aes, geom_point
+
+  from ggplot2_py.scale import find_scale
+
+  from ggplot2_py.datasets import mpg
+
+  p = ggplot(mpg, aes("displ", "hwy", colour="cyl")) + geom_point()
+
+  p.plot_env.push({"scale_colour_continuous": lambda **k: __import__(''ggplot2_py'').scales.scale_colour_continuous(**k)})
+
+  sc = find_scale("colour", mpg["cyl"], env=p.plot_env)
+
+  '
+failure_fixes:
+- when: find_scale returns None unexpectedly
+  suggest:
+  - Some aesthetics (e.g. 'stroke') have no default scale by design
+  - Pass a standardised aes name — use standardise_aes_names(['color']) -> 'colour'
+- when: want a custom constructor used for the auto-added scale
+  suggest:
+  - 'plot.plot_env.push({''scale_colour_continuous'': my_factory}) then find_scale(''colour'', x, env=plot.plot_env)'
+related:
+- ggplot2_py.scale_type

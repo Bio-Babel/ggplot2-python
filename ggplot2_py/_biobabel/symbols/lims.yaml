@@ -1,0 +1,18 @@
+id: ggplot2_py.lims
+import_path: ggplot2_py.lims
+kind: function
+signature: lims(kwargs)
+purpose: Set limits for one or more aesthetics.
+description: Set limits for one or more aesthetics.
+parameters:
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: List[Any]; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

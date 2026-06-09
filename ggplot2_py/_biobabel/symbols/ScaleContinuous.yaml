@@ -1,0 +1,27 @@
+id: ggplot2_py.ScaleContinuous
+import_path: ggplot2_py.ScaleContinuous
+kind: class
+signature: ScaleContinuous()
+purpose: author a NEW continuous scale by subclassing ScaleContinuous; discover the train/map/get_breaks/get_labels override points for a custom scale; port an R ggproto ScaleContinuous to Python
+description: "Base class for continuous scales (numeric, date, datetime, etc.). A scale\ntrains a range from the data and maps data values to aesthetic values\n(positions, colours, sizes...). To create a custom continuous scale,\nsubclass `ScaleContinuous` and supply a `palette`; for the common case prefer\nthe `continuous_scale(...)` factory instead of subclassing.\n\nNOTE: resolves at top level as `ggplot2_py.ScaleContinuous` (also importable\nas `from ggplot2_py.scale import ScaleContinuous`).\n\nSUBCLASSING — set these CLASS ATTRIBUTES (slots):\n  - `aesthetics`: list of aesthetics this scale governs, e.g. `[\"colour\"]` or\n    `[\"x\", \"xmin\", \"xmax\", ...]` for a position scale.\n  - `palette`: callable mapping rescaled [0,1] values to aesthetic values.\n  - `trans`: the transformation object/name (e.g. `\"log10\"`).\n  - `na_value`, `name`, `breaks`, `minor_breaks`, `labels`, `limits`,\n    `expand`, `guide`, `position`, `n_breaks`, `fallback_palette`.\n\nSUBCLASSING — OVERRIDE\
+  \ these METHODS:\n  - `train(self, x) -> None`: expand the scale's internal range to include `x`.\n  - `map(self, x, limits=None) -> mapped`: map data values to aesthetic values\n    via the palette (rescale -> palette).\n  - `get_breaks(self, limits=None) -> ndarray`: compute axis/legend break\n    positions in DATA space.\n  - `get_labels(self, breaks=None) -> labels`: format breaks into display\n    strings.\n  - `transform(self, x) -> x`: apply `trans` to raw values.\n  - `clone(self) -> ScaleContinuous`: return a fresh untrained copy (override\n    only if you add mutable state not handled by the base clone).\n\nReturns a CLASS (or, more commonly, an instance from `continuous_scale`).\nSee concept `ggplot2_py.extension_class_hierarchy`.\n"
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: type[ScaleContinuous]; kind=new_object
+requires: []
+writes: []
+examples:
+- '# Preferred for simple cases:
+
+  # my_scale = continuous_scale(aesthetics=[''colour''], palette=lambda v: ...)'
+- "class ScaleColourSigned(ScaleContinuous):\n    aesthetics = [\"colour\"]\n    def map(self, x, limits=None):\n        ...  # custom rescale -> palette\n"
+failure_fixes:
+- when: for a simple custom continuous scale you only need a different palette
+  suggest:
+  - Use the continuous_scale(...) factory and pass palette=..., not a subclass. Subclass ScaleContinuous only for new train/map/breaks logic.
+- when: custom breaks do not appear on the axis
+  suggest:
+  - Override get_breaks to return positions in DATA space (pre-transform); get_labels then formats them.
+related:
+- ggplot2_py.continuous_scale
+- ggplot2_py.ggproto

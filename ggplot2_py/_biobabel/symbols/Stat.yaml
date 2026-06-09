@@ -1,0 +1,31 @@
+id: ggplot2_py.Stat
+import_path: ggplot2_py.Stat
+kind: class
+signature: Stat()
+purpose: author a NEW statistical transform by subclassing Stat (the extension entry point); discover which compute_* method to override to transform layer data; port an R ggproto Stat (StatXxx) to a Python class
+description: "Base class for all stats. A stat transforms the raw layer data into a new\ndata frame (e.g. binning, smoothing, summarising) BEFORE the geom draws it.\nTo create a custom stat, subclass `Stat` (or `ggproto('StatFoo', Stat, ...)`),\nthen pass it to `layer(stat=...)` or wrap it in a `stat_foo()` constructor.\n\nSUBCLASSING — set these CLASS ATTRIBUTES (slots):\n  - `required_aes`: tuple of aesthetics the stat needs as input.\n  - `default_aes`: an `aes(...)` of computed outputs, typically referencing\n    `after_stat(...)`, e.g. `aes(y=after_stat(\"count\"))`.\n  - `optional_aes`: aesthetics accepted but not required.\n  - `dropped_aes`: aesthetics that become meaningless after the transform and\n    should be dropped from the output (e.g. `(\"weight\",)`).\n  - `non_missing_aes`: aesthetics whose NA values drop the row.\n  - `extra_params`: extra parameter names the stat consumes (e.g. `\"na_rm\"`).\n  - `retransform`: bool, whether outputs are re-transformed by position scales.\n\
+  \nSUBCLASSING — OVERRIDE one of these (in increasing scope):\n  - `compute_group(self, data, scales, **params) -> data`: the usual override.\n    Called once per group; return the transformed frame for that group.\n  - `compute_panel(self, data, scales, **params) -> data`: override when the\n    transform needs the whole panel at once (default loops compute_group).\n  - `compute_layer(self, data, params, layout) -> data`: lowest-level hook;\n    default splits by panel/group and calls compute_panel/compute_group.\n  - `setup_data(self, data, params) -> data` / `setup_params(self, data, params) -> params`:\n    pre-compute massaging and parameter finalization (e.g. flipped_aes).\n  - `finish_layer(self, data, params) -> data`: post-process after mapping.\n\nSubclasses AUTO-REGISTER into `Stat._registry` via `__init_subclass__`.\n\nReturns a CLASS. See concept `ggplot2_py.extension_class_hierarchy`.\n"
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: type[Stat]; kind=new_object
+requires: []
+writes: []
+examples:
+- "class StatRange(Stat):\n    required_aes = (\"x\", \"y\")\n    default_aes = aes(ymin=after_stat(\"ymin\"), ymax=after_stat(\"ymax\"))\n    def compute_group(self, data, scales, **params):\n        return pd.DataFrame({\"x\": [data[\"x\"].mean()],\n                             \"ymin\": [data[\"y\"].min()],\n                             \"ymax\": [data[\"y\"].max()]})\n"
+- '# R-port form:
+
+  # StatRange = ggproto(''StatRange'', Stat, compute_group=staticmethod(lambda data, scales, **p: ...))'
+failure_fixes:
+- when: custom stat returns the data unchanged / has no effect
+  suggest:
+  - Override compute_group (or compute_panel) and return a NEW DataFrame; the base compute_group raises NotImplementedError.
+- when: computed column (e.g. after_stat('density')) is unavailable in the geom
+  suggest:
+  - Make compute_group emit that column, and expose it via default_aes using after_stat('<col>').
+- when: a column lingers and breaks the geom after the transform
+  suggest:
+  - Add it to dropped_aes so it is removed from the stat output.
+related:
+- ggplot2_py.layer
+- ggplot2_py.ggproto
+- ggplot2_py.ggproto_parent

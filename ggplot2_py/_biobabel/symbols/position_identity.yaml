@@ -1,0 +1,14 @@
+id: ggplot2_py.position_identity
+import_path: ggplot2_py.position_identity
+kind: function
+signature: position_identity()
+purpose: Create an identity position (no adjustment).
+description: Create an identity position (no adjustment).
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: PositionIdentity; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

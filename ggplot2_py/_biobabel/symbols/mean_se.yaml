@@ -1,0 +1,22 @@
+id: ggplot2_py.mean_se
+import_path: ggplot2_py.mean_se
+kind: function
+signature: mean_se(x, mult=1.0)
+purpose: Compute mean and standard error.
+description: Compute mean and standard error.
+parameters:
+- name: x
+  type: np.ndarray
+  required: true
+  default: null
+- name: mult
+  type: float
+  required: false
+  default: 1.0
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: pd.DataFrame; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

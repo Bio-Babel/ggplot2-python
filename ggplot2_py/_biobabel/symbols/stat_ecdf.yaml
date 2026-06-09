@@ -1,0 +1,56 @@
+id: ggplot2_py.stat_ecdf
+import_path: ggplot2_py.stat_ecdf
+kind: function
+signature: stat_ecdf(mapping=None, data=None, geom='step', n=None, pad=True)
+purpose: empirical cumulative distribution function as a step plot; compare distributions across groups without binning
+description: 'Computes F_n(x) = (# samples <= x) / n on a grid of x values and emits it
+
+  as a step series (default `geom=''step''`). Required aesthetic is `x` (or
+
+  `y` with flipped orientation); the stat fills in
+
+  `aes(y=after_stat(''ecdf''))` automatically. Equivalent to
+
+  `geom_step(stat=''ecdf'')`.
+
+
+  Use `pad=True` (default) to extend the curve to [-inf, +inf] so groups
+
+  share a common range. Set `weight` aesthetic for a weighted ECDF.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: DataFrame | None
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: step
+- name: n
+  type: int | None
+  required: false
+  default: null
+  description: Grid size; None (default) evaluates at every unique sample value.
+- name: pad
+  type: bool
+  required: false
+  default: true
+  description: Pad the curve with rows at +/- inf so multiple groups extend across the panel.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(df, aes(x='value', color='group')) + stat_ecdf()
+failure_fixes:
+- when: curves of different groups don't span the same x range
+  suggest:
+  - Keep pad=True (the default) — it adds boundary rows so each group's step extends across the full panel.
+related:
+- ggplot2_py.facet_wrap

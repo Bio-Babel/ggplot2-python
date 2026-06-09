@@ -1,0 +1,27 @@
+id: ggplot2_py.data_in_layer_for_overlay
+name: Overlay a different dataset with data= inside a single geom_*
+applicable_to:
+  - ggplot2_py.geom_point
+  - ggplot2_py.ggplot
+description: |
+  Every `geom_*` accepts its own `data=` argument that overrides the data
+  set on the base `ggplot()` call. This is the canonical way to overlay
+  highlights, comparisons, or annotation layers without juggling multiple
+  ggplot objects.
+
+  The layer-level data must share the column names referenced in the
+  inherited `aes()` (`x`, `y`, …). If you need different columns for the
+  overlay, pass `inherit_aes=False` and a fresh `aes()` on that layer.
+code_template: |
+  from ggplot2_py import ggplot, aes, geom_point
+  from ggplot2_py.datasets import mpg
+
+  # Base layer = all rows, faded out. Overlay = the high-efficiency cars in red.
+  df_top = mpg[mpg["hwy"] > 35]
+
+  p = (
+      ggplot(mpg, aes(x="displ", y="hwy"))
+      + geom_point(color="gray70", alpha=0.5)
+      + geom_point(data=df_top, color="red", size=3)
+  )
+typical_use_case: "highlight a subset, overlay reference samples, or annotate outliers on top of a base scatter"

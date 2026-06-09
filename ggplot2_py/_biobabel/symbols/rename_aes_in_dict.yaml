@@ -1,0 +1,45 @@
+id: ggplot2_py.extension.rename_aes_in_dict
+import_path: ggplot2_py.extension.rename_aes_in_dict
+kind: function
+signature: rename_aes_in_dict(d, old, new)
+purpose: rename an aesthetic key inside a dict-like aes container (e.g. default_aes) for the new_scale pattern
+description: 'Return a copy of the dict `d` with the aesthetic key `old` renamed to `new`
+
+  (a no-op-returning-copy if `old` is absent; returns None if `d` is None).
+
+  Used by the ggnewscale-style toolkit to rewrite dict-shaped aesthetic
+
+  containers such as a geom/stat `default_aes` so a duplicated aesthetic gets a
+
+  private name. Does not mutate the input.
+
+  '
+parameters:
+- name: d
+  type: Optional[Dict[str, Any]]
+  required: true
+  default: null
+  description: The dict-like aes container to rewrite (e.g. default_aes). None passes through as None.
+- name: old
+  type: str
+  required: true
+  default: null
+  description: The existing aesthetic key (e.g. 'colour').
+- name: new
+  type: str
+  required: true
+  default: null
+  description: The replacement aesthetic key (e.g. 'colour_ggnewscale_1').
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=new_object
+returns: Optional[Dict[str, Any]]; kind=new_object
+requires: []
+writes: []
+examples:
+- geom.default_aes = rename_aes_in_dict(geom.default_aes, 'colour', 'colour_new')
+failure_fixes:
+- when: the original default_aes still shows the old key
+  suggest:
+  - rename_aes_in_dict returns a NEW dict; assign it back (geom.default_aes = rename_aes_in_dict(...)).
+related:
+- ggplot2_py.extension.rename_aes_in_mapping
+- ggplot2_py.extension.rename_aes_in_seq

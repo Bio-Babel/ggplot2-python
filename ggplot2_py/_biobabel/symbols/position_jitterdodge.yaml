@@ -1,0 +1,38 @@
+id: ggplot2_py.position_jitterdodge
+import_path: ggplot2_py.position_jitterdodge
+kind: function
+signature: position_jitterdodge(jitter_width=None, jitter_height=0.0, dodge_width=0.75, reverse=False, preserve='total', seed=None)
+purpose: Create a jitter+dodge position adjustment.
+description: Create a jitter+dodge position adjustment.
+parameters:
+- name: jitter_width
+  type: Optional[float]
+  required: false
+  default: null
+- name: jitter_height
+  type: float
+  required: false
+  default: 0.0
+- name: dodge_width
+  type: float
+  required: false
+  default: 0.75
+- name: reverse
+  type: bool
+  required: false
+  default: false
+- name: preserve
+  type: str
+  required: false
+  default: total
+- name: seed
+  type: Any
+  required: false
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: PositionJitterdodge; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

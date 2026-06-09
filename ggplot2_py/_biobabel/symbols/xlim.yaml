@@ -1,0 +1,18 @@
+id: ggplot2_py.xlim
+import_path: ggplot2_py.xlim
+kind: function
+signature: xlim(args)
+purpose: Set x-axis limits.
+description: Set x-axis limits.
+parameters:
+- name: args
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

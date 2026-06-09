@@ -1,0 +1,32 @@
+id: ggplot2_py.register_pre_add_hook
+import_path: ggplot2_py.register_pre_add_hook
+kind: function
+signature: register_pre_add_hook(plot, hook)
+purpose: tag a plot so a transformation fires on the NEXT `+` (gg add) operation; implement ggnewscale-style 'rename the next scale' behaviour from an extension
+description: "Register `hook` to run just before the next `+` dispatches on `plot`. Returns\na NEW plot carrying the hook (the hook list is copied per-plot, so tagging one\nplot does not affect another).\n\nCounterpart to R's `class(plot) <- c(\"ggplot_rename_next\", class(plot))` plus\na `+.ggplot_rename_next` method (R ref `ggnewscale/R/rename-aes.R:117-163`).\nExtensions typically call this from inside their `update_ggplot` /\n`__radd__`-style handler to \"tag\" a plot with a transformation that should\nfire on the FOLLOWING `+`.\n\nHook contract: `hook(plot: GGPlot, other: Any) -> Any | None`\n  - Return the transformed `other` to continue dispatch with it.\n  - Return `None` to short-circuit the rest of that `+` step.\n  - The hook is responsible for removing itself when done — call\n    `unregister_pre_add_hook` from inside the hook for one-shot semantics.\n\nPython-exclusive extension point (the R equivalent is the S3-class-tagging\ntrick above).\n"
+parameters:
+- name: plot
+  type: GGPlot
+  required: true
+  default: null
+  description: The plot to tag. A NEW plot carrying the hook is returned; the original is unchanged.
+- name: hook
+  type: Callable[[GGPlot, Any], Any]
+  required: true
+  default: null
+  description: hook(plot, other) -> transformed other, or None to short-circuit the next `+` step.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: GGPlot; kind=new_object
+requires: []
+writes: []
+examples:
+- "def rename_next(plot, other):\n    unregister_pre_add_hook(plot, rename_next)  # one-shot\n    return rename_aes_in_seq_on(other)\nplot = register_pre_add_hook(plot, rename_next)\n"
+failure_fixes:
+- when: the hook fires on every `+` instead of just once
+  suggest:
+  - Call unregister_pre_add_hook(plot, hook) from inside the hook to make it one-shot.
+- when: the tagged transformation was lost after a `+`
+  suggest:
+  - Use the GGPlot RETURNED by register_pre_add_hook (it carries the hook); the input plot is not mutated.
+related:
+- ggplot2_py.unregister_pre_add_hook

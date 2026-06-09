@@ -1,0 +1,81 @@
+id: ggplot2_py.geom_text
+import_path: ggplot2_py.geom_text
+kind: function
+signature: geom_text(mapping=None, data=None, stat='identity', position='nudge', parse=False, check_overlap=False, size_unit='mm', inherit_aes=True)
+purpose: annotate points with text labels; data-driven text directly on the plot
+description: 'Draw text strings at each `(x, y)`. The `label` aesthetic is REQUIRED —
+
+  if omitted the layer renders empty. Constants for nudging
+
+  (`nudge_x`, `nudge_y`) are NOT aesthetics; they are params handled by the
+
+  default `position=''nudge''`. Use `geom_label` if you need an opaque
+
+  rectangular background (e.g. labels over busy backgrounds). Accumulates
+
+  via `+` (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: MUST include label='colname'. x and y inherit from the plot mapping.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: nudge
+  description: '''nudge'' (allows nudge_x/nudge_y); ''jitter'', ''dodge'', etc. also accepted.'
+- name: parse
+  type: bool
+  required: false
+  default: false
+  description: If True, parse labels as plotmath expressions (R-style).
+- name: check_overlap
+  type: bool
+  required: false
+  default: false
+  description: Drop labels that would overlap previously drawn ones (greedy).
+- name: size_unit
+  type: str
+  required: false
+  default: mm
+  description: '''mm'' (default), ''pt'', ''cm'', ''in''; controls how the size aesthetic is interpreted.'
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(mpg, aes(x='displ', y='hwy')) + geom_point() + geom_text(aes(label='model'), nudge_y=1, size=2.5)
+- geom_text(aes(label='gene'), check_overlap=True)
+failure_fixes:
+- when: no text appears / empty layer
+  suggest:
+  - 'label aesthetic is required: geom_text(aes(label=''gene'')). Without it nothing draws.'
+- when: labels overlap so heavily they're unreadable
+  suggest:
+  - Try check_overlap=True for a greedy drop, or use the ggrepel-style extension if available.
+- when: passed nudge_x/nudge_y inside aes() — no effect
+  suggest:
+  - 'Nudge offsets are params, not aesthetics: geom_text(aes(label=''name''), nudge_y=0.3).'
+- when: text too large or too small relative to plot
+  suggest:
+  - Pass size= as a kwarg (e.g. size=3) — not via aes() unless you want per-row sizing.
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.geom_label
+- ggplot2_py.facet_wrap

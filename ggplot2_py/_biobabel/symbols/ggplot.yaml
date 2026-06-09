@@ -1,0 +1,42 @@
+id: ggplot2_py.ggplot
+import_path: ggplot2_py.ggplot
+kind: function
+signature: ggplot(data=None, mapping=None)
+purpose: start a new ggplot2 plot; create a layered graphic
+description: 'Construct a GGPlot builder seeded with a data frame and default aesthetics.
+
+  Subsequent `+` operations layer on geoms, stats, scales, facets, coords,
+
+  and themes. The plot is not rendered until print() / __repr__ / .draw().
+
+  '
+parameters:
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+  description: Default data for every layer; layers can override their own.
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Default aes mapping; provided here so layers don't have to repeat it.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: GGPlot; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(mpg, aes(x='displ', y='hwy')) + geom_point()
+failure_fixes:
+- when: AttributeError on attribute that looks like a column name (e.g. p.displ)
+  suggest:
+  - 'Aesthetic columns are strings inside aes(): aes(x=''displ''), not p.displ.'
+- when: 'TypeError: aes() got positional argument'
+  suggest:
+  - 'Python aes() requires keyword args: aes(x=''col'', y=''col''), not aes(''col1'', ''col2'').'
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.geom_line
+- ggplot2_py.geom_bar
+- ggplot2_py.geom_smooth
+- ggplot2_py.facet_wrap

@@ -1,0 +1,40 @@
+id: ggplot2_py.scale_color_manual_without_breaks
+name: "`scale_*_manual(values=[...])` with a plain list and no `breaks=`"
+applicable_to:
+  - ggplot2_py.plus_accumulation
+detection:
+  regex: 'scale_(?:color|colour|fill)_manual\s*\((?![^\n]*\bbreaks\s*=)(?![^\n]*\bvalues\s*=\s*\{)[^\n]*\bvalues\s*=\s*[\[\(]'
+  static_only: true
+why_bad: |
+  When `values=` is a plain list (not a dict) and `breaks=` is not
+  supplied, the manual scale (see ``_manual_scale`` in
+  ``scales/__init__.py:304``) assigns colors to factor levels *by
+  position*. The factor levels are computed from the data — by default
+  alphabetical for strings — not in the order the user "obviously"
+  intended.
+
+  Example failure: data has groups `["control", "treatment_A",
+  "treatment_B"]`. The user writes
+  `values=["red", "green", "blue"]` meaning "red for the first thing I
+  care about" — but levels are alphabetized to `["control",
+  "treatment_A", "treatment_B"]`, so `control` becomes red. If the
+  factor is re-ordered upstream (e.g., a `pd.Categorical` with custom
+  order), the colors silently rotate.
+
+  Pair `values=` with explicit `breaks=` (positional mapping with
+  explicit keys) or — better — pass a **dict** `values={"control":
+  "red", ...}` so the mapping is by name and order-independent.
+correct_pattern: null
+code_example_wrong: |
+  p + scale_colour_manual(values=["red", "green", "blue"])       # ← order = alphabetical levels
+code_example_right: |
+  p + scale_colour_manual(
+      breaks=["control", "treatment_A", "treatment_B"],
+      values=["red",     "green",       "blue"],
+  )
+  # Or, even safer (order-independent):
+  p + scale_colour_manual(values={
+      "control":     "red",
+      "treatment_A": "green",
+      "treatment_B": "blue",
+  })

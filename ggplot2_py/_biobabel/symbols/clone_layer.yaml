@@ -1,0 +1,35 @@
+id: ggplot2_py.extension.clone_layer
+import_path: ggplot2_py.extension.clone_layer
+kind: function
+signature: clone_layer(layer)
+purpose: make an independent copy of a layer so an extension can rewrite its geom/stat/mapping without side effects
+description: 'Return an independent copy of the layer `layer`, so an extension can rewrite
+
+  its geom, stat, mapping, or aesthetic params without mutating the layer that
+
+  is still attached to the original plot. Part of the ggnewscale-style
+
+  aesthetic-rename toolkit (e.g. renaming `colour` to a private aesthetic on a
+
+  per-layer basis). Returns a new layer object.
+
+  '
+parameters:
+- name: layer
+  type: Any
+  required: true
+  default: null
+  description: The layer object to clone.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Any; kind=new_object
+requires: []
+writes: []
+examples:
+- lyr = clone_layer(plot.layers[0]); lyr.mapping = rename_aes_in_mapping(lyr.mapping, 'colour', 'colour_new')
+failure_fixes:
+- when: rewriting a layer's aesthetics affected the original plot
+  suggest:
+  - Clone the layer first with clone_layer(layer), then rewrite the clone's geom/stat/mapping.
+related:
+- ggplot2_py.extension.clone_geom
+- ggplot2_py.extension.rename_aes_in_mapping

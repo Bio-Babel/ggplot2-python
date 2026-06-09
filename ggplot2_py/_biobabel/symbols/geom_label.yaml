@@ -1,0 +1,57 @@
+id: ggplot2_py.geom_label
+import_path: ggplot2_py.geom_label
+kind: function
+signature: geom_label(mapping=None, data=None, position='nudge', parse=False, size_unit='mm', inherit_aes=True)
+purpose: text labels with rectangular background; annotations over busy plots
+description: 'Like geom_text with a rect background; see geom_text for full failure modes.
+
+  Draws each label inside a filled rounded rectangle, which improves
+
+  legibility over textured/busy backgrounds at the cost of more ink.
+
+  Same `label` aesthetic requirement as `geom_text`.
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: MUST include label='colname'.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: position
+  type: str
+  required: false
+  default: nudge
+- name: parse
+  type: bool
+  required: false
+  default: false
+- name: size_unit
+  type: str
+  required: false
+  default: mm
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(mpg, aes(x='displ', y='hwy')) + geom_point() + geom_label(aes(label='class'), nudge_y=2)
+failure_fixes:
+- when: no labels appear
+  suggest:
+  - 'label aesthetic is required: geom_label(aes(label=''gene'')). geom_label does NOT default to row index.'
+- when: background color wrong / want transparent
+  suggest:
+  - Pass fill='white' (or fill=None for transparent) as a constant kwarg; mapping fill via aes() colors per row.
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.facet_wrap

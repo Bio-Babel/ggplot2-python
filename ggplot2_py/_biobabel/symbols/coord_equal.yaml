@@ -1,0 +1,35 @@
+id: ggplot2_py.coord_equal
+import_path: ggplot2_py.coord_equal
+kind: function
+signature: coord_equal(ratio=1.0, **kwargs=None)
+purpose: alias of coord_fixed — strict 1:1 aspect ratio
+description: '`coord_equal` is a direct alias for `coord_fixed` (`coord_equal = coord_fixed`
+
+  in `coord.py`). Use whichever name reads better; the default `ratio=1`
+
+  yields a 1:1 data-unit aspect.
+
+  '
+parameters:
+- name: ratio
+  type: float
+  required: false
+  default: 1.0
+  description: Aspect ratio (y-units per x-unit). Defaults to 1.
+- name: '**kwargs'
+  type: Any
+  required: false
+  default: null
+  description: Forwarded to CoordFixed.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Coord; kind=new_object
+requires: []
+writes: []
+examples:
+- geom_point() + coord_equal()
+failure_fixes:
+- when: see coord_fixed for any other issue
+  suggest:
+  - coord_equal IS coord_fixed (literal alias in source); refer to ggplot2_py.coord_fixed.
+related:
+- ggplot2_py.coord_fixed

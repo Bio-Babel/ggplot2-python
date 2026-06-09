@@ -1,0 +1,30 @@
+id: ggplot2_py.coord_quickmap
+import_path: ggplot2_py.coord_quickmap
+kind: function
+signature: coord_quickmap(xlim=None, ylim=None, expand=True, clip='on')
+purpose: Create a fast approximate map coordinate system.
+description: Create a fast approximate map coordinate system.
+parameters:
+- name: xlim
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: ylim
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: expand
+  type: Union[bool, List[bool]]
+  required: false
+  default: true
+- name: clip
+  type: str
+  required: false
+  default: 'on'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: CoordQuickmap; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

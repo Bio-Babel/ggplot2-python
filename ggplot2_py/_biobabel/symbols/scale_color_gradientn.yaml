@@ -1,0 +1,98 @@
+id: ggplot2_py.scale_color_gradientn
+import_path: ggplot2_py.scale_color_gradientn
+kind: function
+signature: scale_color_gradientn(colours=None, colors=None, values=None, name=None, limits=None, breaks=None, labels=None, na_value='grey50', guide='colourbar', transform='identity', space='Lab', aesthetics='colour')
+purpose: n-color custom gradient for a numeric color aesthetic; wrap any matplotlib / external colormap as a ggplot scale
+description: "N-color custom gradient. You supply a list of colors; ggplot interpolates\nbetween consecutive colors along the data range (evenly spaced by default,\nor at the positions given in `values=`).\n\nChoosing between the gradient family:\n\n- `scale_color_gradient`  — 2 colors (low, high). Sequential.\n- `scale_color_gradient2` — 3 colors with explicit midpoint. Diverging.\n- `scale_color_gradientn` — **N custom colors at arbitrary positions**. Most\n  general; what you reach for when wrapping an external colormap or building\n  a non-standard ramp.\n\nWraps the continuous `pal_gradient_n` palette factory — see `scales.Palette`.\n"
+parameters:
+- name: colours
+  type: list[str]
+  required: false
+  default: null
+  description: Colors along the ramp. Either `colours=` (R spelling) or `colors=` (US spelling) — pass exactly one.
+- name: colors
+  type: list[str]
+  required: false
+  default: null
+  description: US-spelling alias for `colours=`.
+- name: values
+  type: list[float] | None
+  required: false
+  default: null
+  description: 'Positions (in [0, 1]) where each color anchors. Same length as `colours=`.
+
+    Default = evenly spaced. Use to skew the ramp (e.g. fast change in the
+
+    first 10% of the range).
+
+    '
+- name: name
+  type: str | None
+  required: false
+  default: null
+  description: Colorbar title.
+- name: limits
+  type: tuple[float, float] | None
+  required: false
+  default: null
+  description: Data range mapped to [0, 1] of the ramp.
+- name: breaks
+  type: list[float] | callable | None
+  required: false
+  default: null
+  description: Tick positions.
+- name: labels
+  type: callable | list | None
+  required: false
+  default: null
+  description: Tick formatter.
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+  description: Color for NA. Python uses `na_value=`.
+- name: guide
+  type: str | Guide
+  required: false
+  default: colourbar
+  description: '''colourbar'' or ''legend''.'
+- name: transform
+  type: str | Transform
+  required: false
+  default: identity
+  description: Pre-transform of the data scale.
+- name: space
+  type: str
+  required: false
+  default: Lab
+  description: Color interpolation space; 'Lab' recommended.
+- name: aesthetics
+  type: str | list[str]
+  required: false
+  default: colour
+  description: '''color'' / ''colour'' are aliases.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_color_gradientn(colours=['#440154', '#3b528b', '#21918c', '#5ec962', '#fde725'])
+- p + scale_color_gradientn(colours=['blue', 'white', 'red'], values=[0, 0.2, 1.0])
+failure_fixes:
+- when: 'TypeError: scale_color_gradientn() requires exactly one of `colours=` or `colors=`'
+  suggest:
+  - Pass exactly one of the two aliases, not both.
+- when: ramp has banding / abrupt color jumps in the middle
+  suggest:
+  - You probably passed too few colors; gradientn interpolates linearly. Use 5–9 colors for a smooth ramp.
+  - Or set `space='Lab'` (default) — interpolating in 'rgb' often produces ugly mid-tones.
+- when: len(values) != len(colours)
+  suggest:
+  - '`values=` must be the same length as `colours=` and span [0, 1].'
+- when: wanted a matplotlib colormap — how to use it?
+  suggest:
+  - 'Sample the colormap to a list: `colors = [matplotlib.cm.viridis(x) for x in np.linspace(0, 1, 9)]` and pass to `colours=`.'
+  - Or use `scale_color_viridis_c()` directly for viridis specifically.
+- when: 'TypeError: got an unexpected keyword argument ''na.value'''
+  suggest:
+  - Use `na_value=` — Python uses underscores.

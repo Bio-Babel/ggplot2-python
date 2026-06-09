@@ -1,0 +1,28 @@
+id: ggplot2_py.scale_y_continuous
+import_path: ggplot2_py.scale_y_continuous
+kind: function
+signature: scale_y_continuous()
+purpose: customize continuous y axis
+description: 'y-axis mirror of scale_x_continuous; see scale_x_continuous for behaviour /
+
+  failure modes (name/breaks/labels/limits/expand/transform/waiver tristate,
+
+  trans= deprecation). Default `position=''left''`; pass `position=''right''` to
+
+  swap.
+
+  '
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_y_continuous(name='mpg', limits=(0, 50))
+- p + scale_y_continuous(breaks=[0, 25, 50], labels=['lo','mid','hi'])
+failure_fixes:
+- when: geom_smooth changed shape after adding limits=
+  suggest:
+  - limits= FILTERS rows; for visual zoom use coord_cartesian(ylim=(a, b)).
+related:
+- ggplot2_py.scale_x_continuous

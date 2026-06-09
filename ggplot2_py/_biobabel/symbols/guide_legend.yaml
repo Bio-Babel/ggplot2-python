@@ -1,0 +1,85 @@
+id: ggplot2_py.guide_legend
+import_path: ggplot2_py.guide_legend
+kind: function
+signature: guide_legend(title='waiver()', theme=None, position=None, direction=None, override_aes=None, nrow=None, ncol=None, reverse=False, order=0)
+purpose: fine-tune the appearance of a discrete legend; override the aes shown in legend keys (e.g. force solid lines, larger points)
+description: "Build a `GuideLegend` describing how a single legend should look. Attach\nit via the top-level `guides()` call:\n\n    ggplot(...) + guides(color=guide_legend(title='Class', nrow=2))\n\nOr via the `guide=` argument of a scale:\n\n    scale_color_discrete(guide=guide_legend(reverse=True))\n\nCommon knobs:\n\n- `title` — overrides the default scale title; pass `waiver()` to keep\n  the scale's title, `None` to suppress it entirely.\n- `override_aes` — set aesthetics for the *keys only* without changing\n  the layer (e.g. `override_aes={'alpha': 1}` to make a faint scatter\n  legend readable, or `{'linetype': 'solid'}` for a smooth's CI ribbon\n  in a line legend).\n- `nrow` / `ncol` — flow the keys into a grid.\n- `reverse` — flip key order (handy for stacked bars).\n- `position` — `'top'`, `'right'`, `'bottom'`, `'left'`, or `'inside'`.\n- `direction` — `'horizontal'` or `'vertical'`.\n"
+parameters:
+- name: title
+  type: str | Waiver | None
+  required: false
+  default: waiver()
+  description: Legend title. waiver() keeps the scale's title; None suppresses; str overrides.
+- name: theme
+  type: Theme | None
+  required: false
+  default: null
+  description: Theme overrides applied only to this legend.
+- name: position
+  type: str | None
+  required: false
+  default: null
+  description: '''top'' | ''right'' | ''bottom'' | ''left'' | ''inside''.'
+- name: direction
+  type: str | None
+  required: false
+  default: null
+  description: '''horizontal'' or ''vertical''. Default depends on position.'
+- name: override_aes
+  type: dict | None
+  required: false
+  default: null
+  description: Aes overrides applied to legend keys only — does not change the layer.
+- name: nrow
+  type: int | None
+  required: false
+  default: null
+  description: Number of rows for keys.
+- name: ncol
+  type: int | None
+  required: false
+  default: null
+  description: Number of columns for keys.
+- name: reverse
+  type: bool
+  required: false
+  default: false
+  description: Reverse key order (useful for stacked bars).
+- name: order
+  type: int
+  required: false
+  default: 0
+  description: Sort priority when multiple legends are merged.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Guide; kind=new_object
+requires: []
+writes: []
+examples:
+- guides(color=guide_legend(title='Class', nrow=2))
+- scale_color_discrete(guide=guide_legend(reverse=True))
+- 'guides(shape=guide_legend(override_aes={''size'': 5, ''alpha'': 1}))'
+failure_fixes:
+- when: legend title is missing or wrong
+  suggest:
+  - Pass title='My Title' to guide_legend, or set it on the scale (scale_color_discrete(name='My Title')).
+- when: want to keep the default scale title
+  suggest:
+  - Leave title at its default waiver() — None *suppresses* the title; waiver() means 'use the scale default' (see concept ggplot2_py.waiver_sentinel).
+- when: legend points are too small / too faint to read
+  suggest:
+  - 'Use override_aes to make keys distinct from layer: guide_legend(override_aes={''size'': 4, ''alpha'': 1}).'
+- when: wanted to hide one legend entirely
+  suggest:
+  - Pass guide=None (or guide='none') to the scale, or guides(color='none') — don't use guide_legend().
+- when: '`position` must be one of ''top'',''right'',''bottom'',''left'',''inside'''
+  suggest:
+  - Pass position as one of those five strings.
+- when: legend appearing for a constant aesthetic set OUTSIDE aes()
+  suggest:
+  - If you wrote geom_point(color='red'), there's no scale and no legend. The legend appears only when the aesthetic is MAPPED via aes() (see anti-pattern ggplot2_py.constant_inside_aes).
+- when: want a continuous color legend
+  suggest:
+  - Use guide_colorbar / guide_colourbar, not guide_legend — guide_legend is for discrete keys.
+related:
+- ggplot2_py.guides
+- ggplot2_py.scale_color_discrete

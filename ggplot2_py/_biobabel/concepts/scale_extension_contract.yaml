@@ -1,0 +1,67 @@
+id: ggplot2_py.scale_extension_contract
+name: Scale extension contract (subclass ScaleContinuous / ScaleDiscrete, wire via *_scale factories)
+category: extension
+description: "Scales mediate between data space and aesthetic space. The base ``Scale``\n(``ggplot2_py.scale.Scale``) is abstract; you extend one of its concrete\nsubclasses — ``ScaleContinuous``, ``ScaleDiscrete``, or ``ScaleBinned`` (plus\nthe positional variants ``ScaleContinuousPosition`` / ``ScaleDiscretePosition``\n/ ``ScaleBinnedPosition``). The methods that define scale behaviour:\n\n  - ``train(self, x)`` — extend the scale's range to cover the values ``x``\n    (called repeatedly during the build as each layer's data is seen).\n  - ``map(self, x, limits=None)`` — map trained data values onto aesthetic\n    values (colours, sizes, positions) via the scale's palette.\n  - ``transform(self, x)`` — apply the scale's transformation (log, sqrt, …).\n  - ``get_breaks(self, limits=None)`` — compute axis/legend break positions.\n  - ``get_labels(self, breaks=None)`` — format break labels.\n  - ``get_breaks_minor(...)`` — minor breaks (continuous only).\n\n**Wiring rule** (carried over from\
+  \ R and stated in the existing\nextension_class_hierarchy concept): you do NOT instantiate ``Scale``\nsubclasses directly in user code. Instead your ``scale_<aes>_<type>()``\nfactory calls one of the constructor helpers —\n``continuous_scale(..., super_class=YourScale)``, ``discrete_scale(...,\nsuper_class=YourScale)``, or ``binned_scale(..., super_class=YourScale)`` —\npassing your subclass as ``super_class``. The helper instantiates\n``super_class()`` and fills in the aesthetic name, palette, breaks, labels,\nguide, etc. Scale subclasses also auto-register into ``Scale._registry`` via\n``__init_subclass__`` (name stripped of the ``Scale`` prefix).\n\nIn most real extensions you do not write a new ``Scale`` subclass at all —\nyou call ``continuous_scale``/``discrete_scale`` with a custom ``palette=``\nand the default ``super_class``. Subclassing is only needed when you must\noverride ``train``/``map``/``get_breaks`` behaviour itself.\n"
+invariants:
+- '`Scale` is abstract; custom scales extend `ScaleContinuous`, `ScaleDiscrete`, or `ScaleBinned` (or their positional variants), each of which implements `train`/`map`/`transform`/`get_breaks`/`get_labels`.'
+- A custom scale subclass is wired into a plot via a `scale_<aes>_<type>()` factory that calls `continuous_scale(..., super_class=YourScale)` / `discrete_scale(...)` / `binned_scale(...)`; the helper instantiates `super_class()` and populates the rest — you do NOT instantiate the Scale subclass directly.
+- '`train(self, x)` extends the scale''s range to include `x` (called once per layer''s data during the build); `map(self, x, limits=None)` converts trained values to aesthetic values via the palette.'
+- '`get_breaks(self, limits=None)` returns break positions and `get_labels(self, breaks=None)` formats them; continuous scales additionally provide `get_breaks_minor`.'
+- '`continuous_scale`, `discrete_scale`, and `binned_scale` each accept a `super_class=` keyword (defaulting to `ScaleContinuous` / `ScaleDiscrete` / `ScaleBinned`) that selects which Scale subclass to instantiate.'
+- Scale subclasses auto-register into `Scale._registry` via `__init_subclass__` (the `Scale` prefix is stripped to form the registry key).
+mental_model: 'For R users:
+
+  Same split as R: ``ScaleContinuous`` / ``ScaleDiscrete`` / ``ScaleBinned``
+
+  are the ggproto parents, and you build scales through ``continuous_scale()``
+
+  / ``discrete_scale()`` / ``binned_scale()`` rather than constructing the
+
+  ggproto directly — exactly the R idiom, where ``super = ScaleContinuous`` is
+
+  passed to ``continuous_scale()``. The method names (``train``, ``map``,
+
+  ``transform``, ``get_breaks``, ``get_labels``) are the same ggproto method
+
+  names. As in R, most "new scales" are just new palettes fed to
+
+  ``discrete_scale()`` / ``continuous_scale()``.
+
+
+  For Python users:
+
+  Two layers: the ``Scale*`` classes (the behaviour) and the ``*_scale()``
+
+  factories (the construction). For a new palette, skip subclassing entirely —
+
+  call ``continuous_scale(aesthetics=..., palette=...)`` or
+
+  ``discrete_scale(...)``. For new *behaviour*, subclass ``ScaleContinuous`` /
+
+  ``ScaleDiscrete``, override ``train``/``map``/``get_breaks``, then thread it
+
+  through the factory with ``super_class=YourScale``. Never call
+
+  ``YourScale()`` straight in user code — the factory has to fill in many
+
+  fields first.
+
+
+  General:
+
+  Need a new palette only? Use ``continuous_scale``/``discrete_scale`` with a
+
+  ``palette=``. Need new range/mapping/break logic? Subclass
+
+  ``ScaleContinuous``/``ScaleDiscrete``/``ScaleBinned``, override the relevant
+
+  method(s), and pass it as ``super_class`` to the matching factory.'
+related_concepts:
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.ggproto_system
+- ggplot2_py.auto_registration
+- ggplot2_py.protocol_contracts
+- ggplot2_py.waiver_sentinel
+- ggplot2_py.custom_scale_train_map
+- ggplot2_py.extension_toolkit

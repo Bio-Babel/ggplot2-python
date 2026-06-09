@@ -1,0 +1,67 @@
+id: ggplot2_py.sec_axis
+import_path: ggplot2_py.sec_axis
+kind: function
+signature: sec_axis(transform=None, name=None, breaks=None, labels=None, guide=None, trans=None)
+purpose: add a secondary axis derived from the primary; show a second unit (e.g. Celsius/Fahrenheit) on the opposite side
+description: 'Build an :class:`AxisSecondary` that places a second axis on the opposite
+
+  side of the panel, computed as a (monotonic) transform of the primary axis.
+
+  The secondary axis is *derived* — it never introduces new data, only a
+
+  relabelled view of the same range (e.g. ``transform=lambda x: x * 9/5 + 32``
+
+  to add a Fahrenheit axis next to a Celsius one). Pass the result to a
+
+  continuous position scale via ``sec_axis=``, e.g.
+
+  ``scale_y_continuous(sec_axis=sec_axis(lambda y: y / 1000, name="thousands"))``.
+
+  '
+parameters:
+- name: transform
+  type: Optional[Callable]
+  required: false
+  default: null
+  description: Monotonic function mapping primary -> secondary axis values.
+- name: name
+  type: Any
+  required: false
+  default: null
+  description: Title for the secondary axis.
+- name: breaks
+  type: Any
+  required: false
+  default: null
+  description: Break positions (in secondary units) or a breaks function.
+- name: labels
+  type: Any
+  required: false
+  default: null
+  description: Tick labels or a labelling function for the secondary axis.
+- name: guide
+  type: Any
+  required: false
+  default: null
+  description: Guide specification for the secondary axis.
+- name: trans
+  type: Optional[Callable]
+  required: false
+  default: null
+  description: Deprecated alias for transform; prefer transform.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: AxisSecondary; kind=new_object
+requires: []
+writes: []
+examples:
+- "from ggplot2_py import ggplot, aes, geom_line, sec_axis\nfrom ggplot2_py.scales import scale_y_continuous\n# Celsius primary, Fahrenheit secondary\np = (ggplot(df, aes(\"t\", \"celsius\")) + geom_line()\n     + scale_y_continuous(sec_axis=sec_axis(lambda c: c * 9/5 + 32, name=\"Fahrenheit\")))\n"
+failure_fixes:
+- when: secondary axis labels look wrong / reversed
+  suggest:
+  - transform must be monotonic over the primary axis range
+- when: DeprecationWarning about trans=
+  suggest:
+  - Use transform= instead of the deprecated trans= alias
+related:
+- ggplot2_py.scale_y_continuous
+- ggplot2_py.scale_x_continuous

@@ -1,0 +1,45 @@
+id: ggplot2_py.plus_accumulation
+name: '`+` as builder accumulation'
+category: builder-DSL
+description: 'ggplot2''s `+` operator does NOT add numbers — it returns a *new* GGPlot
+
+  with the right-hand object added to one of the plot''s slots
+
+  (layers, scales, facet, coord, theme, labels). The slot is inferred from
+
+  the type of the RHS via the `update_ggplot` singledispatch.
+
+
+  This pattern is sometimes called "applicable to a builder" — a Layer is
+
+  applied to a GGPlot, a Theme is applied to a GGPlot, etc.
+
+  '
+invariants:
+- '`+` is left-associative; the LHS must be a GGPlot (or compatible builder).'
+- Adding a Layer/Scale/Theme returns a new GGPlot — the old one is unchanged.
+- 'Type determines slot: Layer→layers, Scale→scales, Theme→theme, Facet→facet, Coord→coord, Labels→labels, Mapping→default mapping.'
+- Layer order = draw order (later layers drawn on top of earlier ones).
+- Theme additions accumulate; same-element later overrides earlier.
+- Coord additions REPLACE the previous Coord (with an informational message), not stack.
+- Facet additions REPLACE the previous Facet.
+- Scale additions REPLACE the previous Scale for the same aesthetic (with a warning).
+- Only ASCII `+` is recognized — Python does NOT parse unicode `＋` (full-width plus) as an operator.
+- '`GGPlot + GGPlot` is NOT supported and raises a clear error — to compose plots side-by-side use a layout library, not `+`.'
+mental_model: 'For R users:
+
+  Identical to R `ggplot2::+`. The dispatch is the same; Python uses
+
+  `__add__` on GGPlot which calls `update_ggplot.dispatch(type(rhs))`.
+
+
+  For Python users:
+
+  Closest analogue is the "applicative builder" pattern: `ggplot(...)`
+
+  returns a builder; `+ layer` returns a new builder with layer applied.
+
+  Distinct from `__iadd__` (in-place add) which is not used here.'
+related_concepts:
+- ggplot2_py.aes_mapping
+- ggplot2_py.layer_inheritance

@@ -1,0 +1,58 @@
+id: ggplot2_py.scale_fill_gradient2
+import_path: ggplot2_py.scale_fill_gradient2
+kind: function
+signature: scale_fill_gradient2(name=None, low=None, mid='white', high=None, midpoint=0, space='Lab', na_value='grey50', transform='identity', guide='colourbar', aesthetics='fill', kwargs)
+purpose: Diverging fill gradient scale.
+description: Diverging fill gradient scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: low
+  type: Optional[str]
+  required: false
+  default: null
+- name: mid
+  type: str
+  required: false
+  default: white
+- name: high
+  type: Optional[str]
+  required: false
+  default: null
+- name: midpoint
+  type: float
+  required: false
+  default: 0
+- name: space
+  type: str
+  required: false
+  default: Lab
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: transform
+  type: Union[str, Any]
+  required: false
+  default: identity
+- name: guide
+  type: str
+  required: false
+  default: colourbar
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: fill
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuous; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

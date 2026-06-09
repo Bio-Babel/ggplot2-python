@@ -1,0 +1,22 @@
+id: ggplot2_py.element_grob
+import_path: ggplot2_py.element_grob
+kind: function
+signature: element_grob(element, kwargs)
+purpose: Generate a grid grob from a theme element.
+description: Generate a grid grob from a theme element.
+parameters:
+- name: element
+  type: Element
+  required: true
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

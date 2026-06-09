@@ -1,0 +1,71 @@
+id: ggplot2_py.geom_ribbon
+import_path: ggplot2_py.geom_ribbon
+kind: function
+signature: geom_ribbon(mapping=None, data=None, stat='identity', position='identity', orientation=None, outline_type='both', inherit_aes=True)
+purpose: shaded band between ymin and ymax; confidence interval ribbon
+description: 'Fill the vertical region between `ymin` and `ymax` aesthetics across x.
+
+  The aesthetic pair `ymin`/`ymax` is REQUIRED — `geom_ribbon` does not
+
+  compute them. Typical use: overlay a CI band under a `geom_line` / `geom_smooth`.
+
+  For a baseline-anchored fill (i.e. ymin=0), prefer `geom_area`. Accumulates
+
+  via `+` (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: Needs x, ymin, ymax. fill controls band color; color controls outline.
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: orientation
+  type: str | None
+  required: false
+  default: null
+  description: '''x'' (default, ribbon along x with vertical span) or ''y'' (vertical ribbon along y).'
+- name: outline_type
+  type: str
+  required: false
+  default: both
+  description: '''both'' (default, draws ymin AND ymax outlines), ''upper'', ''lower'', ''full''.'
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(df, aes(x='t', ymin='lo', ymax='hi')) + geom_ribbon(fill='steelblue', alpha=0.3) + geom_line(aes(y='est'))
+- geom_ribbon(aes(x='year', ymin='lower', ymax='upper'), alpha=0.2)
+failure_fixes:
+- when: blank plot / ribbon doesn't appear
+  suggest:
+  - 'ymin and ymax aesthetics are both required: aes(x=''t'', ymin=''lo'', ymax=''hi''). Mapping only y will draw nothing.'
+- when: ribbon outline obscures the underlying line
+  suggest:
+  - 'Pass color=None (or NA) and only set fill: geom_ribbon(aes(...), fill=''gray'', color=None, alpha=0.3).'
+- when: want a band anchored at zero
+  suggest:
+  - Use geom_area instead — it sets ymin=0 implicitly.
+related:
+- ggplot2_py.geom_line
+- ggplot2_py.geom_smooth
+- ggplot2_py.facet_wrap
+- ggplot2_py.theme_minimal

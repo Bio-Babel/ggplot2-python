@@ -1,0 +1,128 @@
+id: ggplot2_py.scale_x_continuous
+import_path: ggplot2_py.scale_x_continuous
+kind: function
+signature: scale_x_continuous(name=None, breaks=None, minor_breaks=None, n_breaks=None, labels=None, limits=None, expand=None, oob=None, na_value=nan, transform='identity', trans=None, guide=None, position='bottom', sec_axis=None)
+purpose: customize continuous x axis; set axis name, breaks, labels, limits, expand, transform, position; replace the default x scale on a plot
+description: 'The workhorse continuous x scale. Added to a plot via `+`; replaces any
+
+  previous x scale (see `ggplot2_py.plus_accumulation`). Most kwargs accept
+
+  three states (see `ggplot2_py.waiver_sentinel`):
+
+
+  - `waiver()` (default) → let the scale pick a sensible value.
+
+  - `None` → disable that piece (e.g. `breaks=None` ⟹ no tick marks).
+
+  - concrete value → use it.
+
+
+  Custom-axis idiom: when you override one of `transform=` / `breaks=` /
+
+  `labels=` you almost always want all three together (see
+
+  `ggplot2_py.scales_three_piece_kit`).
+
+
+  `transform=` is the modern argument name; `trans=` is a back-compat alias
+
+  that emits a `DeprecationWarning` — all new code should pass `transform=`.
+
+  '
+parameters:
+- name: name
+  type: str | Waiver | None
+  required: false
+  default: null
+  description: Axis title. Override via `labs(x=...)` is also fine.
+- name: breaks
+  type: array-like | callable | None | Waiver
+  required: false
+  default: null
+  description: Major break positions. Default = waiver() picks pretty breaks.
+- name: minor_breaks
+  type: array-like | callable | None | Waiver
+  required: false
+  default: null
+- name: n_breaks
+  type: int | None
+  required: false
+  default: null
+  description: Desired number of breaks, when using the default break algorithm.
+- name: labels
+  type: array-like | callable | None | Waiver
+  required: false
+  default: null
+  description: Tick labels, formatter callable, or None to drop labels.
+- name: limits
+  type: tuple[float, float] | None
+  required: false
+  default: null
+  description: 'Data range for the scale. CRITICAL: values outside `limits` are
+
+    *filtered* (oob=censor by default) BEFORE stats run. For pure visual
+
+    zoom, use `coord_cartesian(xlim=...)` instead.
+
+    '
+- name: expand
+  type: array-like | Waiver
+  required: false
+  default: null
+  description: Use `expansion(mult=, add=)` to control axis padding.
+- name: oob
+  type: callable | None
+  required: false
+  default: null
+  description: 'Handler for out-of-bound values. Default: censor (drop).'
+- name: na_value
+  type: float
+  required: false
+  default: .nan
+- name: transform
+  type: str | Transform
+  required: false
+  default: identity
+  description: Modern arg; pass a Transform from `scales` (e.g. transform_log10()).
+- name: trans
+  type: str | Transform | None
+  required: false
+  default: null
+  description: Deprecated alias for `transform=`; emits DeprecationWarning.
+- name: guide
+  type: str | Guide | Waiver
+  required: false
+  default: null
+- name: position
+  type: str
+  required: false
+  default: bottom
+  description: '''bottom'' or ''top''.'
+- name: sec_axis
+  type: AxisSecondary | Waiver | None
+  required: false
+  default: null
+  description: Secondary axis spec; build with `sec_axis()` or `dup_axis()`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_x_continuous(name='Engine displacement (L)', limits=(0, 8))
+- p + scale_x_continuous(breaks=[0, 5, 10], labels=['low','mid','high'])
+- p + scale_x_continuous(transform=transform_log10(), breaks=breaks_log(), labels=label_log())
+failure_fixes:
+- when: geom_smooth fit, boxplot whiskers, or stat looks wrong after adding limits=
+  suggest:
+  - limits= FILTERS rows outside the range BEFORE stats run.
+  - For visual zoom only, use coord_cartesian(xlim=(a, b)) instead.
+  explanation: Default oob=censor drops out-of-range points entirely, so smoothers and summaries see only a subset of the data.
+- when: passing trans= triggers DeprecationWarning
+  suggest:
+  - Rename `trans=` to `transform=`. Same value, modern name.
+- when: breaks=None gave a bare axis with no ticks (unexpected)
+  suggest:
+  - None means 'no breaks'. To get the default auto-breaks, omit the kwarg or pass `breaks=waiver()`.
+- when: wanted log axis but only set breaks/labels
+  suggest:
+  - 'Either use the bundled shortcut scale_x_log10(), or pass all three: transform=transform_log10(), breaks=breaks_log(), labels=label_log().'

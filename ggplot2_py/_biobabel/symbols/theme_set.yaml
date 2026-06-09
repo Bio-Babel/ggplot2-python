@@ -1,0 +1,39 @@
+id: ggplot2_py.theme_set
+import_path: ggplot2_py.theme_set
+kind: function
+signature: theme_set(new=None)
+purpose: install a Theme as ggplot2_py's MODULE-LEVEL default; make every subsequent ggplot() inherit this theme without per-plot chaining; snapshot/restore the active theme around a block of code
+description: "Install `new` as the global default Theme on the `ggplot2_py` module\nand return the *previously*-active Theme so the caller can restore it.\n\n**WARNING — global mutable state**:\n\n- `theme_set(theme_bw())` mutates `ggplot2_py`'s module-level default.\n  EVERY subsequent `ggplot(...)` in the current Python process inherits\n  it, not just plots in this cell / function / file. (See concept\n  `plus_accumulation` for why per-plot `+ theme_bw()` is local-only.)\n- **In notebooks**: re-running a cell that calls `theme_set` is\n  idempotent, but cumulative effects across cells can surprise — the\n  previous cell's `theme_set` is still in force when the next cell runs.\n- **In tests**: a test that calls `theme_set` without a teardown LEAKS\n  state to every later test. Use `try/finally` with `theme_set(prev)`\n  or a pytest fixture that snapshots and restores.\n- **In multi-import contexts**: if module A and module B both call\n  `theme_set` at import time, last-import wins. Order\
+  \ of imports\n  becomes load-bearing — a non-obvious failure mode.\n\n**The safer pattern** is to chain `p + theme_bw()` per-plot, NOT to\nset a global default. Reach for `theme_set` only when you genuinely\nwant every plot in the process to use the same theme (e.g. at the\ntop of a script, behind an `if __name__ == \"__main__\":` guard).\n\nPassing `new=None` resets to the module's stored `theme_default`\n(typically `theme_grey()`); it does NOT clear the slot.\n\nThe return value is the Theme that was active immediately before this\ncall — capture it to enable scoped/restorable overrides.\n"
+parameters:
+- name: new
+  type: Optional[Theme]
+  required: false
+  default: null
+  description: Theme to install as the new global default. None resets to the package's built-in default.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Optional[Theme]; kind=new_object
+requires: []
+writes: []
+examples:
+- prev = theme_set(theme_bw())
+- theme_set(theme_minimal(base_size=14))
+- "prev = theme_set(theme_bw())\ntry:\n    ggplot(df, aes('x','y')) + geom_point()\nfinally:\n    theme_set(prev)"
+failure_fixes:
+- when: Plots in other tests / notebook cells unexpectedly use the new theme
+  suggest:
+  - theme_set() mutates module-level state. Prefer `p + theme_bw()` per-plot — it is local to a single plot.
+  - 'If you must use theme_set, save+restore: prev = theme_set(theme_bw()); try: ...; finally: theme_set(prev)'
+  - 'See anti-pattern: ggplot2_py.theme_set_global_pollution'
+- when: Passed a non-Theme (e.g. a string, or theme(...) with no completion)
+  suggest:
+  - theme_set() requires a complete Theme (theme_bw(), theme_minimal(), etc.) or None. A partial theme(...) is not enough.
+- when: Wanted to clear all theme state, not just reset to default
+  suggest:
+  - theme_set(None) re-installs the stored default; it does not clear. Call reset_theme_settings() instead.
+- when: Return value was discarded and now you cannot restore
+  suggest:
+  - 'Always capture: prev = theme_set(new). Without prev there is no record of the prior theme.'
+related:
+- ggplot2_py.theme_get
+- ggplot2_py.theme_update

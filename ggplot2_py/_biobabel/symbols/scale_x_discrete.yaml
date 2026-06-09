@@ -1,0 +1,86 @@
+id: ggplot2_py.scale_x_discrete
+import_path: ggplot2_py.scale_x_discrete
+kind: function
+signature: scale_x_discrete(name=None, limits=None, breaks=None, labels=None, expand=None, guide=None, position='bottom', na_translate=True)
+purpose: categorical x axis; control the order of factor levels along x; drop or relabel x categories
+description: 'Discrete position scale for the x aesthetic. Use whenever the column mapped to
+
+  `x=` is categorical (str / pandas `Categorical` / factor-like). The most common
+
+  reason to add it explicitly is to **re-order categories** via `limits=`, since
+
+  ggplot2 otherwise sorts factor levels alphabetically (or by appearance for
+
+  plain str columns) — which is rarely the order you actually want on the axis.
+
+
+  Like every Scale, this object is *combined* with the plot via the `+` builder
+
+  pattern (see `ggplot2_py.plus_accumulation`); adding a second x scale to the
+
+  same plot REPLACES the first and emits a warning.
+
+  '
+parameters:
+- name: name
+  type: str | None
+  required: false
+  default: null
+  description: Axis title. Defaults to the column name.
+- name: limits
+  type: list[str] | None
+  required: false
+  default: null
+  description: 'Explicit ordered list of categories. **Drives the order along x**; any
+
+    category not in `limits` is dropped (with a warning about removed rows).
+
+    '
+- name: breaks
+  type: list[str] | callable | None
+  required: false
+  default: null
+  description: Which categories get a tick/label. Defaults to all `limits`.
+- name: labels
+  type: list[str] | dict | callable | None
+  required: false
+  default: null
+  description: 'Tick labels — same length as `breaks` if a list, or a `{old: new}` dict.'
+- name: expand
+  type: tuple | None
+  required: false
+  default: null
+  description: Padding around the categorical positions; see `ggplot2_py.expansion`.
+- name: guide
+  type: str | Guide | None
+  required: false
+  default: null
+  description: Usually left as default; not commonly customised on a position axis.
+- name: position
+  type: str
+  required: false
+  default: bottom
+  description: '''bottom'' or ''top''.'
+- name: na_translate
+  type: bool
+  required: false
+  default: true
+  description: If True, NA is rendered as an explicit category; if False, NA rows are dropped.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_x_discrete(limits=['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])
+- 'p + scale_x_discrete(labels={''ctrl'': ''Control'', ''trt'': ''Treatment''})'
+failure_fixes:
+- when: axis categories are in alphabetical order instead of the order I want
+  suggest:
+  - Pass `limits=['low', 'med', 'high']` to fix the order explicitly.
+  explanation: Without `limits=`, ggplot2 falls back to `sorted(unique(x))` for plain str columns. Wrap the column in `pd.Categorical(..., categories=[...], ordered=True)` for a data-side fix that other scales also pick up.
+- when: 'warning: Removed N rows containing missing values'
+  suggest:
+  - A category present in the data was excluded by `limits=`. Either add it back to `limits` or filter the dataframe up front.
+- when: two scale_x_discrete() added — only the last one is honored
+  suggest:
+  - Combine all customisation into a single call; later Scale replaces earlier (see `ggplot2_py.plus_accumulation`).

@@ -1,0 +1,66 @@
+id: ggplot2_py.ggsave
+import_path: ggplot2_py.ggsave
+kind: function
+signature: ggsave(filename, plot=None, device=None, path=None, width=None, height=None, units='in', dpi=300, limitsize=True, bg=None, create_dir=False, scale=1.0, kwargs)
+purpose: Save a ggplot (or other grid object) to a file.
+description: Save a ggplot (or other grid object) to a file.
+parameters:
+- name: filename
+  type: str
+  required: true
+  default: null
+- name: plot
+  type: Any
+  required: false
+  default: null
+- name: device
+  type: Optional[str]
+  required: false
+  default: null
+- name: path
+  type: Optional[str]
+  required: false
+  default: null
+- name: width
+  type: Optional[float]
+  required: false
+  default: null
+- name: height
+  type: Optional[float]
+  required: false
+  default: null
+- name: units
+  type: str
+  required: false
+  default: in
+- name: dpi
+  type: Union[int, float, str]
+  required: false
+  default: 300
+- name: limitsize
+  type: bool
+  required: false
+  default: true
+- name: bg
+  type: Optional[str]
+  required: false
+  default: null
+- name: create_dir
+  type: bool
+  required: false
+  default: false
+- name: scale
+  type: float
+  required: false
+  default: 1.0
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: str; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,57 @@
+id: ggplot2_py.coord_polar
+import_path: ggplot2_py.coord_polar
+kind: function
+signature: coord_polar(theta='x', start=0.0, direction=1, clip='on')
+purpose: draw pie charts, rose diagrams, or radar-style plots; map one cartesian axis to angle and the other to radius
+description: "Create a polar coordinate system. The plot is built in the usual cartesian\nway and then bent — whichever axis is named by `theta` becomes the angular\naxis (running 0 → 2π), the other axis becomes the radius.\n\nCommon patterns:\n\n- **Pie chart**: a single stacked bar in cartesian space, bent into a\n  circle: `geom_bar(aes(x=1, fill='cat')) + coord_polar(theta='y')`.\n- **Rose / Coxcomb**: bar chart by category, bent so each bar is a\n  sector: `geom_bar(aes(x='cat')) + coord_polar(theta='x')`.\n- **Radar / circular line**: line plot in cartesian, bent so x wraps:\n  `geom_line() + coord_polar()`.\n\nThe two `theta` values are NOT interchangeable — pie vs rose depends on\nwhich axis is the angle. For pie charts the convention is `theta='y'`\n(the stack height becomes the angle).\n"
+parameters:
+- name: theta
+  type: str
+  required: false
+  default: x
+  description: '''x'' or ''y'' — which cartesian axis becomes the angular one.'
+- name: start
+  type: float
+  required: false
+  default: 0.0
+  description: Offset from 12 o'clock in radians. e.g. -pi/2 starts the first slice at 3 o'clock.
+- name: direction
+  type: int
+  required: false
+  default: 1
+  description: 1 = clockwise, -1 = anticlockwise. Only the sign is used.
+- name: clip
+  type: str
+  required: false
+  default: 'on'
+  description: '''on'' clips marks at the polar panel edge; ''off'' lets them spill outside.'
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Coord; kind=new_object
+requires: []
+writes: []
+examples:
+- 'geom_bar(aes(x=1, fill=''cat''), position=''stack'') + coord_polar(theta=''y'')  # pie'
+- 'geom_bar(aes(x=''month'')) + coord_polar()  # rose / coxcomb'
+- coord_polar(start=-math.pi/2, direction=-1)
+failure_fixes:
+- when: theta must be 'x' or 'y'
+  suggest:
+  - Pass theta='x' or theta='y' as a string; coord_polar does not accept aesthetic mappings.
+- when: pie chart looks like a stacked bar
+  suggest:
+  - 'Use theta=''y'' for a pie: geom_bar(aes(x=1, fill=cat)) + coord_polar(theta=''y''). ''x'' gives a rose/coxcomb instead.'
+- when: pie chart starts at 3 o'clock not 12
+  suggest:
+  - ggplot's default is 12 o'clock with start=0. If your pie is rotated, you may have set start in radians, not degrees — start=-pi/2 puts the first wedge at 9 o'clock.
+- when: axes look wrong / labels stack at center
+  suggest:
+  - 'Use theme_void() to drop cartesian axes when drawing a pie: ggplot(..) + coord_polar(theta=''y'') + theme_void().'
+- when: want the plot to read anticlockwise
+  suggest:
+  - Pass direction=-1.
+- when: for advanced polar plots (partial arcs, donut holes)
+  suggest:
+  - Use coord_radial() — it adds thetalim/rlim/inner_radius/end/r_axis_inside on top of coord_polar.
+related:
+- ggplot2_py.theme_void
+- ggplot2_py.labs

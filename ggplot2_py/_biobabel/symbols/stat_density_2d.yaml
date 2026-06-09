@@ -1,0 +1,84 @@
+id: ggplot2_py.stat_density_2d
+import_path: ggplot2_py.stat_density_2d
+kind: function
+signature: stat_density_2d(mapping=None, data=None, geom='density_2d', contour=True, contour_var='density', n=100, h=None, adjust='(1.0, 1.0)')
+purpose: 2D kernel density estimation; contour overlay on a scatter to show point concentration
+description: 'Computes a 2D Gaussian KDE on an n x n grid spanning the data, then
+
+  (optionally) marching-squares contours of the surface. Required
+
+  aesthetics are `x` and `y`. The stat emits the computed columns
+
+  `density`, `ndensity`, `count`, and `level` — map any of them via
+
+  `after_stat()`. Pair with `geom=''polygon''` for filled contours, or use
+
+  `stat_density_2d_filled` for the canonical filled variant.
+
+
+  Idiomatic Python: `geom_density_2d()` is the easier entry point;
+
+  `stat_density_2d()` is what you reach for to override the geom (e.g.
+
+  `stat_density_2d(geom=''raster'', contour=False)` to draw a density
+
+  heatmap).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping | None
+  required: false
+  default: null
+- name: data
+  type: DataFrame | None
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: density_2d
+  description: '''density_2d'' (contour lines), ''polygon'' (filled), ''raster'' / ''tile'' (heatmap; requires contour=False).'
+- name: contour
+  type: bool
+  required: false
+  default: true
+  description: Marching-squares contours. Set False to emit the raw grid (use with geom='raster').
+- name: contour_var
+  type: str
+  required: false
+  default: density
+  description: '''density'', ''ndensity'', or ''count'' — which surface the contours trace.'
+- name: n
+  type: int
+  required: false
+  default: 100
+  description: Grid resolution (n x n).
+- name: h
+  type: tuple[float, float] | None
+  required: false
+  default: null
+  description: Bandwidth pair (h_x, h_y). Default is the normal-reference rule per axis.
+- name: adjust
+  type: float | tuple[float, float]
+  required: false
+  default: (1.0, 1.0)
+  description: Bandwidth multiplier(s); >1 smooths more.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(df, aes(x='x', y='y')) + geom_point() + stat_density_2d()
+- stat_density_2d(aes(fill=after_stat('density')), geom='raster', contour=False)
+failure_fixes:
+- when: want a filled heatmap of density rather than contour lines
+  suggest:
+  - stat_density_2d(geom='raster', contour=False, aes(fill=after_stat('density')))
+  - or use stat_density_2d_filled() which sets these defaults.
+- when: contours look too smooth / not enough detail
+  suggest:
+  - Lower adjust (e.g. adjust=0.5) or set h to a smaller bandwidth pair.
+related:
+- ggplot2_py.geom_point
+- ggplot2_py.stat_density_2d_filled

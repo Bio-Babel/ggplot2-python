@@ -1,0 +1,30 @@
+id: ggplot2_py.scale_color_identity
+import_path: ggplot2_py.scale_color_identity
+kind: function
+signature: scale_color_identity(name=None, guide='none', aesthetics='colour', kwargs)
+purpose: Identity colour scale -- data values used as colours directly.
+description: Identity colour scale -- data values used as colours directly.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: guide
+  type: str
+  required: false
+  default: none
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: colour
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleDiscreteIdentity; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,76 @@
+id: ggplot2_py.extension_toolkit
+name: Use the ggplot2_py.extension toolkit (clone_layer / rename_aes / protect / palette_for_aes)
+applicable_to:
+  - ggplot2_py.ggproto_system
+  - ggplot2_py.geom_extension_contract
+description: |
+  Cross-cutting extension packages (ggnewscale-style aes-bumping, etc.)
+  need a handful of helpers that should not be re-implemented. They live in
+  the opt-in `ggplot2_py.extension` subpackage:
+
+  * `clone_layer(layer)` — bounded-deep copy so per-instance mutation
+    (mapping, *_params, geom/stat/position clones) is isolated from the
+    source layer.
+  * `rename_aes_in_mapping(mapping, old, new)` (and `_in_dict`, `_in_seq`)
+    — return a copy with an aesthetic key renamed.
+  * `protect(obj, aes)` / `is_protected(obj, aes)` — one-shot stamps so a
+    transformation isn't applied twice.
+  * `palette_for_aes(aes)` — resolve the palette the theme would assign to
+    a scale of that aesthetic.
+
+  None of these are in the top-level namespace — import them explicitly.
+
+  SCOPE — what the toolkit covers vs. what a full ggnewscale-style bump
+  needs. `clone_layer` / `rename_aes_in_*` / `protect` / `palette_for_aes`
+  cover the LAYER-level aes bump only: clone the layer, rename its mapped
+  aesthetic (and stat/geom default aes), stamp it protected so a later
+  bump is a no-op (ggnewscale `_bump.py:bump_aes_layer`). But moving an
+  aesthetic that is ALREADY IN USE to a fresh scale (the `new_scale()`
+  pattern) also has to bump three other objects — the toolkit gives you the
+  primitives, not the orchestration:
+
+    * The SCALE — rewrite `scale.aesthetics` (`[new_aes if a==old else a …]`),
+      and if the scale draws a guide, MATERIALIZE a string guide
+      (`"legend"`) into a `Guide` ggproto before rewriting it. For scales
+      built with a `None` palette, swap in a FALLBACK palette
+      (`use_fallback_palette` / `palette_for_aes`) so the bumped scale can
+      still map values. (ggnewscale `_bump.py:bump_aes_scale`, lines
+      234-292.)
+    * The GUIDE — rewrite the guide's `available_aes` (and any
+      `override.aes` / `override_aes` overrides) from the old to the new
+      aes name, or the legend won't bind to the bumped scale. (ggnewscale
+      `_bump.py:bump_aes_guide(s)`, lines 380-414.)
+    * The LABELS — axis/legend titles are plain Python strings and cannot
+      carry a protect stamp, so the marker lives on the PLOT object as a
+      per-plot set (`plot._ggnewscale_renamed_labels`), not on the string.
+      (ggnewscale `_bump.py:bump_aes_labels`, lines 335-378.)
+
+  In short: the toolkit below is the per-LAYER half; a complete
+  "new scale for an already-used aesthetic" extension layers the scale +
+  guide + label bumps on top, all keyed off the same `protect` stamps.
+code_template: |
+  from ggplot2_py.extension import (
+      clone_layer, rename_aes_in_mapping, protect, is_protected, palette_for_aes,
+  )
+  from ggplot2_py import geom_point, aes
+  from ggplot2_py.aes import Mapping
+
+  # 1) clone_layer — fully-isolated copy (mapping is a fresh object)
+  layer = geom_point(aes(x="displ", y="hwy"))
+  clone = clone_layer(layer)
+  assert clone is not layer and clone.mapping is not layer.mapping
+
+  # 2) rename an aesthetic key inside a Mapping
+  renamed = rename_aes_in_mapping(Mapping(colour="cyl"), "colour", "fill")
+  assert "fill" in renamed and "colour" not in renamed
+
+  # 3) one-shot protection stamp on a carrier object
+  class Carrier: pass
+  c = Carrier()
+  protect(c, "colour")
+  assert is_protected(c, "colour")
+
+  # 4) resolve the palette the theme would give a 'colour' scale
+  pal = palette_for_aes("colour")     # callable or None — never raises
+  assert callable(pal) or pal is None
+typical_use_case: "building a cross-cutting extension (e.g. multiple independent colour scales) that must clone layers and rename aesthetics safely"

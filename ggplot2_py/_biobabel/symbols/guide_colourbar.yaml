@@ -1,0 +1,70 @@
+id: ggplot2_py.guide_colourbar
+import_path: ggplot2_py.guide_colourbar
+kind: function
+signature: guide_colourbar(title='waiver()', theme=None, nbin=None, display='raster', alpha=nan, draw_ulim=True, draw_llim=True, angle=None, position=None, direction=None, reverse=False, order=0, available_aes=None, kwargs)
+purpose: Create a continuous colour bar guide.
+description: Create a continuous colour bar guide.
+parameters:
+- name: title
+  type: Any
+  required: false
+  default: waiver()
+- name: theme
+  type: Any
+  required: false
+  default: null
+- name: nbin
+  type: Optional[int]
+  required: false
+  default: null
+- name: display
+  type: str
+  required: false
+  default: raster
+- name: alpha
+  type: float
+  required: false
+  default: .nan
+- name: draw_ulim
+  type: bool
+  required: false
+  default: true
+- name: draw_llim
+  type: bool
+  required: false
+  default: true
+- name: angle
+  type: Optional[float]
+  required: false
+  default: null
+- name: position
+  type: Optional[str]
+  required: false
+  default: null
+- name: direction
+  type: Optional[str]
+  required: false
+  default: null
+- name: reverse
+  type: bool
+  required: false
+  default: false
+- name: order
+  type: int
+  required: false
+  default: 0
+- name: available_aes
+  type: Optional[List[str]]
+  required: false
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: GuideColourbar; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

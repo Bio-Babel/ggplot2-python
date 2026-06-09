@@ -1,0 +1,25 @@
+id: ggplot2_py.scales_three_piece_kit
+name: Custom axis = transform + breaks + labels (always all three)
+applicable_to:
+  - ggplot2_py.plus_accumulation
+description: |
+  When customizing an axis, always supply the three pieces together
+  (`transform`, `breaks`, `labels`) — partial customization produces ugly axes.
+  Either use the bundled shortcut (`scale_x_log10()`) or pass all three
+  explicitly.
+
+  The canonical kwarg in ggplot2-python is `transform=` (not `trans=` — `trans=`
+  is a deprecated alias kept for back-compat that emits a `DeprecationWarning`).
+code_template: |
+  from ggplot2_py import scale_x_continuous
+  from scales import transform_log10, breaks_log, label_log
+
+  p + scale_x_continuous(
+      transform = transform_log10(),
+      breaks    = breaks_log(n=5, base=10),
+      labels    = label_log(base=10),
+  )
+
+  # Idiomatic shortcut:
+  p + scale_x_log10()
+typical_use_case: "data spanning multiple orders of magnitude"

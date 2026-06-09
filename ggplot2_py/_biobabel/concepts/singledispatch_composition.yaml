@@ -1,0 +1,75 @@
+id: ggplot2_py.singledispatch_composition
+name: singledispatch composition (update_ggplot / ggplot_build register, + / list / sum / reduce)
+category: pipeline
+description: "The ``+`` operator on a ``GGPlot`` is implemented with\n``functools.singledispatch``, which makes the set of addable component types\nOPEN — any Python class can be made addable by registering a handler. Two\ngenerics matter:\n\n  - ``update_ggplot(obj, plot, object_name=\"\")`` — dispatches on ``type(obj)``\n    to add ``obj`` to ``plot`` (R ref: ``update_ggplot`` / ``ggplot_add``).\n    ``GGPlot.__add__`` routes through ``ggplot_add`` → ``update_ggplot``.\n    Built-in registered types: ``Layer``, ``Scale``, ``Coord``, ``Facet``,\n    ``Mapping``, ``Theme``, ``Labels``, ``pd.DataFrame``, ``list``,\n    ``NoneType``. Register your own:\n\n        @update_ggplot.register(Watermark)\n        def _add_watermark(obj, plot, object_name=\"\"):\n            plot.labels[\"caption\"] = f\"[{obj.text}]\"\n            return plot\n        # now: ggplot(...) + geom_point() + Watermark(\"DRAFT\")\n\n    Inspect what is registered via ``update_ggplot.registry.keys()``.\n  - ``ggplot_build(plot)``\
+  \ — also a ``singledispatch`` generic. Register a\n    custom plot subclass with ``@ggplot_build.register(MyPlot)`` to override\n    the ENTIRE build pipeline for that type.\n\nBecause ``__add__`` is defined and the ``list`` type is itself registered\n(``_update_list`` folds each item with ``ggplot_add``), Python's\niterable-composition idioms work directly — no ``+`` chain required:\n  - ``sum(parts, start=ggplot(data))`` — fold an iterable (note: built-in\n    ``sum`` takes ONE iterable plus an optional ``start``, not varargs).\n  - ``functools.reduce(operator.add, parts, ggplot(data))``.\n  - a ``list`` on the RHS of ``+``: ``ggplot(...) + [geom_point(),\n    geom_smooth(), theme_minimal()]`` adds each element recursively.\n\n``GGPlot.__radd__`` handles ``other + plot`` (and the ``0 + plot`` that\n``sum`` seeds with), so the fold idioms compose cleanly.\n\nBeyond ``+``, a downstream package can also reach composition by\nregistering ``GGPlot`` itself on ``update_ggplot`` AND/OR by monkeypatching\n\
+  NON-``+`` dunders onto the ``GGPlot`` class for layout operators. This is\nhow patchwork-python adds plot composition without touching ggplot2_py's\nsource: on ``import patchwork`` it runs ``@update_ggplot.register(GGPlot)``\n(so ``p1 + p2`` now composes instead of raising) and attaches\n``GGPlot.__or__`` / ``__truediv__`` / ``__sub__`` / ``__and__`` /\n``__mul__`` (so ``p1 | p2`` is \"beside\", ``p1 / p2`` is \"stacked\", etc.).\nThe set of composition operators is therefore as OPEN as the ``+`` generic\n— a package can graft on whatever operator dunders it wants.\n\nCAVEAT — Python vs R operator precedence. In R, patchwork's ``|`` and ``/``\nshare a precedence tier so ``p1 | p2 / p3`` parses left-to-right as the\nauthor intends. In Python ``/`` binds TIGHTER than ``|``, so ``p1 | p2 /\np3`` reparses as ``p1 | (p2 / p3)`` — a different layout. Likewise\n``p1 + p2 * theme_bw()`` reparses. ALWAYS parenthesize mixed layout\nexpressions: write ``(p1 | p2) / p3`` explicitly.\n"
+invariants:
+- '`update_ggplot` is a `functools.singledispatch` generic (it has `.register` and `.registry`); `GGPlot.__add__` clones the plot then routes `other` through `ggplot_add` -> `update_ggplot`.'
+- Built-in registered types include `Layer`, `Scale`, `Coord`, `Facet`, `Mapping`, `Theme`, `Labels`, `pandas.DataFrame`, `list`, and `NoneType`; `update_ggplot.registry.keys()` enumerates them.
+- '`@update_ggplot.register(Cls)` adds a handler `fn(obj, plot, object_name='''') -> plot` that makes `plot + Cls(...)` work; the handler must return the (possibly mutated) plot.'
+- '`list` is registered: a list on the RHS of `+` is folded element-by-element via `ggplot_add`, so `ggplot(...) + [a, b, c]` is equivalent to `ggplot(...) + a + b + c`.'
+- '`sum(parts, start=ggplot(data))` and `functools.reduce(operator.add, parts, ggplot(data))` both build a plot without the `+` operator (built-in `sum` takes one iterable + optional `start`, NOT varargs); `GGPlot.__radd__` handles the `0 + plot` seed and `other + plot`.'
+- '`ggplot_build` is also a `functools.singledispatch` generic; `@ggplot_build.register(MyPlotClass)` overrides the entire build pipeline for that plot type.'
+- 'Plot composition is open the same way: a downstream package can `@update_ggplot.register(GGPlot)` (making `p1 + p2` compose) and/or monkeypatch non-`+` dunders (`__or__`/`__truediv__`/`__sub__`/`__and__`) onto `GGPlot` for layout operators — this is how patchwork installs `|`/`/` on import.'
+- 'Python operator precedence differs from R''s: `/` binds tighter than `|`, so `p1 | p2 / p3` reparses as `p1 | (p2 / p3)` — always parenthesize mixed layout expressions, e.g. `(p1 | p2) / p3`.'
+mental_model: 'For R users:
+
+  This is the Python analogue of R''s S3/S7 ``ggplot_add`` / ``update_ggplot``
+
+  generics. Where R writes ``ggplot_add.MyClass <- function(object, plot,
+
+  object_name) {...}``, Python writes ``@update_ggplot.register(MyClass)``.
+
+  Dispatch is on the first argument''s class in both; introspection is
+
+  ``update_ggplot.registry.keys()`` instead of ``methods(ggplot_add)``. The
+
+  bonus over R: because the ``+`` operator is backed by a real generic, the
+
+  Pythonic ``sum``/``reduce``/list-RHS folds compose plots without ``+`` —
+
+  handy for programmatic construction. Overriding the whole build for a custom
+
+  plot class is ``@ggplot_build.register(MyPlot)`` (R: a ``ggplot_build``
+
+  method).
+
+
+  For Python users:
+
+  ``plot + thing`` dispatches on ``type(thing)`` through a
+
+  ``functools.singledispatch`` function. To make your own class addable,
+
+  decorate a handler with ``@update_ggplot.register(YourClass)`` that returns
+
+  the mutated plot. Since the operator is a real generic and ``list`` is
+
+  registered, you also get ``sum(parts, start=ggplot(df))``,
+
+  ``reduce(add, parts, ggplot(df))``, and list-on-the-RHS for free — useful
+
+  for building plots in loops/comprehensions. For an entirely custom build,
+
+  register on ``ggplot_build`` instead.
+
+
+  General:
+
+  Register a type with ``@update_ggplot.register`` to add a new ``+``
+
+  component; register on ``ggplot_build`` to replace the build for a custom
+
+  plot type. For programmatic assembly, prefer ``sum(parts,
+
+  start=ggplot(df))`` or ``reduce(add, ...)`` over a hand-written ``+`` chain.'
+related_concepts:
+- ggplot2_py.plus_accumulation
+- ggplot2_py.build_pipeline_stages
+- ggplot2_py.auto_registration
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.scoped_defaults
+- ggplot2_py.register_plus_type
+- ggplot2_py.functional_composition
+- ggplot2_py.compose_plots_grid

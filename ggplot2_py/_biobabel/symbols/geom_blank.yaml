@@ -1,0 +1,42 @@
+id: ggplot2_py.geom_blank
+import_path: ggplot2_py.geom_blank
+kind: function
+signature: geom_blank(mapping=None, data=None, stat='identity', position='identity', show_legend=None, inherit_aes=True, kwargs)
+purpose: Create a blank layer (draws nothing).
+description: Create a blank layer (draws nothing).
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: show_legend
+  type: Any
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

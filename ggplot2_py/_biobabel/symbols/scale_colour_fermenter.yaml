@@ -1,0 +1,46 @@
+id: ggplot2_py.scale_colour_fermenter
+import_path: ggplot2_py.scale_colour_fermenter
+kind: function
+signature: scale_colour_fermenter(name=None, type='seq', palette=1, direction=-1, na_value='grey50', guide='coloursteps', aesthetics='colour', kwargs)
+purpose: Binned colour scale from a Brewer palette.
+description: Binned colour scale from a Brewer palette.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: type
+  type: str
+  required: false
+  default: seq
+- name: palette
+  type: Union[int, str]
+  required: false
+  default: 1
+- name: direction
+  type: int
+  required: false
+  default: -1
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: guide
+  type: str
+  required: false
+  default: coloursteps
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: colour
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleBinned; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

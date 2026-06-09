@@ -66,6 +66,8 @@ Repository    = "https://github.com/Bio-Babel/ggplot2-python"
 Issues        = "https://github.com/Bio-Babel/ggplot2-python/issues"
 Documentation = "https://github.com/Bio-Babel/ggplot2-python#readme"
 
+[project.entry-points."biobabel.manifest"]
+ggplot2_py = "ggplot2_py._biobabel:get_manifest"
 [tool.hatch.build.targets.wheel]
 packages = ["ggplot2_py"]
 
@@ -86,3 +88,6 @@ exclude = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.biobabel]
+contract_class = "mixed"

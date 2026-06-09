@@ -1,0 +1,41 @@
+id: ggplot2_py.custom_facet_layout
+name: Custom Facet — subclass FacetWrap, override compute_layout()
+applicable_to:
+  - ggplot2_py.facet_extension_contract
+  - ggplot2_py.ggproto_system
+description: |
+  A `Facet` decides how data is partitioned into panels (`compute_layout`
+  returns the PANEL/ROW/COL/SCALE_X/SCALE_Y table) and assigns rows to
+  panels (`map_data`). Writing one from the abstract `Facet` base means
+  also implementing `draw_panels`, `init_scales`, etc. — so the practical
+  pattern is to subclass a working facet (`FacetWrap`) and override
+  `compute_layout`, deferring to `super()` then editing the layout table.
+
+  Build the parameter dict with the normal `facet_wrap(...)` constructor and
+  copy its `params` / `shrink` onto your subclass instance — that gives you
+  a fully-configured facet whose only behavioural change is your layout
+  tweak (here: reversing the column order of the panels).
+code_template: |
+  from ggplot2_py.facet import FacetWrap, facet_wrap
+  from ggplot2_py import ggplot, aes, geom_point, ggsave
+  from ggplot2_py.datasets import mpg
+
+  class FacetWrapReversed(FacetWrap):
+      """FacetWrap that lays panels out in reversed column order."""
+      def compute_layout(self, data, params):
+          layout = super().compute_layout(data, params).copy()
+          layout["COL"] = layout["COL"].max() - layout["COL"] + 1
+          return layout
+
+  base = facet_wrap("drv")          # fully-configured FacetWrap
+  f = FacetWrapReversed()
+  f.shrink = base.shrink
+  f.params = base.params            # reuse the resolved facet params
+
+  p = (
+      ggplot(mpg, aes(x="displ", y="hwy"))
+      + geom_point()
+      + f
+  )
+  ggsave("/tmp/idiom_custom_facet_layout.png", plot=p, width=6, height=4)
+typical_use_case: "custom panel ordering / wrapping / scale assignment beyond facet_wrap and facet_grid"

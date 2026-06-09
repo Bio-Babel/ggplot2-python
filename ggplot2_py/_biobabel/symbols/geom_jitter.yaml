@@ -1,0 +1,74 @@
+id: ggplot2_py.geom_jitter
+import_path: ggplot2_py.geom_jitter
+kind: function
+signature: geom_jitter(mapping=None, data=None, stat='identity', position='jitter', width=None, height=None, inherit_aes=True)
+purpose: jittered scatter plot; scatter for discrete x / overplotted points
+description: 'Shortcut for `geom_point(position=''jitter'')`. Adds small random horizontal
+
+  and vertical noise so that overplotted points become visible — essential
+
+  for a strip-chart over a categorical axis or for boxplot overlays.
+
+  When `width` or `height` is passed, the constructor builds a
+
+  `position_jitter(width, height)` spec automatically; passing them as bare
+
+  kwargs to `geom_point` would be silently ignored. Accumulates via `+`
+
+  (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: jitter
+- name: width
+  type: float | None
+  required: false
+  default: null
+  description: Horizontal jitter half-range in data units; default 40% of category resolution.
+- name: height
+  type: float | None
+  required: false
+  default: null
+  description: Vertical jitter half-range. Set to 0 to keep y exact (common for discrete y).
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+  description: If False, do not inherit the plot-level aes() mapping — use only this layer's own mapping. Set False for overlay layers with differently-shaped `data=`.
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(mpg, aes(x='class', y='hwy')) + geom_boxplot() + geom_jitter(width=0.2, alpha=0.4)
+- ggplot(iris, aes(x='Species', y='Sepal_Length')) + geom_jitter(width=0.15, height=0)
+failure_fixes:
+- when: passed width= to geom_point(position='jitter') — no effect
+  suggest:
+  - Use geom_jitter(width=0.2) — geom_point ignores width.
+  - 'Or pass an explicit position: geom_point(position=position_jitter(width=0.2)).'
+- when: y values look smeared on a discrete axis
+  suggest:
+  - 'Set height=0 to disable vertical jitter: geom_jitter(width=0.2, height=0).'
+- when: jittered points hide the boxplot underneath
+  suggest:
+  - Place geom_jitter BEFORE geom_boxplot in the + chain; later layers draw on top.
+related:
+- ggplot2_py.geom_boxplot
+- ggplot2_py.facet_wrap
+- ggplot2_py.labs

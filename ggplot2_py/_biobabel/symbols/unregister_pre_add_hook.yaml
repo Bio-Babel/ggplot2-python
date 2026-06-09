@@ -1,0 +1,44 @@
+id: ggplot2_py.unregister_pre_add_hook
+import_path: ggplot2_py.unregister_pre_add_hook
+kind: function
+signature: unregister_pre_add_hook(plot, hook)
+purpose: remove a previously-registered pre-add hook from a plot (typically from inside the hook for one-shot semantics)
+description: 'Remove `hook` from `plot`''s pre-add hook list. Returns `True` if the hook was
+
+  present and removed, `False` otherwise.
+
+
+  The canonical use is one-shot semantics: a hook registered via
+
+  `register_pre_add_hook` calls `unregister_pre_add_hook(plot, hook)` on itself
+
+  while it runs, so the transformation fires exactly once on the next `+` and
+
+  not on subsequent ones. It mutates the plot''s in-place hook list (the hooks
+
+  are owned per-plot).
+
+  '
+parameters:
+- name: plot
+  type: GGPlot
+  required: true
+  default: null
+  description: The plot whose pre-add hook should be removed.
+- name: hook
+  type: Callable[[GGPlot, Any], Any]
+  required: true
+  default: null
+  description: The exact hook object previously registered; removed if present.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: bool; kind=value
+requires: []
+writes: []
+examples:
+- 'unregister_pre_add_hook(plot, my_hook)  # -> True if it was registered'
+failure_fixes:
+- when: unregister returned False
+  suggest:
+  - Pass the SAME callable object that was registered; identity is by object, not by name.
+related:
+- ggplot2_py.register_pre_add_hook

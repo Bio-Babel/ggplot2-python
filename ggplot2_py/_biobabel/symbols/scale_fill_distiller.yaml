@@ -1,0 +1,54 @@
+id: ggplot2_py.scale_fill_distiller
+import_path: ggplot2_py.scale_fill_distiller
+kind: function
+signature: scale_fill_distiller(name=None, type='seq', palette=1, direction=-1, values=None, space='Lab', na_value='grey50', guide='colourbar', aesthetics='fill', kwargs)
+purpose: Continuous fill scale interpolated from a Brewer palette.
+description: Continuous fill scale interpolated from a Brewer palette.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: type
+  type: str
+  required: false
+  default: seq
+- name: palette
+  type: Union[int, str]
+  required: false
+  default: 1
+- name: direction
+  type: int
+  required: false
+  default: -1
+- name: values
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: space
+  type: str
+  required: false
+  default: Lab
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: guide
+  type: str
+  required: false
+  default: colourbar
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: fill
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleContinuous; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,50 @@
+id: ggplot2_py.stat_align
+import_path: ggplot2_py.stat_align
+kind: function
+signature: stat_align(mapping=None, data=None, geom='area', position='identity', na_rm=False, orientation=None, show_legend=None, inherit_aes=True, kwargs)
+purpose: Align y values across groups.
+description: Align y values across groups.
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: area
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: orientation
+  type: Any
+  required: false
+  default: null
+- name: show_legend
+  type: Optional[bool]
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

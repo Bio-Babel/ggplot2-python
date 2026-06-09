@@ -1,0 +1,90 @@
+id: ggplot2_py.qplot
+import_path: ggplot2_py.qplot
+kind: function
+signature: qplot(x=None, y=None, data=None, geom='auto', facets=None, xlim=None, ylim=None, log='', main=None, xlab=None, ylab=None, asp=None, colour=None, color=None, fill=None, size=None, shape=None, alpha=None, kwargs)
+purpose: Create a quick plot (deprecated).
+description: Create a quick plot (deprecated).
+parameters:
+- name: x
+  type: Any
+  required: false
+  default: null
+- name: y
+  type: Any
+  required: false
+  default: null
+- name: data
+  type: Optional[pd.DataFrame]
+  required: false
+  default: null
+- name: geom
+  type: Union[str, List[str]]
+  required: false
+  default: auto
+- name: facets
+  type: Any
+  required: false
+  default: null
+- name: xlim
+  type: Optional[Sequence]
+  required: false
+  default: null
+- name: ylim
+  type: Optional[Sequence]
+  required: false
+  default: null
+- name: log
+  type: str
+  required: false
+  default: ''
+- name: main
+  type: Optional[str]
+  required: false
+  default: null
+- name: xlab
+  type: Optional[str]
+  required: false
+  default: null
+- name: ylab
+  type: Optional[str]
+  required: false
+  default: null
+- name: asp
+  type: Optional[float]
+  required: false
+  default: null
+- name: colour
+  type: Any
+  required: false
+  default: null
+- name: color
+  type: Any
+  required: false
+  default: null
+- name: fill
+  type: Any
+  required: false
+  default: null
+- name: size
+  type: Any
+  required: false
+  default: null
+- name: shape
+  type: Any
+  required: false
+  default: null
+- name: alpha
+  type: Any
+  required: false
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

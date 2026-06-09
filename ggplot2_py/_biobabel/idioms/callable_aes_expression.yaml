@@ -1,0 +1,42 @@
+id: ggplot2_py.callable_aes_expression
+name: Inline data transforms — callables in aes() and after_stat()
+applicable_to:
+  - ggplot2_py.flipped_aes_orientation
+  - ggplot2_py.build_pipeline_stages
+description: |
+  Python-exclusive. An aesthetic value can be a callable `d -> Series` as
+  well as a column name. `aes(y=lambda d: np.log(d["mpg"]))` evaluates the
+  lambda against the layer DataFrame at build time — no need to pre-compute
+  a column. The same works at later pipeline stages:
+  `after_stat(lambda d: ...)` runs after the stat (so you can reference
+  computed columns like `count`), and `after_scale(lambda d: ...)` runs
+  after scales map values.
+
+  The callable MUST take ONE argument (the DataFrame) and return a
+  column-shaped result (a Series / array indexable like `d["col"]`).
+  Returning a scalar or taking the wrong arity is the common mistake.
+code_template: |
+  import numpy as np
+  from ggplot2_py import (
+      ggplot, aes, geom_point, geom_histogram, after_stat, ggsave,
+  )
+  from ggplot2_py.datasets import mpg
+
+  # 1) callable in aes() — log-transform x inline, no pre-computed column
+  p1 = (
+      ggplot(mpg, aes(x=lambda d: np.log(d["displ"]), y="hwy"))
+      + geom_point()
+  )
+  ggsave("/tmp/idiom_callable_aes_expression.png", plot=p1, width=5, height=4)
+
+  # 2) after_stat() callable — normalise histogram counts to proportions
+  p2 = (
+      ggplot(mpg, aes(x="hwy"))
+      + geom_histogram(
+          aes(y=after_stat(lambda d: d["count"] / d["count"].sum())),
+          bins=15,
+      )
+  )
+  ggsave("/tmp/idiom_callable_aes_expression_2.png", plot=p2, width=5, height=4)
+anti_pattern_paired: ggplot2_py.callable_aes_wrong_shape
+typical_use_case: "transforming or normalising a variable inline (log, ratio, proportion) without mutating the source DataFrame"

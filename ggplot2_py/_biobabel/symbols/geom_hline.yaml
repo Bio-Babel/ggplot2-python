@@ -1,0 +1,71 @@
+id: ggplot2_py.geom_hline
+import_path: ggplot2_py.geom_hline
+kind: function
+signature: geom_hline(mapping=None, data=None, yintercept=None, stat='identity', position='identity', na_rm=False)
+purpose: horizontal reference line across the panel; threshold / zero line
+description: 'Draw a horizontal reference line at a given `yintercept`. The intercept
+
+  is normally a direct argument, not an aesthetic — `geom_hline(yintercept=0)`.
+
+  When passed directly the constructor synthesises a one-row dataframe and
+
+  sets `inherit_aes=False`, so the line doesn''t pick up extraneous group/color
+
+  mappings from the parent plot. Map `yintercept` via `aes()` only when you
+
+  want one line per row of a separate dataframe. For vertical lines use
+
+  `geom_vline`; for slanted lines use `geom_abline`. Accumulates via `+`
+
+  (see `ggplot2_py.plus_accumulation`).
+
+  '
+parameters:
+- name: mapping
+  type: Mapping
+  required: false
+  default: null
+  description: 'Use only for the multi-line case: aes(yintercept=''col'').'
+- name: data
+  type: DataFrame
+  required: false
+  default: null
+- name: yintercept
+  type: float | list[float]
+  required: false
+  default: null
+  description: Direct numeric arg (or list for multiple lines). Preferred over mapping for a fixed threshold.
+- name: stat
+  type: str
+  required: false
+  default: identity
+- name: position
+  type: str
+  required: false
+  default: identity
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Layer; kind=new_object
+requires: []
+writes: []
+examples:
+- ggplot(df, aes(x='x', y='y')) + geom_point() + geom_hline(yintercept=0, linetype='dashed', color='red')
+- geom_hline(yintercept=[-1, 0, 1], linetype='dotted')
+failure_fixes:
+- when: passed yintercept inside aes() with a literal number — line not drawn / odd warning
+  suggest:
+  - 'Use the direct arg: geom_hline(yintercept=0), NOT geom_hline(aes(yintercept=0)).'
+  - aes() expects a column-name string; numeric constants belong outside aes().
+- when: line picks up unwanted color/group from parent aes()
+  suggest:
+  - When yintercept is a direct arg geom_hline already sets inherit_aes=False; double-check you didn't override it.
+- when: want multiple horizontal lines
+  suggest:
+  - 'Pass a list: geom_hline(yintercept=[0, 1, 2]); or map yintercept from a thresholds dataframe.'
+related:
+- ggplot2_py.geom_vline
+- ggplot2_py.annotate
+- ggplot2_py.theme_minimal

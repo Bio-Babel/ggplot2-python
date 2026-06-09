@@ -1,0 +1,27 @@
+id: ggplot2_py.Facet
+import_path: ggplot2_py.Facet
+kind: class
+signature: Facet()
+purpose: author a NEW faceting scheme by subclassing Facet; discover the compute_layout/map_data/draw_panels override points for a custom facet; port an R ggproto Facet (FacetXxx) to Python
+description: "Base class for faceting (small multiples). A facet decides how many panels\nthere are, which rows of data go to which panel, and how the panels are laid\nout in a grid. To create a custom facet, subclass `Facet`\n(or `ggproto('FacetFoo', Facet, ...)`) and wrap it in a `facet_foo()`\nconstructor.\n\nSUBCLASSING — set these CLASS ATTRIBUTES (slots):\n  - `params`: dict of facet parameters (the faceting vars, nrow/ncol, scales,\n    space, drop, etc.).\n  - `shrink`: bool, whether to shrink scales to fit stat output.\n\nSUBCLASSING — OVERRIDE these METHODS:\n  - `compute_layout(self, data, params) -> DataFrame`: THE core override.\n    Return the panel layout table — one row per panel with `PANEL`, `ROW`,\n    `COL`, the faceting-variable values, and `SCALE_X`/`SCALE_Y` indices.\n  - `map_data(self, data, layout, params) -> DataFrame`: assign each data row\n    to a `PANEL` (by joining on the faceting variables).\n  - `draw_panels(self, panels, layout, x_scales, y_scales, ranges,\
+  \ coord, data, theme, params) -> grob`:\n    assemble the rendered panels (plus strips and axes) into the final gtable.\n  - `init_scales` / `train_scales`: control per-panel free-scale behaviour.\n  - `setup_params(self, data, params) -> params`: finalize params.\n\nReturns a CLASS. See concept `ggplot2_py.extension_class_hierarchy`.\n"
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: type[Facet]; kind=new_object
+requires: []
+writes: []
+examples:
+- "class FacetByParity(Facet):\n    def compute_layout(self, data, params):\n        ...  # one row per panel with PANEL/ROW/COL/SCALE_X/SCALE_Y\n    def map_data(self, data, layout, params):\n        ...  # tag each row with its PANEL\n"
+- '# R-port form:
+
+  # FacetFoo = ggproto(''FacetFoo'', Facet, compute_layout=lambda self, data, params: ...)'
+failure_fixes:
+- when: rows show up in the wrong panel / panels are empty
+  suggest:
+  - Ensure compute_layout assigns a PANEL id per panel and map_data joins data rows to the SAME PANEL ids.
+- when: panel layout (rows/cols) is wrong
+  suggest:
+  - compute_layout must emit consistent ROW and COL columns; draw_panels arranges by them.
+related:
+- ggplot2_py.ggproto
+- ggplot2_py.ggproto_parent

@@ -1,0 +1,22 @@
+id: ggplot2_py.mean_sdl
+import_path: ggplot2_py.mean_sdl
+kind: function
+signature: mean_sdl(x, mult=2.0)
+purpose: Compute mean plus/minus a multiple of the standard deviation.
+description: Compute mean plus/minus a multiple of the standard deviation.
+parameters:
+- name: x
+  type: np.ndarray
+  required: true
+  default: null
+- name: mult
+  type: float
+  required: false
+  default: 2.0
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: pd.DataFrame; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

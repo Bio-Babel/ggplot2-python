@@ -1,0 +1,62 @@
+id: ggplot2_py.scale_fill_viridis_b
+import_path: ggplot2_py.scale_fill_viridis_b
+kind: function
+signature: scale_fill_viridis_b(name=None, alpha=1, begin=0, end=1, direction=1, option='D', values=None, space='Lab', na_value='grey50', guide='coloursteps', aesthetics='fill', kwargs)
+purpose: Viridis binned fill scale.
+description: Viridis binned fill scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: alpha
+  type: float
+  required: false
+  default: 1
+- name: begin
+  type: float
+  required: false
+  default: 0
+- name: end
+  type: float
+  required: false
+  default: 1
+- name: direction
+  type: int
+  required: false
+  default: 1
+- name: option
+  type: str
+  required: false
+  default: D
+- name: values
+  type: Optional[Sequence[float]]
+  required: false
+  default: null
+- name: space
+  type: str
+  required: false
+  default: Lab
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: guide
+  type: str
+  required: false
+  default: coloursteps
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: fill
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleBinned; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

@@ -1,0 +1,82 @@
+id: ggplot2_py.stat_bin
+import_path: ggplot2_py.stat_bin
+kind: function
+signature: stat_bin(mapping=None, data=None, geom='bar', position='stack', binwidth=None, bins=None, center=None, boundary=None, breaks=None, closed='right', pad=False, drop='none', na_rm=False, orientation=None, show_legend=None, inherit_aes=True, kwargs)
+purpose: Bin data and compute counts.
+description: Bin data and compute counts.
+parameters:
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: geom
+  type: str
+  required: false
+  default: bar
+- name: position
+  type: str
+  required: false
+  default: stack
+- name: binwidth
+  type: Optional[float]
+  required: false
+  default: null
+- name: bins
+  type: Optional[int]
+  required: false
+  default: null
+- name: center
+  type: Optional[float]
+  required: false
+  default: null
+- name: boundary
+  type: Optional[float]
+  required: false
+  default: null
+- name: breaks
+  type: Any
+  required: false
+  default: null
+- name: closed
+  type: str
+  required: false
+  default: right
+- name: pad
+  type: bool
+  required: false
+  default: false
+- name: drop
+  type: str
+  required: false
+  default: none
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: orientation
+  type: Any
+  required: false
+  default: null
+- name: show_legend
+  type: Optional[bool]
+  required: false
+  default: null
+- name: inherit_aes
+  type: bool
+  required: false
+  default: true
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

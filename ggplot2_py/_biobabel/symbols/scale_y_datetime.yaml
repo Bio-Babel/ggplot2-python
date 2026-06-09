@@ -1,0 +1,28 @@
+id: ggplot2_py.scale_y_datetime
+import_path: ggplot2_py.scale_y_datetime
+kind: function
+signature: scale_y_datetime()
+purpose: datetime / POSIXct y axis (sub-day resolution)
+description: 'y-axis mirror of scale_x_datetime; see scale_x_datetime for behaviour /
+
+  failure modes (strftime format codes, tz handling, limits-filters-data).
+
+  Note: the y variant in ggplot2-python does NOT expose `date_breaks` /
+
+  `date_labels` kwargs — pass `breaks=` / `labels=` directly.
+
+  '
+parameters: []
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Scale; kind=new_object
+requires: []
+writes: []
+examples:
+- p + scale_y_datetime(name='Timestamp')
+failure_fixes:
+- when: tz-aware timestamps render shifted hours from expected
+  suggest:
+  - 'Normalise tz first: df[''t''] = df[''t''].dt.tz_convert(''UTC'').'
+related:
+- ggplot2_py.scale_x_datetime
+- ggplot2_py.scale_y_date

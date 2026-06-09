@@ -1,0 +1,26 @@
+id: ggplot2_py.fortify_glht
+import_path: ggplot2_py.fortify_glht
+kind: function
+signature: fortify_glht(model, data=None, kwargs)
+purpose: Stub for R ``fortify.glht`` -- deferred, no Python equivalent.
+description: Stub for R ``fortify.glht`` -- deferred, no Python equivalent.
+parameters:
+- name: model
+  type: Any
+  required: true
+  default: null
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: pd.DataFrame; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

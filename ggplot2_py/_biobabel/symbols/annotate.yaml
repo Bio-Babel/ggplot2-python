@@ -1,0 +1,58 @@
+id: ggplot2_py.annotate
+import_path: ggplot2_py.annotate
+kind: function
+signature: annotate(geom, x=None, y=None, xmin=None, xmax=None, ymin=None, ymax=None, xend=None, yend=None, na_rm=False, kwargs)
+purpose: Create an annotation layer.
+description: Create an annotation layer.
+parameters:
+- name: geom
+  type: str
+  required: true
+  default: null
+- name: x
+  type: Any
+  required: false
+  default: null
+- name: y
+  type: Any
+  required: false
+  default: null
+- name: xmin
+  type: Any
+  required: false
+  default: null
+- name: xmax
+  type: Any
+  required: false
+  default: null
+- name: ymin
+  type: Any
+  required: false
+  default: null
+- name: ymax
+  type: Any
+  required: false
+  default: null
+- name: xend
+  type: Any
+  required: false
+  default: null
+- name: yend
+  type: Any
+  required: false
+  default: null
+- name: na_rm
+  type: bool
+  required: false
+  default: false
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: Any; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

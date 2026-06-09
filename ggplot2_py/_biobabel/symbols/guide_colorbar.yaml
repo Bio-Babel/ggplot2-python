@@ -1,0 +1,103 @@
+id: ggplot2_py.guide_colorbar
+import_path: ggplot2_py.guide_colorbar
+kind: function
+signature: guide_colorbar(title='waiver()', theme=None, nbin=None, display='raster', alpha=nan, draw_ulim=True, draw_llim=True, angle=None, position=None, direction=None, reverse=False, order=0, available_aes=None)
+purpose: fine-tune the continuous-color bar legend; control colorbar bins, draw limits, rendering style
+description: "Build a `GuideColourbar` for continuous color/fill aesthetics. The bar\nshows the full colour ramp with tick labels at scale breaks.\n\n`guide_colorbar` is an alias for `guide_colourbar` — both work, the\nBritish spelling is canonical (matching R ggplot2).\n\nAttach via top-level `guides()` or the scale's `guide=`:\n\n    ggplot(...) + guides(color=guide_colorbar(nbin=50))\n    scale_color_continuous(guide=guide_colorbar(nbin=50))\n\nDisplay modes:\n\n- `'raster'`  (default for nbin=300): one image, sharp gradient.\n- `'rectangles'`: nbin discrete rectangles, slightly slower, prints\n  cleanly to PDF without resampling artefacts.\n- `'gradient'`: a smooth gradient strip with nbin=15 stops.\n\nUse `guide_legend` (not this) for **discrete** scales — colorbar only\nmakes sense when the scale is continuous.\n"
+parameters:
+- name: title
+  type: str | Waiver | None
+  required: false
+  default: waiver()
+  description: Bar title. waiver() keeps the scale's name; None suppresses; str overrides.
+- name: theme
+  type: Theme | None
+  required: false
+  default: null
+  description: Theme overrides applied only to this bar.
+- name: nbin
+  type: int | None
+  required: false
+  default: null
+  description: Number of color bins. Defaults to 300 (raster/rectangles) or 15 (gradient).
+- name: display
+  type: str
+  required: false
+  default: raster
+  description: '''raster'', ''rectangles'', or ''gradient''.'
+- name: alpha
+  type: float
+  required: false
+  default: .nan
+  description: Alpha override for the bar (0..1). NaN preserves the encoded alpha.
+- name: draw_ulim
+  type: bool
+  required: false
+  default: true
+  description: Draw the upper-limit tick.
+- name: draw_llim
+  type: bool
+  required: false
+  default: true
+  description: Draw the lower-limit tick.
+- name: angle
+  type: float | None
+  required: false
+  default: null
+  description: Tick-label angle in degrees.
+- name: position
+  type: str | None
+  required: false
+  default: null
+  description: '''top'' | ''right'' | ''bottom'' | ''left'' | ''inside''.'
+- name: direction
+  type: str | None
+  required: false
+  default: null
+  description: '''horizontal'' or ''vertical''. Default depends on position.'
+- name: reverse
+  type: bool
+  required: false
+  default: false
+  description: Reverse color order along the bar.
+- name: order
+  type: int
+  required: false
+  default: 0
+  description: Sort priority when multiple legends are merged.
+- name: available_aes
+  type: list[str] | None
+  required: false
+  default: null
+  description: Aes this guide may attach to. Defaults to ['colour', 'color', 'fill'].
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
+returns: Guide; kind=new_object
+requires: []
+writes: []
+examples:
+- guides(color=guide_colorbar(title='Depth (m)'))
+- scale_fill_viridis_c(guide=guide_colorbar(nbin=50, display='rectangles'))
+- guides(fill=guide_colorbar(reverse=True, direction='horizontal'))
+failure_fixes:
+- when: got a discrete-key legend instead of a colorbar
+  suggest:
+  - Colorbar only renders for *continuous* scales. Use scale_color_continuous / scale_fill_viridis_c, not scale_color_discrete; or switch to guide_legend if the scale really is discrete.
+- when: PDF / vector output shows banding in the bar
+  suggest:
+  - Use display='rectangles' (or 'gradient'); the default 'raster' rasterises the strip.
+- when: '`display` must be ''raster'', ''rectangles'', or ''gradient'''
+  suggest:
+  - Pass one of those three strings exactly.
+- when: want a longer / shorter bar
+  suggest:
+  - guide_colorbar itself has no length kwarg in this port — theme it via theme(legend_key_height=unit(2, 'cm')).
+- when: want to hide the colorbar entirely
+  suggest:
+  - Pass guide=None (or guide='none') to the scale, or guides(color='none') — don't construct a guide_colorbar to hide it.
+- when: British vs American spelling confusion
+  suggest:
+  - guide_colorbar and guide_colourbar are aliases; both are exported. The canonical name internally is guide_colourbar.
+related:
+- ggplot2_py.guides
+- ggplot2_py.scale_color_continuous
+- ggplot2_py.scale_fill_viridis_c

@@ -1,0 +1,63 @@
+id: ggplot2_py.coord_extension_contract
+name: Coord extension contract (subclass Coord, override transform / setup_panel_params / range)
+category: extension
+description: "A coordinate system is a subclass of ``Coord`` (``ggplot2_py.coord.Coord``, a\n``GGProto`` subclass). It controls how positional aesthetics are mapped into\nthe panel viewport. Concrete examples are ``CoordCartesian``, ``CoordFlip``,\n``CoordPolar``, ``CoordFixed``, ``CoordTrans``, ``CoordSf``. The methods that\ndefine a coord:\n\n  - ``transform(self, data, panel_params) -> DataFrame`` — map the position\n    columns (``x``, ``y``, ``xmin`` … ) into the [0, 1] drawing range using\n    ``panel_params``. This is the core method every coord overrides.\n  - ``setup_panel_params(self, scale_x, scale_y, params=None) -> dict`` —\n    build the per-panel parameter dict (ranges, breaks, labels) from the\n    trained position scales. Called once per panel.\n  - ``range(self, panel_params) -> {\"x\": [...], \"y\": [...]}`` and\n    ``backtransform_range(self, panel_params)`` — expose the panel's data-space\n    ranges (used for expansion / out-of-bounds handling).\n  - ``render_bg(self,\
+  \ panel_params, theme)`` / ``render_fg(...)`` — draw the\n    panel background (grid lines) and foreground.\n  - ``render_axis_h(...)`` / ``render_axis_v(...)`` — render horizontal /\n    vertical axes.\n  - ``aspect(self, ranges) -> float | None`` — fixed aspect ratio, or ``None``.\n  - ``setup_params(self, data)`` / ``setup_data(self, data, params)`` /\n    ``setup_layout(self, layout, params)`` — pre-build hooks.\n\nClass slots: ``default`` (bool — is this the auto-installed coord?), ``clip``\n(``\"on\"``/``\"off\"``/``\"inherit\"``), ``reverse`` (``\"none\"``/``\"x\"``/``\"y\"``/\n``\"xy\"``). ``Coord`` subclasses auto-register into ``Coord._registry`` via\n``__init_subclass__`` (the ``Coord`` prefix is stripped). The user adds a coord\nwith ``+ coord_x()``; a coord whose ``default`` is ``True`` is replaced silently\nby a later non-default coord (so the intrinsic ``CoordCartesian(default=True)``\ngives way to a user's ``coord_polar()``).\n\nWriting a brand-new coord is the heaviest\
+  \ extension because it touches\nrendering. Most needs are met by composing the built-in coords or subclassing\n``CoordCartesian`` and overriding only ``transform`` / ``setup_panel_params``.\n"
+invariants:
+- A custom coord subclasses `Coord` (or a concrete `Coord*` like `CoordCartesian`) and overrides `transform(self, data, panel_params)` to map position columns into the [0,1] drawing range.
+- '`setup_panel_params(self, scale_x, scale_y, params=None)` builds the per-panel parameter dict (ranges/breaks/labels) from the trained position scales; `range(self, panel_params)` exposes the panel''s data-space x/y ranges.'
+- Background grid, foreground, and axes are produced by `render_bg` / `render_fg` and `render_axis_h` / `render_axis_v`; a fixed aspect ratio is returned from `aspect(self, ranges)` (or `None` for free aspect).
+- Class slots `default` (bool), `clip` ('on'/'off'/'inherit'), and `reverse` ('none'/'x'/'y'/'xy') are inheritable class attributes; the `default=True` coord installed by `ggplot()` is replaced silently when a non-default coord is added with `+`.
+- Defining `class CoordX(Coord)` whose name starts with `Coord` auto-registers it into `Coord._registry` (the `Coord` prefix is stripped to form the key).
+- A `CoordX` instance satisfies `isinstance(CoordX(), CoordProtocol)`.
+mental_model: 'For R users:
+
+  Same ggproto methods as R''s ``Coord``: ``transform``, ``setup_panel_params``,
+
+  ``range``, ``backtransform_range``, ``render_bg`` / ``render_fg``,
+
+  ``render_axis_h`` / ``render_axis_v``, ``aspect``. ``CoordFoo <-
+
+  ggproto("CoordFoo", CoordCartesian, transform = function(data, panel_params)
+
+  {...})`` becomes ``class CoordFoo(CoordCartesian): def transform(self, data,
+
+  panel_params): ...``. The ``default`` coord short-circuit (a default coord is
+
+  silently replaced by a user-added one) mirrors R''s
+
+  ``update_ggplot.Coord``/``ggplot_add.Coord`` behaviour.
+
+
+  For Python users:
+
+  Subclass ``Coord`` (usually ``CoordCartesian``) and override ``transform``
+
+  plus, if you change the visible range, ``setup_panel_params`` and ``range``.
+
+  The rendering methods (``render_bg``, ``render_axis_*``) only need overriding
+
+  if you change how the panel chrome looks — most coords inherit them. This is
+
+  the most rendering-heavy extension point, so prefer subclassing a concrete
+
+  coord over the abstract base.
+
+
+  General:
+
+  Override ``transform`` to change how positions land in the viewport, and
+
+  ``setup_panel_params`` / ``range`` if you change the visible window. Touch
+
+  the ``render_*`` methods only for custom panel chrome. Add it with
+
+  ``+ coord_x()``.'
+related_concepts:
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.ggproto_system
+- ggplot2_py.auto_registration
+- ggplot2_py.protocol_contracts
+- ggplot2_py.facet_extension_contract
+- ggplot2_py.custom_coord_transform

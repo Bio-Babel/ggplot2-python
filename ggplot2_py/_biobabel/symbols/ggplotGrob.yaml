@@ -1,0 +1,44 @@
+id: ggplot2_py.ggplotGrob
+import_path: ggplot2_py.ggplotGrob
+kind: function
+signature: ggplotGrob(plot)
+purpose: convert a GGPlot to a gtable grob for embedding in a layout; patchwork hot path — assemble multi-plot compositions
+description: "Build a `GGPlot` to a fully-rendered gtable grob. Convenience wrapper\naround `ggplot_gtable(ggplot_build(plot))` — the canonical R-parity\none-liner. The returned object is a `gtable` (a `grid_py` grob tree\nwith row/col placement metadata) that can be drawn directly via the\ngrid_py backend or composed into a larger layout.\n\n**This is the patchwork hot path.** patchwork-python calls\n`ggplotGrob(p)` on each constituent plot to obtain a gtable, then\nstitches the gtables into a single combined gtable via its own layout\nengine (`patchwork/core.py:177`, `patchwork/wrap_ggplot_grob.py:68`,\n`patchwork/annotation.py:289`). The function `as_gtable.ggplot` in\npatchwork is a thin alias.\n\nImplementation is intentionally trivial — all work is done by\n`ggplot_build` (data pipeline) and `ggplot_gtable` (rendering). If you\nneed finer control (e.g. inspect the built object), call those two\nseparately::\n\n    built = ggplot_build(p)         # BuiltGGPlot — inspect layers, scales\n\
+  \    gt    = ggplot_gtable(built)    # gtable\n    # equivalent to ggplotGrob(p)\n\nOutput integrates with grid_py: the gtable is a `Grob` and can be\npassed to `grid_py.grid_draw` / a graphics device, or embedded in a\nlarger grob tree.\n\nSee concept `ggplot2_py.extension_class_hierarchy` for the relationship\nto Geom.draw_panel.\n"
+parameters:
+- name: plot
+  type: GGPlot
+  required: true
+  default: null
+  description: A built or unbuilt ggplot. If already built (a `BuiltGGPlot`), `ggplot_build` is a no-op (singledispatch).
+mutates: execution_class=plot; no declared in-place mutation; returns_kind=value
+returns: gtable; kind=value
+requires: []
+writes: []
+examples:
+- 'from ggplot2_py import ggplotGrob
+
+  gt = ggplotGrob(p)  # gtable, ready for grid_draw'
+- '# patchwork pattern:
+
+  from ggplot2_py import ggplotGrob as _ggplotGrob
+
+  grob = _ggplotGrob(x.plot)'
+- 'built = ggplot_build(p); gt = ggplot_gtable(built)  # explicit two-step'
+failure_fixes:
+- when: 'TypeError: Cannot build object of type ...'
+  suggest:
+  - ggplot_build is a singledispatch generic — your input is neither a GGPlot nor a BuiltGGPlot. If you're a patchwork-style extension, register a builder via @ggplot_build.register(YourClass).
+- when: ImportError / circular import when calling ggplotGrob inside a module that ggplot2_py imports
+  suggest:
+  - 'Use a lazy import: `from ggplot2_py import ggplotGrob` inside the function body, not at module top. patchwork does this in core.py:729.'
+- when: want to inspect the built plot before rendering
+  suggest:
+  - Call ggplot_build(p) first; it returns a BuiltGGPlot with `data`, `layout`, `plot` attributes. Then ggplot_gtable(built) renders.
+- when: trying to embed two plots side-by-side
+  suggest:
+  - 'Use patchwork-python: `(p1 | p2)`. Manually stitching gtables is brittle — gtable_combine handles alignment, axes, and guides.'
+related:
+- ggplot2_py.find_panel
+- ggplot2_py.panel_rows
+- ggplot2_py.panel_cols

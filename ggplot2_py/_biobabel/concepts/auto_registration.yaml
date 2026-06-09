@@ -1,0 +1,61 @@
+id: ggplot2_py.auto_registration
+name: Auto-registration of subclasses (__init_subclass__ into _registry)
+category: extension
+description: "``Geom``, ``Stat``, ``Position``, ``Scale``, ``Coord``, and ``Facet`` each\ncarry a class-level ``_registry: Dict[str, type]`` and define\n``__init_subclass__``. When you define a subclass, ``__init_subclass__`` fires\nautomatically and registers the class under a name derived by stripping the\nbase prefix from the class name. The mechanism is Python-exclusive (R has no\nauto-registration — extensions are wired manually):\n\n  - ``class GeomStar(Geom): ...`` → registered in ``Geom._registry`` under\n    both ``\"Star\"`` (CamelCase) and ``\"star\"`` (lowercase).\n  - ``class StatChull(Stat): ...`` → ``Stat._registry[\"Chull\"]`` and\n    ``[\"chull\"]``.\n  - Same for ``Position`` (strip ``\"Position\"``), ``Scale`` (strip\n    ``\"Scale\"``), ``Coord`` (strip ``\"Coord\"``), ``Facet`` (strip ``\"Facet\"``).\n\nThe prefix-strip only happens when the class name starts with the base prefix\nAND is longer than it (so the base classes themselves don't self-register, and\noddly-named\
+  \ subclasses simply aren't auto-named).\n\nWhy it matters: a string component name resolves through the registry. The\n``Layer`` constructor accepts ``geom=\"star\"`` / ``stat=\"chull\"`` /\n``position=\"dodge\"`` and looks the class up in the relevant ``_registry``.\nBecause registration happens at class-definition time, an extension package's\ngeoms/stats become resolvable the moment the package module is imported — no\nmanual registration step, no entry-point edit. This is the backbone of the\nzero-config extension story: subclass and ship.\n"
+invariants:
+- '`Geom`, `Stat`, `Position`, `Scale`, `Coord`, and `Facet` each have a class-level `_registry` dict and an `__init_subclass__` that auto-registers subclasses.'
+- On `class GeomX(Geom)`, `__init_subclass__` stores the class in `Geom._registry` under BOTH the prefix-stripped CamelCase key (`'X'`) and its lowercase form (`'x'`).
+- The prefix stripped is the base-class name (Geom/Stat/Position/Scale/Coord/Facet); registration only happens when the subclass name starts with that prefix and is strictly longer than it (the base classes do not self-register).
+- A string component name (`geom='star'`, `stat='chull'`, `position='dodge'`) is resolved by lookup in the corresponding `_registry`, so the factory/layer can accept names instead of classes.
+- Registration occurs at class-definition (import) time, so importing an extension module makes its components resolvable by name with no manual register call (R requires manual wiring; this is Python-exclusive).
+mental_model: 'For R users:
+
+  R has no equivalent — in R you must wire a geom/stat into your package''s API
+
+  yourself and there is no global name registry. In ggplot2_py, simply
+
+  defining ``class GeomStar(Geom)`` makes ``geom="star"`` resolve, the moment
+
+  the module is imported. Think of it as ``__init_subclass__`` doing the
+
+  bookkeeping that an R extension author would otherwise do by hand. The
+
+  CamelCase-and-lowercase double-keying means both ``"Star"`` and ``"star"``
+
+  work.
+
+
+  For Python users:
+
+  This is the standard ``__init_subclass__`` registry pattern. Each GOG base
+
+  class keeps a ``_registry`` dict; subclassing populates it. You never call a
+
+  register function. The key is the class name with the family prefix stripped,
+
+  stored in both CamelCase and lowercase, so ``layer(geom="star")`` finds
+
+  ``GeomStar``. Practical upshot: ``import your_extension`` is all a user needs
+
+  before referring to your components by string name.
+
+
+  General:
+
+  Subclass and the component is registered automatically under its
+
+  prefix-stripped name (CamelCase + lowercase). String names in
+
+  ``geom=``/``stat=``/``position=`` resolve through ``<Base>._registry``.
+
+  Importing the module is the only "registration" step.'
+related_concepts:
+- ggplot2_py.ggproto_system
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.geom_extension_contract
+- ggplot2_py.stat_extension_contract
+- ggplot2_py.position_extension_contract
+- ggplot2_py.scale_extension_contract
+- ggplot2_py.protocol_contracts
+- ggplot2_py.singledispatch_composition

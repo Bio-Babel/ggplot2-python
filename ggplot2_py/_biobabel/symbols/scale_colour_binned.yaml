@@ -1,0 +1,38 @@
+id: ggplot2_py.scale_colour_binned
+import_path: ggplot2_py.scale_colour_binned
+kind: function
+signature: scale_colour_binned(name=None, palette=None, aesthetics='colour', guide='coloursteps', na_value='grey50', kwargs)
+purpose: Default binned colour scale.
+description: Default binned colour scale.
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: palette
+  type: Optional[Any]
+  required: false
+  default: null
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: colour
+- name: guide
+  type: str
+  required: false
+  default: coloursteps
+- name: na_value
+  type: str
+  required: false
+  default: grey50
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: execution_class=builder; no declared in-place mutation; returns_kind=value
+returns: ScaleBinned; kind=value
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

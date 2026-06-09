@@ -1,0 +1,59 @@
+id: ggplot2_py.el_def
+import_path: ggplot2_py.el_def
+kind: function
+signature: el_def(class_=None, inherit=None, description=None)
+purpose: define a theme-element spec for register_theme_elements; declare the class and inheritance of a custom theme element
+description: 'Build the spec dict that describes one entry in the theme element tree, for
+
+  use as a value in :func:`register_theme_elements`''s ``element_tree``. It
+
+  records the expected element class, the parent element(s) it inherits from,
+
+  and a human-readable description. VERIFIED behavior (by calling it):
+
+  ``el_def()`` returns ``{''class'': None, ''inherit'': None, ''description'': None}``;
+
+  a string ``inherit`` is normalized to a list, e.g.
+
+  ``el_def(''element_text'', inherit=''axis.title'')`` ->
+
+  ``{''class'': ''element_text'', ''inherit'': [''axis.title''], ''description'': None}``.
+
+  Note the output keys are ``class`` / ``inherit`` / ``description`` (the
+
+  parameter is ``class_`` to avoid the Python keyword).
+
+  '
+parameters:
+- name: class_
+  type: Any
+  required: false
+  default: null
+  description: Expected element class as a type or name string (e.g. 'element_text', 'element_line', 'character').
+- name: inherit
+  type: Optional[Union[str, List[str]]]
+  required: false
+  default: null
+  description: Parent element name(s) to inherit from; a single string is normalized to a one-item list.
+- name: description
+  type: Optional[str]
+  required: false
+  default: null
+  description: Human-readable description of the element.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: Dict[str, Any]; kind=value
+requires: []
+writes: []
+examples:
+- 'from ggplot2_py import el_def
+
+  assert el_def() == {"class": None, "inherit": None, "description": None}
+
+  '
+- "from ggplot2_py import el_def\nassert el_def(\"element_text\", inherit=\"axis.title\") == {\n    \"class\": \"element_text\", \"inherit\": [\"axis.title\"], \"description\": None,\n}\n"
+failure_fixes:
+- when: registered element does not inherit expected properties
+  suggest:
+  - Set inherit= to the parent element name(s) (e.g. inherit='text' or inherit=['line'])
+related:
+- ggplot2_py.register_theme_elements

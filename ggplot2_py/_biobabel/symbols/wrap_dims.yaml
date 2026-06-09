@@ -1,0 +1,42 @@
+id: ggplot2_py.wrap_dims
+import_path: ggplot2_py.wrap_dims
+kind: function
+signature: wrap_dims(n, nrow=None, ncol=None)
+purpose: compute (nrow, ncol) for a facet_wrap / patchwork-style layout grid; extension authors building multi-panel layouts use to derive grid sizes
+description: "Given `n` panels and an optional `nrow` or `ncol` constraint, compute\nthe smallest `(nrow, ncol)` that fits all panels. Mirrors R's\n`wrap_dims()` (facet-wrap.R:478-493) — exported because patchwork-style\nextensions need the same layout heuristic.\n\nResolution:\n  - Both `nrow` and `ncol` None: use `_n2mfrow(n)` and swap axes so\n    `n=3 → (1, 3)` (not `(2, 2)`). R `n2mfrow` favours a slightly\n    wider-than-tall grid for small n.\n  - One supplied: divide; the other is `ceil(n / supplied)`.\n  - Both supplied: validates `nrow*ncol >= n`; raises if too small.\n\nUsed internally by `facet_wrap` to lay out panels; also called by\npatchwork-python via direct import for its auto-layout heuristic.\n"
+parameters:
+- name: n
+  type: int
+  required: true
+  default: null
+  description: Total number of panels.
+- name: nrow
+  type: int | None
+  required: false
+  default: null
+  description: Desired number of rows. None → derived from ncol or n2mfrow.
+- name: ncol
+  type: int | None
+  required: false
+  default: null
+  description: Desired number of columns. None → derived from nrow or n2mfrow.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: tuple[int, int]; kind=value
+requires: []
+writes: []
+examples:
+- 'wrap_dims(3)  # → (1, 3)'
+- 'wrap_dims(10, ncol=4)  # → (3, 4)'
+- 'wrap_dims(7, nrow=2)  # → (2, 4)'
+failure_fixes:
+- when: 'ValueError: Need N panels, but nrow*ncol = M'
+  suggest:
+  - Either drop nrow= / ncol=, or increase one so nrow*ncol >= N.
+- when: default n=3 gives (1,3) but you want (2,2)
+  suggest:
+  - Pass nrow=2 explicitly. The default favours wide grids for small n; ggplot2-python preserves R's n2mfrow heuristic exactly.
+- when: result has empty trailing cells
+  suggest:
+  - 'Expected: nrow*ncol is the smallest multiple >= n. Use `nrow=ceil(sqrt(n))` for a square-ish grid.'
+related:
+- ggplot2_py.facet_wrap

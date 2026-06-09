@@ -1,0 +1,57 @@
+id: ggplot2_py.protocol_contracts
+name: Protocol contracts (typing.Protocol structural checks for extensions)
+category: extension
+description: "``ggplot2_py.protocols`` defines ``@runtime_checkable`` ``typing.Protocol``\nclasses that specify the MINIMUM interface a class must satisfy to act as each\nGrammar-of-Graphics component, WITHOUT requiring inheritance from the base\nclass. The available protocols are:\n\n  - ``GeomProtocol``     — requires ``required_aes``, ``default_aes``,\n                           ``draw_key``, ``setup_params``, ``setup_data``,\n                           ``draw_panel``.\n  - ``StatProtocol``     — the Stat interface (``required_aes``,\n                           ``compute_group`` / ``compute_panel``, …).\n  - ``ScaleProtocol``    — the Scale interface (``train``, ``map``, …).\n  - ``CoordProtocol``    — the Coord interface (``transform``,\n                           ``setup_panel_params``, …).\n  - ``FacetProtocol``    — the Facet interface (``compute_layout``,\n                           ``map_data``, …).\n  - ``PositionProtocol`` — the Position interface (``compute_panel`` /\n      \
+  \                     ``compute_layer``, …).\n\nBeing ``@runtime_checkable`` means ``isinstance(obj, GeomProtocol)`` works at\nruntime: it returns ``True`` for any object that structurally has the required\nmembers (duck typing), and ``False`` for one missing any. A ``GeomStar(Geom)``\ninstance passes ``isinstance(GeomStar(), GeomProtocol)`` because it inherits\nthose members from ``Geom``; a bare ``class BadGeom: pass`` fails. This is\nPython-exclusive — R has no structural-typing contract.\n\nTwo complementary uses: (1) static checkers (mypy / pyright) verify at\ndevelopment time that a custom class matches the contract even if it does not\nsubclass ``Geom``; (2) ``isinstance`` runtime validation lets you assert\nconformance without running a full build. Note: ``@runtime_checkable``\nprotocols check for the PRESENCE of attributes/methods, not their signatures —\na class with a wrong ``draw_panel`` signature still passes ``isinstance``;\nstatic type-checking catches signature mismatches.\n"
+invariants:
+- '`ggplot2_py.protocols` provides `GeomProtocol`, `StatProtocol`, `ScaleProtocol`, `CoordProtocol`, `FacetProtocol`, and `PositionProtocol`, each a `typing.Protocol`.'
+- The protocols are `@runtime_checkable`, so `isinstance(obj, GeomProtocol)` returns True iff `obj` structurally provides the required members — inheritance from `Geom` is NOT required (duck typing).
+- A concrete `Geom`/`Stat`/... subclass instance satisfies its protocol (e.g. `isinstance(GeomStar(), GeomProtocol)` and `isinstance(StatChull(), StatProtocol)` are True) because the members are inherited from the base class.
+- 'A class missing required members (e.g. `class BadGeom: pass`) fails the `isinstance` check against the corresponding protocol.'
+- '`@runtime_checkable` `isinstance` checks attribute/method PRESENCE only, not call signatures; signature conformance is verified by static type checkers (mypy/pyright), not at runtime.'
+mental_model: 'For R users:
+
+  R has nothing like this — ggproto objects are validated only by failing at
+
+  runtime when a missing method is called. Protocols give you a structural
+
+  contract you can check up-front: ``isinstance(my_geom, GeomProtocol)`` tells
+
+  you whether an object "is geom-shaped" before you plot with it, and static
+
+  type checkers can flag a missing ``draw_panel`` at edit time. It complements
+
+  the base-class inheritance route (subclassing ``Geom``) rather than
+
+  replacing it.
+
+
+  For Python users:
+
+  Standard ``typing.Protocol`` structural typing, ``@runtime_checkable``. Use
+
+  ``isinstance(obj, GeomProtocol)`` to verify a duck-typed component, and lean
+
+  on mypy/pyright for signature-level checks. Useful when an object is
+
+  geom-shaped without subclassing ``Geom`` (e.g. a thin adapter), or to assert
+
+  your custom class is complete in a unit test.
+
+
+  General:
+
+  Treat protocols as the interface spec: ``isinstance(obj, XProtocol)`` for a
+
+  quick runtime "is it shaped right?" check; static type checkers for full
+
+  signature validation. Subclassing the base class auto-satisfies the protocol.'
+related_concepts:
+- ggplot2_py.extension_class_hierarchy
+- ggplot2_py.ggproto_system
+- ggplot2_py.geom_extension_contract
+- ggplot2_py.stat_extension_contract
+- ggplot2_py.auto_registration
+- ggplot2_py.coord_extension_contract
+- ggplot2_py.facet_extension_contract
+- ggplot2_py.position_extension_contract

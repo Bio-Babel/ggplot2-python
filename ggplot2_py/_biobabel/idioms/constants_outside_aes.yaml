@@ -1,0 +1,19 @@
+id: ggplot2_py.constants_outside_aes
+name: "Constants outside aes(), columns inside"
+applicable_to:
+  - ggplot2_py.aes_mapping
+description: |
+  Whenever a visual property has the same value for every row, set it as a
+  kwarg *outside* aes(). Whenever the property depends on a data column,
+  put it *inside* aes() with the column name as a string.
+code_template: |
+  # Constant red points, size 3:
+  geom_point(color="red", size=3)
+
+  # Color depends on the `class` column, size on the `cyl` column:
+  geom_point(aes(color="class", size="cyl"))
+
+  # Mixed — color by column, alpha constant:
+  geom_point(aes(color="class"), alpha=0.4)
+anti_pattern_paired: ggplot2_py.constant_inside_aes
+typical_use_case: "every plot with non-default styling"
