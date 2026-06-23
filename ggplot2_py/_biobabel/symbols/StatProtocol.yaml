@@ -1,0 +1,34 @@
+# AUTO-GENERATED tier-1 API surface — signature/params/docstring introspected
+# from the installed package (fact, not claim). Regenerate after a version bump:
+#   python tools/gen_tier1_symbols.py <import_name>
+# Hand-curated tier-2 fields (failure_fixes / anti-patterns / produces) are added
+# directly in this file by humans and are NOT overwritten on regeneration unless
+# you delete the file first.
+# Auto-generated stub for ggplot2_py.StatProtocol.
+# Review and fill: purpose, mutates, requires, writes, examples, failure_fixes, related.
+id: ggplot2_py.StatProtocol
+import_path: ggplot2_py.StatProtocol
+kind: class
+signature: StatProtocol(*args, **kwargs)
+purpose: 'Contract for statistical transformation objects.  Mirrors ``Stat``
+
+  (stat.py base class).'
+description: 'Contract for statistical transformation objects.  Mirrors ``Stat``
+
+  (stat.py base class).'
+parameters:
+- name: args
+  type: ''
+  required: true
+  default: null
+- name: kwargs
+  type: ''
+  required: true
+  default: null
+mutates: ''
+returns: ''
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

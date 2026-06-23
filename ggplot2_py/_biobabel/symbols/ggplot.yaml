@@ -7,7 +7,11 @@ description: 'Construct a GGPlot builder seeded with a data frame and default ae
 
   Subsequent `+` operations layer on geoms, stats, scales, facets, coords,
 
-  and themes. The plot is not rendered until print() / __repr__ / .draw().
+  and themes. The plot is not rendered until you save it with ggsave(path,
+
+  plot=p) or display it in a Jupyter cell (_repr_png_); GGPlot has no .draw()
+
+  or .save() method, and print(p) only emits a "<GGPlot ...>" summary.
 
   '
 parameters:
@@ -34,6 +38,10 @@ failure_fixes:
 - when: 'TypeError: aes() got positional argument'
   suggest:
   - 'Python aes() requires keyword args: aes(x=''col'', y=''col''), not aes(''col1'', ''col2'').'
+- when: "AttributeError: 'GGPlot' object has no attribute 'save' (or 'ggsave')"
+  suggest:
+  - "GGPlot has no .save() method (that is plotnine's API, not this port). Save with the module-level function: from ggplot2_py import ggsave; ggsave('plot.png', plot=p, width=8, height=6, dpi=150)."
+  explanation: ggplot2_py exposes ggsave(filename, plot=...) as a free function; the plot object's only public methods are add_build_hook and summary (fig_width / fig_height / fig_dpi are rendering-hint attributes, not methods).
 related:
 - ggplot2_py.geom_point
 - ggplot2_py.geom_line

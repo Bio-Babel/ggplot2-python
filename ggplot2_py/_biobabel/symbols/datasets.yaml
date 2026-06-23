@@ -1,0 +1,41 @@
+id: ggplot2_py.datasets
+import_path: ggplot2_py.datasets
+kind: object
+signature: "ggplot2_py.datasets  # submodule: mpg, diamonds, ...  (also load_dataset(name))"
+purpose: built-in example datasets (the R ggplot2 data) as pandas DataFrames
+description: |
+  `ggplot2_py.datasets` is the submodule that ships the canonical ggplot2
+  example datasets, parsed lazily from bundled CSVs and returned as pandas
+  DataFrames. It is what nearly every tutorial, template, and idiom imports
+  from.
+
+  Two equivalent access patterns:
+    * direct import / attribute (lazy `__getattr__`):
+      `from ggplot2_py.datasets import mpg` (or `datasets.mpg`).
+    * by name: `load_dataset("mpg")`.
+
+  Each access returns a FRESH copy — the module caches the parsed CSV but
+  hands back `.copy()`, so mutating the returned frame never corrupts the
+  cache or other callers.
+
+  Available datasets: diamonds, economics, economics_long, faithfuld,
+  luv_colours, midwest, mpg, msleep, presidential, seals, txhousing.
+  `mpg` (234x11 fuel-economy frame) is the one used in most scatter examples;
+  `diamonds` (~54k rows) for large-data / binning examples; `economics` for
+  time series.
+mutates: execution_class=stateless; no declared in-place mutation; returns_kind=value
+returns: pandas.DataFrame — one per dataset, a fresh copy on every access.
+requires: []
+writes: []
+examples:
+- "from ggplot2_py.datasets import mpg; ggplot(mpg, aes(x='displ', y='hwy')) + geom_point()"
+- "from ggplot2_py.datasets import load_dataset; diamonds = load_dataset('diamonds')"
+failure_fixes:
+- when: "ValueError: Unknown dataset '<name>' (from load_dataset)"
+  suggest:
+  - "Use one of: diamonds, economics, economics_long, faithfuld, luv_colours, midwest, mpg, msleep, presidential, seals, txhousing."
+  explanation: load_dataset validates against a fixed name set and raises ValueError on anything else; attribute access (datasets.<name>) raises AttributeError for an unknown name.
+related:
+- ggplot2_py.ggplot
+- ggplot2_py.aes
+- ggplot2_py.geom_point

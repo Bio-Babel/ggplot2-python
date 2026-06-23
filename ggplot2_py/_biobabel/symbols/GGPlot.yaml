@@ -1,0 +1,35 @@
+# AUTO-GENERATED tier-1 API surface — signature/params/docstring introspected
+# from the installed package (fact, not claim). Regenerate after a version bump:
+#   python tools/gen_tier1_symbols.py <import_name>
+# Hand-curated tier-2 fields (failure_fixes / anti-patterns / produces) are added
+# directly in this file by humans and are NOT overwritten on regeneration unless
+# you delete the file first.
+# Auto-generated stub for ggplot2_py.GGPlot.
+# Review and fill: purpose, mutates, requires, writes, examples, failure_fixes, related.
+id: ggplot2_py.GGPlot
+import_path: ggplot2_py.GGPlot
+kind: class
+signature: 'GGPlot(data: ''Any'' = None, mapping: ''Optional[Mapping]'' = None, *,
+  plot_env: ''Any'' = None) -> ''None'''
+purpose: A ggplot2 plot object.
+description: A ggplot2 plot object.
+parameters:
+- name: data
+  type: Any
+  required: false
+  default: null
+- name: mapping
+  type: Optional[Mapping]
+  required: false
+  default: null
+- name: plot_env
+  type: Any
+  required: false
+  default: null
+mutates: ''
+returns: None
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

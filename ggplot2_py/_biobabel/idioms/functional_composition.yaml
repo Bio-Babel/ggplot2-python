@@ -16,6 +16,12 @@ description: |
     `+` is added recursively.
 
   All three produce the same plot as chaining with `+`.
+
+  Compose ggplot layers with the `+` operator or by starting from a base
+  `GGPlot`; do NOT use builtin `sum([...])` (its int start `0` raises
+  TypeError on the first `+`). The seed object MUST be a `GGPlot`, supplied
+  via `start=` — `sum([aes(...), geom_point()])` defaults `start` to int 0,
+  so the first addition is `0 + aes(...)` and raises TypeError.
 code_template: |
   from functools import reduce
   from operator import add
@@ -37,5 +43,4 @@ code_template: |
 
   ggsave("/tmp/idiom_functional_composition.png", plot=p_sum, width=5, height=4)
   ggsave("/tmp/idiom_functional_composition_2.png", plot=p_list, width=5, height=4)
-anti_pattern_paired: ggplot2_py.sum_without_start
 typical_use_case: "programmatically assembling a plot from a list of components (loops, comprehensions, config-driven layers)"

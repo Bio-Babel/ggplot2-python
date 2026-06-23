@@ -11,7 +11,7 @@ Python port of [tidyverse/ggplot2](https://github.com/tidyverse/ggplot2) (v4.0.2
 
 ggplot2 is a *builder DSL*. Five truths:
 
-1. **A plot is a value, not a side effect.** `p = ggplot(df, aes(x="x", y="y"))` is a `GGPlot`. Nothing is drawn until `print(p)` or `p.draw()`.
+1. **A plot is a value, not a side effect.** `p = ggplot(df, aes(x="x", y="y"))` is a `GGPlot`. Nothing is drawn until you render it — `ggsave(path, plot=p)`, or evaluating `p` in a Jupyter cell (its `_repr_png_`). `print(p)` only prints a `<GGPlot ...>` summary; there is no `.draw()` or `.save()` method.
 
 2. **`+` is accumulation, not addition.** `p + geom_point()` returns a *new* GGPlot with the layer appended. Each `+ X` chooses a slot based on the type of `X` (Layer, Scale, Theme, Facet, Coord, Labels, Mapping).
 
@@ -30,7 +30,7 @@ ggplot2 is a *builder DSL*. Five truths:
 ## Quick reference — the canonical 4-line plot
 
 ```python
-from ggplot2_py import ggplot, aes, geom_point, geom_smooth, facet_wrap, theme_minimal, labs
+from ggplot2_py import ggplot, aes, geom_point, geom_smooth, facet_wrap, theme_minimal, labs, ggsave
 from ggplot2_py.datasets import mpg
 
 p = (
@@ -42,7 +42,7 @@ p = (
            x="Displacement (L)", y="Highway MPG")
     + theme_minimal()
 )
-print(p)  # writes to display / file
+ggsave("fuel.png", plot=p)  # save to file (in a Jupyter cell, just evaluate p to display)
 ```
 
 ## When NOT to reach for ggplot2-python

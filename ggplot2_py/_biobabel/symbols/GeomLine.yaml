@@ -1,0 +1,22 @@
+# AUTO-GENERATED tier-1 API surface — signature/params/docstring introspected
+# from the installed package (fact, not claim). Regenerate after a version bump:
+#   python tools/gen_tier1_symbols.py <import_name>
+# Hand-curated tier-2 fields (failure_fixes / anti-patterns / produces) are added
+# directly in this file by humans and are NOT overwritten on regeneration unless
+# you delete the file first.
+# Auto-generated stub for ggplot2_py.GeomLine.
+# Review and fill: purpose, mutates, requires, writes, examples, failure_fixes, related.
+id: ggplot2_py.GeomLine
+import_path: ggplot2_py.GeomLine
+kind: class
+signature: GeomLine()
+purpose: Line geom -- like path but sorted by x.
+description: Line geom -- like path but sorted by x.
+parameters: []
+mutates: ''
+returns: ''
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

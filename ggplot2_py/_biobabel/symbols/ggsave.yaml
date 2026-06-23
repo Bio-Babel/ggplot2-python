@@ -2,8 +2,8 @@ id: ggplot2_py.ggsave
 import_path: ggplot2_py.ggsave
 kind: function
 signature: ggsave(filename, plot=None, device=None, path=None, width=None, height=None, units='in', dpi=300, limitsize=True, bg=None, create_dir=False, scale=1.0, kwargs)
-purpose: Save a ggplot (or other grid object) to a file.
-description: Save a ggplot (or other grid object) to a file.
+purpose: Save a ggplot (or other grid object) to a file. MODULE-LEVEL function — call ggsave('plot.png', plot=p), NOT p.save() (GGPlot has no .save() method).
+description: 'Save a ggplot (or other grid object) to a file. This is a free function imported from ggplot2_py, not a method on the plot object: use `ggsave(filename, plot=p, ...)`. The `p.save(...)` form (a plotnine habit) raises AttributeError here.'
 parameters:
 - name: filename
   type: str

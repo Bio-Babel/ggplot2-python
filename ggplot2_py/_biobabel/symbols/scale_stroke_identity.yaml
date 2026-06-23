@@ -1,0 +1,39 @@
+# AUTO-GENERATED tier-1 API surface — signature/params/docstring introspected
+# from the installed package (fact, not claim). Regenerate after a version bump:
+#   python tools/gen_tier1_symbols.py <import_name>
+# Hand-curated tier-2 fields (failure_fixes / anti-patterns / produces) are added
+# directly in this file by humans and are NOT overwritten on regeneration unless
+# you delete the file first.
+# Auto-generated stub for ggplot2_py.scale_stroke_identity.
+# Review and fill: purpose, mutates, requires, writes, examples, failure_fixes, related.
+id: ggplot2_py.scale_stroke_identity
+import_path: ggplot2_py.scale_stroke_identity
+kind: function
+signature: 'scale_stroke_identity(name: ''Any'' = None, *, guide: ''str'' = ''none'',
+  aesthetics: ''Union[str, List[str]]'' = ''stroke'', **kwargs: ''Any'') -> ''ScaleContinuous'''
+purpose: Identity stroke scale (values used as-is).
+description: Identity stroke scale (values used as-is).
+parameters:
+- name: name
+  type: Any
+  required: false
+  default: null
+- name: guide
+  type: str
+  required: false
+  default: none
+- name: aesthetics
+  type: Union[str, List[str]]
+  required: false
+  default: stroke
+- name: kwargs
+  type: Any
+  required: true
+  default: null
+mutates: ''
+returns: ScaleContinuous
+requires: []
+writes: []
+examples: []
+failure_fixes: []
+related: []

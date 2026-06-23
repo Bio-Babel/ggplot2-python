@@ -1,0 +1,23 @@
+id: ggplot2_py.ggplot_save_method
+name: "`plot.save(...)` method call (plotnine habit) — GGPlot has no `.save()`"
+applicable_to:
+  - ggplot2_py.ggsave
+detection:
+  regex: '(?:\)\s*|\b(?:\w*plot|\w*chart|\w*graph|figure|fig|gg?|gp|p)\d*\b\s*)\.save\s*\('
+  static_only: true
+why_bad: |
+  `GGPlot` has NO `.save()` method. Its only public methods are
+  `add_build_hook` and `summary` (`fig_width` / `fig_height` / `fig_dpi` are
+  rendering-hint attributes, not methods) — so
+  `p.save("plot.png")` raises `AttributeError: 'GGPlot' object has no attribute
+  'save'`. The reflex comes from plotnine, where the ggplot object *does* have a
+  `.save()` method; this port does not copy that. Saving is a MODULE-LEVEL
+  function: `ggsave(filename, plot=p, ...)`.
+correct_pattern: ggplot2_py.ggsave
+code_example_wrong: |
+  p = ggplot(df, aes("x", "y")) + geom_point()
+  p.save("plot.png", width=8, height=6, dpi=150)   # AttributeError: no .save()
+code_example_right: |
+  from ggplot2_py import ggsave
+  p = ggplot(df, aes("x", "y")) + geom_point()
+  ggsave("plot.png", plot=p, width=8, height=6, dpi=150)

@@ -11,42 +11,10 @@ r_package:
   repo: https://github.com/tidyverse/ggplot2
   version_or_commit: 4.0.2.9000 @ c02c05a
   fidelity: partial
-capabilities:
-- layered-grammar-of-graphics
-- aes-mapping
-- geom-stat-position-scale-coord-facet-theme
-- faceting-wrap-grid
-- statistical-transforms
-- axis-and-color-scales
-domain_tags:
-- visualization
-- publication-graphics
-task_tags:
-- scatter-plot
-- line-plot
-- bar-plot
-- histogram
-- boxplot
-- violin-plot
-- smoothed-trend
-- faceted-figure
-- log-axis
-- custom-theme
-- colored-by-group
 foundation:
 - grid_py
 - scales
 - gtable_py
-triggers:
-- ggplot in Python
-- scatter plot with smoothed trend
-- faceted plot by category
-- publication-quality plot
-- layered statistical graphic
-- colored by group
-not_when:
-- single bar chart of one number — matplotlib bar is simpler
-- interactive widget — use plotly / bokeh instead
 templates:
 - id: ggplot2_py.scatter_smooth_facet
   path: templates/scatter_smooth_facet.py

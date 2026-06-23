@@ -1,0 +1,34 @@
+id: ggplot2_py.geom_smooth_invalid_method
+name: geom_smooth(method=...) with a non-ggplot2 smoother name (reg/regression/ols/spline)
+applicable_to:
+  - ggplot2_py.plus_accumulation
+detection:
+  regex: 'geom_smooth\s*\([^\n]*\bmethod\s*=\s*[''"](?:reg|regression|ols|spline)[''"]'
+  static_only: true
+why_bad: |
+  ggplot2's smoother vocabulary is ``lm`` / ``loess`` / ``gam`` / ``glm``
+  (with ``linear`` and ``lowess`` accepted as aliases, plus ``auto``) — NOT
+  the sklearn / statsmodels / matplotlib names a Python user reaches for
+  (``reg``, ``regression``, ``ols``, ``spline``).
+
+  An unrecognized ``method`` does NOT surface as a hard error: the
+  ``Unknown smoothing method`` ``ValueError`` raised inside
+  ``StatSmooth.compute_group`` is caught by the broad
+  ``try/except Exception`` in ``Stat.compute_layer`` (``stat.py``),
+  downgraded to a ``UserWarning`` ("Computation failed in stat_smooth: …"),
+  and the offending group returns an empty frame. The plot still builds, so
+  the smooth layer silently vanishes — easy to miss when warnings are
+  suppressed. (``linear``/``lowess``/``auto`` are valid and deliberately not
+  flagged.)
+correct_pattern: null
+code_example_wrong: |
+  # 'ols' is not a ggplot2 smoother -> stat_smooth fails silently,
+  # the layer is dropped, and only a UserWarning is emitted:
+  p = (ggplot(mpg, aes(x="displ", y="hwy"))
+       + geom_point()
+       + geom_smooth(method="ols"))           # ← unknown method, no line
+code_example_right: |
+  # Use ggplot2's smoother vocabulary: lm / loess / gam / glm (or "auto"):
+  p = (ggplot(mpg, aes(x="displ", y="hwy"))
+       + geom_point()
+       + geom_smooth(method="lm"))            # ← linear fit, the right name
