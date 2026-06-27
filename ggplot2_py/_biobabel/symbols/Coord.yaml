@@ -2,20 +2,62 @@ id: ggplot2_py.Coord
 import_path: ggplot2_py.Coord
 kind: class
 signature: Coord()
-purpose: author a NEW coordinate system by subclassing Coord; discover the transform/setup_panel_params/range override points for a custom coord; port an R ggproto Coord (CoordXxx) to Python
-description: "Base class for coordinate systems. A coord controls how positional data is\nmapped onto the panel (Cartesian, flipped, polar, transformed, map\nprojections...). To create a custom coordinate system, subclass `Coord`\n(or `ggproto('CoordFoo', Coord, ...)`) and wrap it in a `coord_foo()`\nconstructor.\n\nSUBCLASSING — set these CLASS ATTRIBUTES (slots):\n  - `clip`: `\"on\"`/`\"off\"`, whether to clip drawing to the panel.\n  - `default`: bool, whether this is the default coord for a plot.\n  - `reverse`: which axes to reverse (coord-specific).\n\nSUBCLASSING — OVERRIDE these METHODS:\n  - `transform(self, data, panel_params) -> data`: THE core override. Map the\n    data's x/y (in data space) into [0,1] panel space.\n  - `setup_panel_params(self, scale_x, scale_y, params=None) -> dict`: build\n    the per-panel parameter dict (ranges, breaks, labels) from the scales.\n  - `range(self, panel_params) -> {\"x\": [...], \"y\": [...]}`: report the data\n    ranges for a panel.\n\
-  \  - `backtransform_range(self, panel_params) -> dict`: inverse of the panel\n    transform's range (data space from panel space).\n  - `is_linear(self) -> bool`: return False for non-linear coords (polar,\n    transformed) so geoms munch line segments.\n  - `render_bg(self, panel_params, theme) -> grob` and\n    `render_fg(self, panel_params, theme) -> grob`: draw panel background\n    (grid lines) and foreground.\n  - `setup_data(self, data, params=None) -> data`: optional pre-transform\n    massaging.\n\nReturns a CLASS. See concept `ggplot2_py.extension_class_hierarchy`.\n"
+purpose: author a NEW coordinate system by subclassing CoordCartesian (override transform; render_bg/axes are inherited); discover the transform/setup_panel_params/range override points; port an R ggproto Coord (CoordXxx) to Python
+description: |
+  Base class for coordinate systems. A coord controls how positional data is
+  mapped onto the panel (Cartesian, flipped, polar, transformed, map projections...).
+
+  To create a custom coordinate system, SUBCLASS `CoordCartesian` (NOT the abstract
+  `Coord`) and override `transform` — call `super().transform(data, panel_params)`
+  first to rescale x/y into [0,1] panel space, then apply your mapping. `CoordCartesian`
+  provides the rendering machinery (`render_bg`, `render_axis_h`, `render_axis_v`),
+  `range`, and `backtransform_range`, so you do NOT reimplement them. Override
+  `setup_panel_params` / `range` only if you change the visible window. Wrap your coord
+  in a `coord_foo()` constructor. (`CoordFlip` is exactly this pattern.)
+
+  Subclass the ABSTRACT `Coord` directly ONLY if you implement ALL of: `transform`,
+  `setup_panel_params`, `range`, `backtransform_range`, `render_bg`, `render_axis_h`,
+  `render_axis_v` — otherwise rendering aborts with
+  "<coord> has not implemented render_bg()".
+
+  SUBCLASSING — class attribute slots:
+    - `clip`: "on"/"off"/"inherit", whether to clip drawing to the panel.
+    - `default`: bool, whether this is the default coord for a plot.
+    - `reverse`: which axes to reverse (coord-specific).
+
+  SUBCLASSING — methods:
+    - `transform(self, data, panel_params) -> data`: THE core override. Map the data's
+      x/y (in data space) into [0,1] panel space (delegate to `super().transform` first).
+    - `setup_panel_params(self, scale_x, scale_y, params=None) -> dict`: build the
+      per-panel parameter dict (ranges, breaks, labels) from the scales.
+    - `range(self, panel_params) -> {"x": [...], "y": [...]}`: report the data ranges.
+    - `backtransform_range(self, panel_params) -> dict`: inverse of the panel range.
+    - `is_linear(self) -> bool`: return False for non-linear coords (polar, transformed).
+    - `render_bg` / `render_fg` / `render_axis_h` / `render_axis_v`: panel chrome —
+      inherited from `CoordCartesian`; override only for custom chrome.
+
+  Returns a CLASS. See concept `ggplot2_py.extension_class_hierarchy`.
 parameters: []
 mutates: execution_class=builder; no declared in-place mutation; returns_kind=new_object
 returns: type[Coord]; kind=new_object
 requires: []
 writes: []
 examples:
-- "class CoordSwap(Coord):\n    def transform(self, data, panel_params):\n        ...  # swap/transform x and y into [0,1] panel space\n    def is_linear(self):\n        return True\n"
-- '# R-port form:
-
-  # CoordFoo = ggproto(''CoordFoo'', Coord, transform=lambda self, data, pp: ...)'
+- |
+  # Subclass CoordCartesian (NOT the abstract Coord) so render_bg/axes are inherited:
+  class CoordSwap(CoordCartesian):
+      def transform(self, data, panel_params):
+          data = super().transform(data, panel_params)      # rescale x/y into [0,1] first
+          return data.rename(columns={"x": "y", "y": "x"})  # then your custom mapping
+  # add to a plot with a coord_swap() constructor that returns CoordSwap()
+- |
+  # R-port form:
+  # CoordFoo = ggproto('CoordFoo', CoordCartesian, transform=lambda self, data, pp: ...)
 failure_fixes:
+- when: 'a custom coord aborts with "<coord> has not implemented render_bg()" (or transform / range / backtransform_range)'
+  suggest:
+  - 'Subclass `CoordCartesian` (NOT the abstract `Coord`): it provides render_bg, render_axis_h, render_axis_v, range, and backtransform_range. Override only `transform` (call `super().transform(...)` for the [0,1] rescale), plus `setup_panel_params`/`range` if you change the visible window.'
+  - 'If you must subclass the abstract `Coord` directly, implement ALL of: transform, setup_panel_params, range, backtransform_range, render_bg, render_axis_h, render_axis_v.'
 - when: lines look straight in a non-Cartesian coord (should curve)
   suggest:
   - Override is_linear to return False; the renderer then munches paths into many short segments before transform.

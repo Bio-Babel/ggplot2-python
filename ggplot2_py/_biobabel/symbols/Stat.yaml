@@ -29,3 +29,5 @@ related:
 - ggplot2_py.layer
 - ggplot2_py.ggproto
 - ggplot2_py.ggproto_parent
+- ggplot2_py.custom_stat_compute_panel
+- ggplot2_py.custom_stat_compute_group

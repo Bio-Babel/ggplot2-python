@@ -10,13 +10,47 @@ id: ggplot2_py.FacetWrap
 import_path: ggplot2_py.FacetWrap
 kind: class
 signature: FacetWrap()
-purpose: 'Wrap facet: 1-d ribbon of panels wrapped into 2-d.'
-description: 'Wrap facet: 1-d ribbon of panels wrapped into 2-d.'
-parameters: []
+purpose: 'FacetWrap wraps a 1-D sequence of panels into a 2-D grid whose shape is governed by nrow/ncol; subclass it and override compute_layout to author a custom facet that reuses FacetWrap panel assembly.'
+description: "Wrap facet: lays a 1-D ribbon of panels out into a 2-D grid. The grid\nshape is governed by `nrow`/`ncol` (stored in `params`, populated by the\n`facet_wrap(...)` constructor); when both are None the number of rows and\ncolumns is chosen automatically. `dir` sets the fill direction ('h'/'v') and\n`scales` controls whether panels share axes ('fixed') or get free ones.\n\nTo build a CUSTOM facet, subclass `FacetWrap` and override\n`compute_layout(self, data, params)`: return/edit the panel LAYOUT table\n(columns PANEL / ROW / COL / SCALE_X / SCALE_Y, one row per panel), usually by\ndeferring to `super().compute_layout(...)` and inheriting the heavy\n`draw_panels` gtable assembly. The panel GRID itself comes from `nrow`/`ncol`\nin `params`, NOT from the COL/ROW values you write — set the grid via\n`facet_wrap(..., nrow=..., ncol=...)` so it matches the positions you assign.\nSee idiom `ggplot2_py.custom_facet_layout` and concept\n`ggplot2_py.facet_extension_contract`.\n"
+parameters:
+- name: facets
+  type: str | list[str] | dict
+  required: true
+  default: null
+  description: Faceting variable(s) — column name(s) to split into panels. R's '~ class' becomes 'class'.
+- name: nrow
+  type: int
+  required: false
+  default: null
+  description: Number of rows in the panel grid; with ncol this governs the wrap. None = chosen automatically.
+- name: ncol
+  type: int
+  required: false
+  default: null
+  description: Number of columns in the panel grid; with nrow this governs the wrap. None = chosen automatically.
+- name: scales
+  type: str
+  required: false
+  default: fixed
+  description: '''fixed'' (default, shared axes), ''free'', ''free_x'', ''free_y''.'
+- name: dir
+  type: str
+  required: false
+  default: h
+  description: Direction panels are filled — 'h' (horizontal, default) or 'v' (vertical).
 mutates: ''
 returns: ''
 requires: []
 writes: []
-examples: []
-failure_fixes: []
-related: []
+examples:
+- "# Custom facet: subclass FacetWrap and override compute_layout.\nfrom ggplot2_py.facet import FacetWrap, facet_wrap\n\nclass MyFacet(FacetWrap):\n    def compute_layout(self, data, params):\n        # LAYOUT table has one row per panel with columns\n        # PANEL / ROW / COL / SCALE_X / SCALE_Y.\n        layout = super().compute_layout(data, params).copy()\n        # ... edit PANEL/ROW/COL/SCALE_X/SCALE_Y here ...\n        return layout\n\nbase = facet_wrap('category')   # fully-configured FacetWrap (resolves params)\nf = MyFacet()\nf.shrink = base.shrink\nf.params = base.params          # reuse resolved params (facets, nrow, ncol, ...)\n# NOTE: the panel grid comes from nrow/ncol in params, not from the COL/ROW\n# values above; set them via facet_wrap(..., nrow=..., ncol=...).\n"
+failure_fixes:
+- when: the compute_layout table's COL (or ROW) values are edited but panels overlap / collide / land in the wrong place
+  suggest:
+  - Editing COL/ROW alone does NOT change the panel GRID; the grid shape is fixed by nrow/ncol in params.
+  - Set nrow/ncol (e.g. via facet_wrap(..., nrow=..., ncol=...)) so the grid matches the positions you assign, otherwise multiple panels map to the same grid cell and collide.
+related:
+- ggplot2_py.custom_facet_layout
+- ggplot2_py.facet_extension_contract
+- ggplot2_py.facet_wrap
+- ggplot2_py.Facet
