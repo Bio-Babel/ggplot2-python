@@ -287,72 +287,80 @@ def draw_axis(
             name="axis.line",
         )
 
-    # --- Build tick marks (R: GuideAxis$build_ticks, lines 324-342) ----
-    tick_sign = -1.0 if axis_position in ("bottom", "left") else 1.0
-    tick_lwd = float(tick_el.get("linewidth", 0.5)) * _PT
-    tick_col = tick_el.get("colour", "grey20")
+    # --- Build tick marks (R: Guide$build_ticks, guide-.R:706-720) ------
+    # A blank `axis.ticks` element draws no ticks (R returns zeroGrob); the
+    # tick-length spacer is still reserved by the gtable below.
+    _raw_tick_el = _calc_el(f"axis.ticks.{aes}", theme)
+    _tick_blank = _raw_tick_el is None or _is_blank(_raw_tick_el)
 
-    # Compound-unit endpoints — mirror R `guide-.R::Guide$build_ticks`:
-    #   pos  <- unit(orth_side, "npc")
-    #   tick <- pos + sign * unit(tick_length, "pt")
-    # The `pt` term keeps tick length panel-size-independent; the older
-    # NPC float (computed assuming a 14 cm panel) drifted on any other
-    # panel size.
-    n_breaks = len(breaks)
-
-    def _ticks_endpoint(length_unit: Unit, n: int) -> Unit:
-        # Replicate the scalar tick-length unit n times and combine with
-        # the orth-side npc vector (so the result is parallel to breaks).
-        signed = length_unit * tick_sign
-        signed_vec = unit_c(*([signed] * n))
-        return Unit([orth_side] * n, "npc") + signed_vec
-
-    if is_horizontal:
-        major_ticks = segments_grob(
-            x0=Unit(breaks.tolist(), "npc"),
-            y0=Unit([orth_side] * n_breaks, "npc"),
-            x1=Unit(breaks.tolist(), "npc"),
-            y1=_ticks_endpoint(tick_length, n_breaks),
-            gp=Gpar(col=tick_col, lwd=tick_lwd),
-            name="axis.ticks.major",
-        )
+    if _tick_blank:
+        ticks_grob = null_grob(name="axis.ticks")
     else:
-        major_ticks = segments_grob(
-            x0=Unit([orth_side] * n_breaks, "npc"),
-            y0=Unit(breaks.tolist(), "npc"),
-            x1=_ticks_endpoint(tick_length, n_breaks),
-            y1=Unit(breaks.tolist(), "npc"),
-            gp=Gpar(col=tick_col, lwd=tick_lwd),
-            name="axis.ticks.major",
-        )
+        tick_sign = -1.0 if axis_position in ("bottom", "left") else 1.0
+        tick_lwd = float(tick_el.get("linewidth", 0.5)) * _PT
+        tick_col = tick_el.get("colour", "grey20")
 
-    ticks_grob = major_ticks
+        # Compound-unit endpoints — mirror R `guide-.R::Guide$build_ticks`:
+        #   pos  <- unit(orth_side, "npc")
+        #   tick <- pos + sign * unit(tick_length, "pt")
+        # The `pt` term keeps tick length panel-size-independent; the older
+        # NPC float (computed assuming a 14 cm panel) drifted on any other
+        # panel size.
+        n_breaks = len(breaks)
 
-    # Minor ticks (R: lines 332-341)
-    if minor_ticks and minor_positions is not None:
-        minor_pos = np.asarray(minor_positions, dtype=float)
-        minor_pos = np.array([p for p in minor_pos if p not in breaks])
-        n_minor = len(minor_pos)
-        if n_minor > 0:
-            if is_horizontal:
-                minor_grob = segments_grob(
-                    x0=Unit(minor_pos.tolist(), "npc"),
-                    y0=Unit([orth_side] * n_minor, "npc"),
-                    x1=Unit(minor_pos.tolist(), "npc"),
-                    y1=_ticks_endpoint(minor_tick_length, n_minor),
-                    gp=Gpar(col=tick_col, lwd=tick_lwd * 0.5),
-                    name="axis.ticks.minor",
-                )
-            else:
-                minor_grob = segments_grob(
-                    x0=Unit([orth_side] * n_minor, "npc"),
-                    y0=Unit(minor_pos.tolist(), "npc"),
-                    x1=_ticks_endpoint(minor_tick_length, n_minor),
-                    y1=Unit(minor_pos.tolist(), "npc"),
-                    gp=Gpar(col=tick_col, lwd=tick_lwd * 0.5),
-                    name="axis.ticks.minor",
-                )
-            ticks_grob = grob_tree(major_ticks, minor_grob, name="axis.ticks")
+        def _ticks_endpoint(length_unit: Unit, n: int) -> Unit:
+            # Replicate the scalar tick-length unit n times and combine with
+            # the orth-side npc vector (so the result is parallel to breaks).
+            signed = length_unit * tick_sign
+            signed_vec = unit_c(*([signed] * n))
+            return Unit([orth_side] * n, "npc") + signed_vec
+
+        if is_horizontal:
+            major_ticks = segments_grob(
+                x0=Unit(breaks.tolist(), "npc"),
+                y0=Unit([orth_side] * n_breaks, "npc"),
+                x1=Unit(breaks.tolist(), "npc"),
+                y1=_ticks_endpoint(tick_length, n_breaks),
+                gp=Gpar(col=tick_col, lwd=tick_lwd),
+                name="axis.ticks.major",
+            )
+        else:
+            major_ticks = segments_grob(
+                x0=Unit([orth_side] * n_breaks, "npc"),
+                y0=Unit(breaks.tolist(), "npc"),
+                x1=_ticks_endpoint(tick_length, n_breaks),
+                y1=Unit(breaks.tolist(), "npc"),
+                gp=Gpar(col=tick_col, lwd=tick_lwd),
+                name="axis.ticks.major",
+            )
+
+        ticks_grob = major_ticks
+
+        # Minor ticks (R: lines 332-341)
+        if minor_ticks and minor_positions is not None:
+            minor_pos = np.asarray(minor_positions, dtype=float)
+            minor_pos = np.array([p for p in minor_pos if p not in breaks])
+            n_minor = len(minor_pos)
+            if n_minor > 0:
+                if is_horizontal:
+                    minor_grob = segments_grob(
+                        x0=Unit(minor_pos.tolist(), "npc"),
+                        y0=Unit([orth_side] * n_minor, "npc"),
+                        x1=Unit(minor_pos.tolist(), "npc"),
+                        y1=_ticks_endpoint(minor_tick_length, n_minor),
+                        gp=Gpar(col=tick_col, lwd=tick_lwd * 0.5),
+                        name="axis.ticks.minor",
+                    )
+                else:
+                    minor_grob = segments_grob(
+                        x0=Unit([orth_side] * n_minor, "npc"),
+                        y0=Unit(minor_pos.tolist(), "npc"),
+                        x1=_ticks_endpoint(minor_tick_length, n_minor),
+                        y1=Unit(minor_pos.tolist(), "npc"),
+                        gp=Gpar(col=tick_col, lwd=tick_lwd * 0.5),
+                        name="axis.ticks.minor",
+                    )
+                ticks_grob = grob_tree(major_ticks, minor_grob, name="axis.ticks")
 
     # --- Build labels (R: GuideAxis$build_labels + draw_axis_labels) ---
     # Route through element_render so hjust/vjust/margin/angle from the
