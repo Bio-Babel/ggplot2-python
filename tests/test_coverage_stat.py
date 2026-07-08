@@ -613,7 +613,10 @@ class TestContourBreaks:
         np.testing.assert_array_equal(result, [2, 4, 6, 8])
 
     def test_callable_breaks(self):
-        result = _contour_breaks([0, 10], breaks=lambda x: [2, 5, 8])
+        # R stat-contour.R:142-144: a callable becomes breaks_fun and is
+        # invoked as breaks_fun(z_range, binwidth) — fullseq's signature.
+        result = _contour_breaks([0, 10], binwidth=2,
+                                 breaks=lambda r, size: [2, 5, 8])
         np.testing.assert_array_equal(result, [2, 5, 8])
 
     def test_bins(self):
@@ -1433,7 +1436,9 @@ class TestStatDensity2dFilled:
     def test_subclass(self):
         sd = StatDensity2dFilled()
         assert sd.contour_type == "bands"
-        assert sd.default_aes.get("fill") is None
+        # R stat-density-2d.R:96: aes(colour = NA, fill = after_stat(level))
+        from ggplot2_py.aes import AfterStat
+        assert isinstance(sd.default_aes.get("fill"), AfterStat)
 
 
 # ============================================================================

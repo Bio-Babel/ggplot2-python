@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 import pandas as pd
 
-from ggplot2_py._compat import Waiver, is_waiver, waiver, cli_abort, cli_warn
+from ggplot2_py._compat import Waiver, is_waiver, waiver, cli_abort, cli_warn, NA
 
 
 def _is_waiver_like(x: Any) -> bool:
@@ -834,19 +834,20 @@ class Coord(GGProto):
         )
 
     def render_fg(self, panel_params: Dict[str, Any], theme: Any) -> Any:
-        """Render panel foreground.
+        """Render panel foreground — the ``panel.border`` theme element.
 
-        Parameters
-        ----------
-        panel_params : dict
-        theme : Theme
+        R ``Coord$render_fg`` (coord-.R:532-534): ``element_render(theme,
+        "panel.border", fill = NA)``, drawn after data layers.  R's
+        Cartesian-family coords don't override this — only the base
+        implementation is needed.
 
-        Returns
-        -------
-        grob
+        Must stay ``fill=NA`` (the sentinel), not ``fill=None``: bare
+        ``None`` reads as "argument omitted" in ``_grob_from_rect`` and
+        falls through to the element's own (often opaque) fill,
+        painting over the data.
         """
-        from grid_py import null_grob
-        return null_grob()
+        from ggplot2_py.theme_elements import element_render
+        return element_render(theme, "panel.border", fill=NA)
 
     def render_bg(self, panel_params: Dict[str, Any], theme: Any) -> Any:
         """Render panel background.
@@ -2913,7 +2914,7 @@ class CoordPolar(Coord):
 
         theta_major = panel_params.get("theta.major")
         if theta_major is None:
-            return element_render(theme, "panel.border", fill=None)
+            return element_render(theme, "panel.border", fill=NA)
 
         arc = (self.start, self.start + 2 * math.pi)
         dir_ = self.direction
@@ -2954,7 +2955,7 @@ class CoordPolar(Coord):
             if g is not None:
                 children.append(g)
 
-        border = element_render(theme, "panel.border", fill=None)
+        border = element_render(theme, "panel.border", fill=NA)
         if border is not None:
             children.append(border)
 
@@ -3437,7 +3438,7 @@ class CoordRadial(Coord):
             if r_axis is not None:
                 children.append(r_axis)
 
-        border = element_render(theme, "panel.border", fill=None)
+        border = element_render(theme, "panel.border", fill=NA)
         if border is not None:
             children.append(border)
         if not children:

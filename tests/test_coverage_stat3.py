@@ -169,7 +169,11 @@ class TestInternalHelpers:
             _precompute_bw(np.array([1.0, 2.0, 3.0]), "unknown_bw_method")
 
     def test_contour_breaks_with_callable(self):
-        result = _contour_breaks([0, 10], breaks=lambda r: np.linspace(r[0], r[1], 5))
+        # R: callable breaks are called as breaks_fun(z_range, binwidth)
+        result = _contour_breaks(
+            [0, 10], binwidth=2.5,
+            breaks=lambda r, size: np.linspace(r[0], r[1], 5),
+        )
         assert len(result) == 5
 
     def test_contour_breaks_default_bins(self):

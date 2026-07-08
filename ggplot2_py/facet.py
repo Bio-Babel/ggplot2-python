@@ -414,21 +414,188 @@ def _combine_vars(
         if v not in combined.columns:
             combined[v] = "(all)"
     combined = combined[vars_].reset_index(drop=True)
-    # R (facet-.R: combine_vars calls df_layout which runs unique +
-    # sort via reorder/id on the faceting vars): for non-factor
-    # inputs, panel order follows ``sort(unique(x))``.  Factor inputs
-    # keep level order.  Mirrors the same alphabetical rule we fixed
-    # for discrete scales in scales_py/range.py.
-    sort_cols = [c for c in vars_
-                 if c in combined.columns
-                 and not hasattr(combined[c], "cat")]
-    if sort_cols:
-        try:
-            combined = combined.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
-        except TypeError:
-            # Mixed / unsortable types — fall back to insertion order
-            pass
+    # R combine_vars orders combinations by id() — value order for
+    # plain vectors, level order for factors (pandas Categoricals sort
+    # by their categories under sort_values, matching R).
+    try:
+        combined = combined.sort_values(vars_, kind="mergesort").reset_index(drop=True)
+    except TypeError:
+        # Mixed / unsortable types — fall back to insertion order
+        pass
     return combined
+
+
+def _ulevels(x: pd.Series) -> List[Any]:
+    """Ordered unique values of *x* (R ``ulevels``, facet-grid-.R:422-429).
+
+    Factor inputs keep level order; everything else sorts, NA last.
+    """
+    if isinstance(x.dtype, pd.CategoricalDtype):
+        levels = [lv for lv in x.cat.categories]
+        if x.isna().any():
+            levels.append(np.nan)
+        return levels
+    vals = x.dropna().unique().tolist()
+    vals = sorted(vals)
+    if x.isna().any():
+        vals.append(np.nan)
+    return vals
+
+
+def _facet_id_var(x: pd.Series, drop: bool = False) -> Tuple[np.ndarray, int]:
+    """1-based integer id per value (R ``id_var``, compat-plyr.R:64-81).
+
+    Factors map to their level index (level order); other vectors map
+    into ``sort(unique(x))`` with NA last.
+    """
+    if len(x) == 0:
+        return np.array([], dtype=int), 0
+    if isinstance(x.dtype, pd.CategoricalDtype) and not drop:
+        codes = x.cat.codes.to_numpy().astype(int) + 1
+        n = len(x.cat.categories)
+        if (codes == 0).any():  # NaN → R addNA: extra trailing level
+            n += 1
+            codes = np.where(codes == 0, n, codes)
+        return codes, n
+    levels = _ulevels(x)
+    lookup = {}
+    for i, lv in enumerate(levels):
+        key = "\0NA" if (isinstance(lv, float) and np.isnan(lv)) else lv
+        lookup[key] = i + 1
+    codes = np.array([
+        lookup["\0NA" if (isinstance(v, float) and np.isnan(v)) else v]
+        for v in x
+    ], dtype=int)
+    return codes, len(levels)
+
+
+def _facet_id(df: pd.DataFrame, drop: bool = False) -> np.ndarray:
+    """1-based combination id per row (R ``id``, compat-plyr.R:98-136).
+
+    The first column varies slowest; ``drop=True`` densifies the ids to
+    1..k preserving combination (value) order.
+    """
+    if df.shape[1] == 0:
+        return np.arange(1, len(df) + 1)
+    cols = [df[c] for c in df.columns]
+    if len(cols) == 1:
+        codes, _ = _facet_id_var(cols[0], drop=drop)
+        return codes
+    ids = [_facet_id_var(c, drop=drop) for c in cols]
+    res = np.zeros(len(df), dtype=np.int64)
+    weight = 1
+    for codes, n in reversed(ids):
+        res += (codes - 1) * weight
+        weight *= n
+    res = res + 1
+    if drop:
+        uniq = np.sort(np.unique(res))
+        res = np.searchsorted(uniq, res) + 1
+    return res
+
+
+def _upto(a: Any, b: List[Any]) -> List[Any]:
+    """R ``upto`` (reshape-add-margins.R:55-57)."""
+    if a not in b:
+        return []
+    return b[: b.index(a) + 1]
+
+
+def _downto(a: Any, b: List[Any]) -> List[Any]:
+    """R ``downto`` (reshape-add-margins.R:58-60)."""
+    return list(reversed(_upto(a, list(reversed(b)))))
+
+
+def _reshape_margins(
+    vars_pair: List[List[str]],
+    margins: Union[bool, List[str], None],
+) -> List[List[str]]:
+    """Variable sets to margin over (R ``reshape_margins``)."""
+    if margins is None or margins is False:
+        return []
+    all_vars = [v for dim in vars_pair for v in dim]
+    if margins is True:
+        margins = all_vars
+    elif isinstance(margins, str):
+        margins = [margins]
+
+    # Group margins by dimension, then ensure high-level margins
+    # include lower levels (R: downto).
+    dims: List[List[List[str]]] = []
+    for dim_vars in vars_pair:
+        dim_margins = [v for v in dim_vars if v in margins]
+        dims.append([_downto(m, dim_vars) for m in dim_margins])
+
+    # All combinations across dimensions (0 = no margin in that dim)
+    out: List[List[str]] = []
+    from itertools import product
+    index_sets = [range(len(d) + 1) for d in dims]
+    for combo in product(*reversed(index_sets)):
+        combo = tuple(reversed(combo))
+        margin_vars: List[str] = []
+        for d, i in zip(dims, combo):
+            if i > 0:
+                margin_vars.extend(d[i - 1])
+        out.append(margin_vars)
+    return out
+
+
+def _reshape_add_margins(
+    df: pd.DataFrame,
+    vars_pair: List[List[str]],
+    margins: Union[bool, List[str], None] = True,
+) -> pd.DataFrame:
+    """Duplicate rows for margin panels (R ``reshape_add_margins``).
+
+    Margined columns become Categoricals whose categories end with
+    ``"(all)"`` so downstream ``_facet_id`` places margin panels last.
+    """
+    margin_vars_list = _reshape_margins(vars_pair, margins)
+    if not margin_vars_list:
+        return df
+
+    all_margin_vars = []
+    for mv in margin_vars_list:
+        for v in mv:
+            if v not in all_margin_vars:
+                all_margin_vars.append(v)
+
+    df = df.copy()
+    for v in all_margin_vars:
+        levels = [lv for lv in _ulevels(df[v])
+                  if not (isinstance(lv, float) and np.isnan(lv))]
+        df[v] = pd.Categorical(df[v], categories=levels + ["(all)"])
+
+    pieces = []
+    for margin_vars in margin_vars_list:
+        piece = df.copy()
+        for v in margin_vars:
+            piece[v] = pd.Categorical(
+                ["(all)"] * len(piece), categories=piece[v].cat.categories,
+            )
+        pieces.append(piece)
+    return pd.concat(pieces, ignore_index=True)
+
+
+def _key_str(v: Any) -> str:
+    """String key for facet joins, matching R ``as.character`` (2.0 → "2")."""
+    if isinstance(v, float):
+        if np.isnan(v):
+            return "\0NA"
+        if v.is_integer():
+            return str(int(v))
+    if v is None:
+        return "\0NA"
+    return str(v)
+
+
+def _facet_join_key(df: pd.DataFrame, vars_: List[str]) -> pd.Series:
+    """Row-wise join key over *vars_* (R ``join_keys`` paste semantics)."""
+    parts = [df[v].map(_key_str) for v in vars_]
+    key = parts[0].astype(str)
+    for p in parts[1:]:
+        key = key + "\r" + p.astype(str)
+    return key
 
 
 def _map_facet_data(
@@ -464,23 +631,56 @@ def _map_facet_data(
         data["PANEL"] = pd.Categorical([1] * len(data))
         return data
 
-    # Match data to layout on facet vars
+    grid_layout = "rows" in params and "cols" in params
     present = [v for v in facet_vars if v in data.columns and v in layout.columns]
-    if not present:
-        # No matching vars: repeat across all panels
+    facet_vals = data[present].copy() if present else pd.DataFrame(index=data.index)
+
+    # R facet-.R:1466-1481 — replicate data rows into margin panels.
+    margins = params.get("margins", False)
+    if grid_layout and present and margins is not False and margins is not None:
+        row_vars = _resolve_facet_vars(params.get("rows"))
+        col_vars = _resolve_facet_vars(params.get("cols"))
+        facet_vals = facet_vals.reset_index(drop=True)
+        facet_vals[".index"] = np.arange(len(facet_vals))
+        facet_vals = _reshape_add_margins(
+            facet_vals,
+            [[v for v in row_vars if v in present],
+             [v for v in col_vars if v in present]],
+            margins,
+        )
+        data = data.iloc[facet_vals[".index"].to_numpy()].reset_index(drop=True)
+        facet_vals = facet_vals.drop(columns=[".index"]).reset_index(drop=True)
+
+    # R facet-.R:1494-1510 — facet variables missing from the data are
+    # added by replicating the data across their layout combinations.
+    missing = [v for v in facet_vars if v not in data.columns and v in layout.columns]
+    if missing:
+        to_add = layout[missing].drop_duplicates().reset_index(drop=True)
+        n, m = len(data), len(to_add)
+        data = data.iloc[np.tile(np.arange(n), m)].reset_index(drop=True)
+        facet_vals = facet_vals.iloc[np.tile(np.arange(len(facet_vals)), m)].reset_index(drop=True)
+        add_rep = to_add.iloc[np.repeat(np.arange(m), n)].reset_index(drop=True)
+        for v in missing:
+            facet_vals[v] = add_rep[v].to_numpy()
+
+    join_vars = [v for v in facet_vars if v in facet_vals.columns]
+    if not join_vars:
         data["PANEL"] = pd.Categorical([1] * len(data))
         return data
 
-    # Merge to get PANEL assignment
-    merged = data.merge(
-        layout[present + ["PANEL"]],
-        on=present,
-        how="left",
-    )
-    # Rows that didn't match any panel get dropped
-    merged = merged.dropna(subset=["PANEL"]).reset_index(drop=True)
-    merged["PANEL"] = pd.Categorical(merged["PANEL"])
-    return merged
+    # R facet-.R:1512-1522 — key-based match (as.character semantics),
+    # robust to mixed "(all)"/numeric margin columns.
+    keys_x = _facet_join_key(facet_vals, join_vars)
+    keys_y = _facet_join_key(layout, join_vars)
+    panel_of = dict(zip(keys_y, layout["PANEL"]))
+    data["PANEL"] = keys_x.map(panel_of).to_numpy()
+
+    data = data.dropna(subset=["PANEL"]).reset_index(drop=True)
+    data["PANEL"] = data["PANEL"].astype(int)
+    # R: data[order(data$PANEL), ] (stable)
+    data = data.sort_values("PANEL", kind="stable").reset_index(drop=True)
+    data["PANEL"] = pd.Categorical(data["PANEL"])
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -745,6 +945,35 @@ class Facet(GGProto):
         panel_h = abs(aspect_ratio) if aspect_ratio is not None else 1.0
         widths = unit([1] * ncol, "null")
         heights = unit([panel_h] * nrow, "null")
+
+        # R facet-.R:575-587 — when space is free, the panel limits
+        # determine the relative (null-unit) panel sizes.
+        def _pp_range(pp: Any, axis: str) -> Optional[Tuple[float, float]]:
+            ax = getattr(pp, axis, None)
+            if ax is not None and hasattr(ax, "range"):
+                return tuple(ax.range)
+            if isinstance(pp, dict):
+                return pp.get(f"{axis}_range") or pp.get(f"{axis}.range")
+            return None
+
+        space = params.get("space_free") or {"x": False, "y": False}
+        if space.get("x"):
+            idx = layout.loc[layout["ROW"] == 1].sort_values("COL")["PANEL"]
+            spans = []
+            for p in idx:
+                rng = _pp_range(ranges[int(p) - 1], "x")
+                spans.append(float(rng[1] - rng[0]) if rng else 1.0)
+            if len(spans) == ncol:
+                widths = unit(spans, "null")
+        if space.get("y"):
+            idx = layout.loc[layout["COL"] == 1].sort_values("ROW")["PANEL"]
+            spans = []
+            for p in idx:
+                rng = _pp_range(ranges[int(p) - 1], "y")
+                spans.append(float(rng[1] - rng[0]) * panel_h if rng else panel_h)
+            if len(spans) == nrow:
+                heights = unit(spans, "null")
+
         gt = Gtable(widths=widths, heights=heights, name="layout")
 
         # Mark respect flag for aspect ratio (R: facet-.R:592)
@@ -847,16 +1076,39 @@ class Facet(GGProto):
         left_grid = _grid(); right_grid = _grid()
         top_grid = _grid();  bottom_grid = _grid()
 
-        for _, row_info in layout.iterrows():
+        # R censor_labels (facet-.R:1414-1439): with axis.labels="margins"
+        # (labels$x/y FALSE) interior panels keep ticks but lose labels.
+        axis_labels = params.get("axis_labels", {"x": True, "y": True})
+        row_max_of_col = layout.groupby("COL")["ROW"].transform("max")
+        row_min_of_col = layout.groupby("COL")["ROW"].transform("min")
+        col_max_of_row = layout.groupby("ROW")["COL"].transform("max")
+        col_min_of_row = layout.groupby("ROW")["COL"].transform("min")
+
+        for i, (_, row_info) in enumerate(layout.iterrows()):
             panel_idx = int(row_info["PANEL"]) - 1
             r = int(row_info["ROW"]); c = int(row_info["COL"])
             pp = ranges[panel_idx] if panel_idx < len(ranges) else {}
+            pp_render = pp
+            if isinstance(pp, dict):
+                censored = {}
+                if not axis_labels.get("x", True):
+                    if r != int(row_max_of_col.iloc[i]):
+                        censored["x_labels"] = None
+                    if r != int(row_min_of_col.iloc[i]):
+                        censored["x_sec_labels"] = None
+                if not axis_labels.get("y", True):
+                    if c != int(col_min_of_row.iloc[i]):
+                        censored["y_labels"] = None
+                    if c != int(col_max_of_row.iloc[i]):
+                        censored["y_sec_labels"] = None
+                if censored:
+                    pp_render = {**pp, **censored}
             if hasattr(coord, "render_axis_v"):
-                v = coord.render_axis_v(pp, theme)
+                v = coord.render_axis_v(pp_render, theme)
                 left_grid[r - 1][c - 1] = v.get("left")
                 right_grid[r - 1][c - 1] = v.get("right")
             if hasattr(coord, "render_axis_h"):
-                h = coord.render_axis_h(pp, theme)
+                h = coord.render_axis_h(pp_render, theme)
                 top_grid[r - 1][c - 1] = h.get("top")
                 bottom_grid[r - 1][c - 1] = h.get("bottom")
 
@@ -921,6 +1173,134 @@ class Facet(GGProto):
         theme: Any,
     ) -> Tuple[Any, Dict[int, int], Dict[int, int]]:
         """R: ``Facet$attach_axes`` (facet-.R:643-645) — default no-op."""
+        return gt, panel_col_to_gtable, panel_row_to_gtable
+
+    def _weave_axes_y(
+        self,
+        gt: Any,
+        nrow: int,
+        ncol: int,
+        left_grid: List[List[Any]],
+        right_grid: List[List[Any]],
+        panel_col_to_gtable: Dict[int, int],
+        panel_row_to_gtable: Dict[int, int],
+    ) -> Tuple[Any, Dict[int, int], Dict[int, int]]:
+        """Weave one left + right axis column per panel column
+        (R ``weave_axes`` → ``weave_tables_col``, facet-wrap.R:501-542).
+        """
+        from grid_py import Unit as unit, null_grob
+        from gtable_py import gtable_add_grob, gtable_add_cols
+
+        def _blank(grob: Any) -> bool:
+            return grob is None or _is_null_grob(grob)
+
+        def _emit(g: Any) -> Any:
+            return g if not _blank(g) else null_grob()
+
+        # LEFT axes
+        for panel_c0 in reversed(range(ncol)):
+            panel_c = panel_c0 + 1
+            widths_cm = [
+                _axis_width_cm(left_grid[r][panel_c0])
+                for r in range(nrow) if not _blank(left_grid[r][panel_c0])
+            ]
+            w = max(widths_cm) if widths_cm else 0
+            cur = panel_col_to_gtable[panel_c]
+            gt = gtable_add_cols(gt, unit([w], "cm"), pos=cur - 1)
+            ax_col = cur
+            for cc in range(panel_c, ncol + 1):
+                panel_col_to_gtable[cc] += 1
+            for r in range(nrow):
+                gt = gtable_add_grob(
+                    gt, _emit(left_grid[r][panel_c0]),
+                    t=panel_row_to_gtable[r + 1], l=ax_col,
+                    clip="off", name=f"axis-l-{r + 1}-{panel_c}",
+                )
+
+        # RIGHT axes
+        for panel_c0 in reversed(range(ncol)):
+            panel_c = panel_c0 + 1
+            widths_cm = [
+                _axis_width_cm(right_grid[r][panel_c0])
+                for r in range(nrow) if not _blank(right_grid[r][panel_c0])
+            ]
+            w = max(widths_cm) if widths_cm else 0
+            cur = panel_col_to_gtable[panel_c]
+            gt = gtable_add_cols(gt, unit([w], "cm"), pos=cur)
+            ax_col = cur + 1
+            for cc in range(panel_c + 1, ncol + 1):
+                panel_col_to_gtable[cc] += 1
+            for r in range(nrow):
+                gt = gtable_add_grob(
+                    gt, _emit(right_grid[r][panel_c0]),
+                    t=panel_row_to_gtable[r + 1], l=ax_col,
+                    clip="off", name=f"axis-r-{r + 1}-{panel_c}",
+                )
+
+        return gt, panel_col_to_gtable, panel_row_to_gtable
+
+    def _weave_axes_x(
+        self,
+        gt: Any,
+        nrow: int,
+        ncol: int,
+        top_grid: List[List[Any]],
+        bottom_grid: List[List[Any]],
+        panel_col_to_gtable: Dict[int, int],
+        panel_row_to_gtable: Dict[int, int],
+    ) -> Tuple[Any, Dict[int, int], Dict[int, int]]:
+        """Weave one top + bottom axis row per panel row
+        (R ``weave_axes`` → ``weave_tables_row``, facet-wrap.R:501-542).
+        """
+        from grid_py import Unit as unit, null_grob
+        from gtable_py import gtable_add_grob, gtable_add_rows
+
+        def _blank(grob: Any) -> bool:
+            return grob is None or _is_null_grob(grob)
+
+        def _emit(g: Any) -> Any:
+            return g if not _blank(g) else null_grob()
+
+        # BOTTOM axes
+        for panel_r0 in reversed(range(nrow)):
+            panel_r = panel_r0 + 1
+            heights_cm = [
+                _axis_height_cm(bottom_grid[panel_r0][c])
+                for c in range(ncol) if not _blank(bottom_grid[panel_r0][c])
+            ]
+            h = max(heights_cm) if heights_cm else 0
+            cur = panel_row_to_gtable[panel_r]
+            gt = gtable_add_rows(gt, unit([h], "cm"), pos=cur)
+            ax_row = cur + 1
+            for rr in range(panel_r + 1, nrow + 1):
+                panel_row_to_gtable[rr] += 1
+            for c in range(ncol):
+                gt = gtable_add_grob(
+                    gt, _emit(bottom_grid[panel_r0][c]),
+                    t=ax_row, l=panel_col_to_gtable[c + 1],
+                    clip="off", name=f"axis-b-{panel_r}-{c + 1}",
+                )
+
+        # TOP axes
+        for panel_r0 in reversed(range(nrow)):
+            panel_r = panel_r0 + 1
+            heights_cm = [
+                _axis_height_cm(top_grid[panel_r0][c])
+                for c in range(ncol) if not _blank(top_grid[panel_r0][c])
+            ]
+            h = max(heights_cm) if heights_cm else 0
+            cur = panel_row_to_gtable[panel_r]
+            gt = gtable_add_rows(gt, unit([h], "cm"), pos=cur - 1)
+            ax_row = cur
+            for rr in range(panel_r, nrow + 1):
+                panel_row_to_gtable[rr] += 1
+            for c in range(ncol):
+                gt = gtable_add_grob(
+                    gt, _emit(top_grid[panel_r0][c]),
+                    t=ax_row, l=panel_col_to_gtable[c + 1],
+                    clip="off", name=f"axis-t-{panel_r}-{c + 1}",
+                )
+
         return gt, panel_col_to_gtable, panel_row_to_gtable
 
     def _add_strip_labels(
@@ -996,9 +1376,9 @@ class Facet(GGProto):
                 return {k: None for k in attrs}
             return {k: getattr(el, k, None) for k in attrs}
 
-        strip_txt_x = _props(strip_txt_x_el, ["colour", "size", "angle"])
+        strip_txt_x = _props(strip_txt_x_el, ["colour", "size", "angle", "margin"])
         strip_bg_x  = _props(strip_bg_x_el,  ["fill", "colour"])
-        strip_txt_y = _props(strip_txt_y_el, ["colour", "size", "angle"])
+        strip_txt_y = _props(strip_txt_y_el, ["colour", "size", "angle", "margin"])
         strip_bg_y  = _props(strip_bg_y_el,  ["fill", "colour"])
 
         _txt_blank_x = isinstance(strip_txt_x_el, _EB)
@@ -1044,6 +1424,32 @@ class Facet(GGProto):
         # R: assemble_strips → max_height(grobs) / max_width(grobs)
         from grid_py._size import calc_string_metric
 
+        def _margin_cm(txt_el, sides) -> float:
+            """Sum the strip.text margin over *sides* ('t','r','b','l') in cm.
+
+            R strips are titleGrobs whose grobHeight/grobWidth include
+            the element_text margin (assemble_strips → max_height /
+            max_width) — no other padding exists.
+            """
+            margin = txt_el.get("margin")
+            if margin is None:
+                return 0.0
+            from grid_py._units import _INCHES_PER
+            idx = {"t": 0, "r": 1, "b": 2, "l": 3}
+            total_in = 0.0
+            for s in sides:
+                i = idx[s]
+                unit_name = margin.units_list[i]
+                total_in += float(margin.values[i]) * _INCHES_PER.get(unit_name, 0.0)
+            return total_in * 2.54
+
+        def _font_descent_cm(fs: float) -> float:
+            """R ``font_descent`` (margins.R:280-309):
+            grobDescent(textGrob("gjpqyQ")) — titleGrob heights reserve
+            the font's descender space regardless of the label text.
+            """
+            return calc_string_metric("gjpqyQ", Gpar(fontsize=fs))["descent"] * 2.54
+
         def _strip_height_cm(labels, txt_el):
             """Max height of strip labels (R: max_height(strip_grobs))."""
             fs = float(txt_el.get("size") or 8)
@@ -1051,17 +1457,20 @@ class Facet(GGProto):
             for lbl in labels:
                 m = calc_string_metric(str(lbl), Gpar(fontsize=fs))
                 max_h = max(max_h, (m["ascent"] + m["descent"]) * 2.54)
-            # Add small padding for strip background
-            return max(max_h + 0.1, 0.2)
+            return max_h + _font_descent_cm(fs) + _margin_cm(txt_el, "tb")
 
         def _strip_width_cm(labels, txt_el):
-            """Max width of strip labels (R: max_width(strip_grobs))."""
+            """Max width of strip labels (R: max_width(strip_grobs)).
+
+            y strips are rotated, so their width is the text height (plus
+            font descent) plus the left/right margins.
+            """
             fs = float(txt_el.get("size") or 8)
             max_w = 0.0
             for lbl in labels:
                 m = calc_string_metric(str(lbl), Gpar(fontsize=fs))
                 max_w = max(max_w, (m["ascent"] + m["descent"]) * 2.54)
-            return max(max_w + 0.1, 0.2)
+            return max_w + _font_descent_cm(fs) + _margin_cm(txt_el, "lr")
 
         # --- facet_wrap ---
         if wrap_vars and not col_vars and not row_vars:
@@ -1601,39 +2010,52 @@ class FacetGrid(Facet):
         panel_row_to_gtable: Dict[int, int],
         theme: Any,
     ) -> Tuple[Any, Dict[int, int], Dict[int, int]]:
-        """R: ``FacetGrid$attach_axes`` (facet-grid-.R:299-341) →
-        ``seam_table`` (facet-grid-.R:436-478).
+        """R: ``FacetGrid$attach_axes`` (facet-grid-.R:299-341).
 
-        For default ``draw_axes={x:FALSE, y:FALSE}``, attaches **one**
-        axis row above/below and **one** axis col left/right of the
-        whole panel grid (vs FacetWrap's per-panel weaving).
+        With default ``draw_axes={x:FALSE, y:FALSE}``, one axis row
+        above/below and one axis col left/right of the whole panel grid
+        (``seam_table``); with ``axes="all*"`` the corresponding
+        direction is woven per panel like FacetWrap (``weave_axes``).
         """
-        # Outer-edge per-col axis grobs (one entry per panel col / row).
-        top_axes    = list(top_grid[0]) if nrow > 0 else []
-        bottom_axes = list(bottom_grid[nrow - 1]) if nrow > 0 else []
-        left_axes   = [left_grid[r][0] for r in range(nrow)]
-        right_axes  = [right_grid[r][ncol - 1] for r in range(nrow)]
+        draw_axes = (self.params or {}).get("draw_axes", {"x": False, "y": False})
 
-        gt, panel_col_to_gtable, panel_row_to_gtable = _seam_axes(
-            gt, top_axes, "top", "axis-t", z=3,
-            panel_col_to_gtable=panel_col_to_gtable,
-            panel_row_to_gtable=panel_row_to_gtable,
-        )
-        gt, panel_col_to_gtable, panel_row_to_gtable = _seam_axes(
-            gt, bottom_axes, "bottom", "axis-b", z=3,
-            panel_col_to_gtable=panel_col_to_gtable,
-            panel_row_to_gtable=panel_row_to_gtable,
-        )
-        gt, panel_col_to_gtable, panel_row_to_gtable = _seam_axes(
-            gt, left_axes, "left", "axis-l", z=3,
-            panel_col_to_gtable=panel_col_to_gtable,
-            panel_row_to_gtable=panel_row_to_gtable,
-        )
-        gt, panel_col_to_gtable, panel_row_to_gtable = _seam_axes(
-            gt, right_axes, "right", "axis-r", z=3,
-            panel_col_to_gtable=panel_col_to_gtable,
-            panel_row_to_gtable=panel_row_to_gtable,
-        )
+        if draw_axes.get("x"):
+            gt, panel_col_to_gtable, panel_row_to_gtable = self._weave_axes_x(
+                gt, nrow, ncol, top_grid, bottom_grid,
+                panel_col_to_gtable, panel_row_to_gtable,
+            )
+        else:
+            top_axes    = list(top_grid[0]) if nrow > 0 else []
+            bottom_axes = list(bottom_grid[nrow - 1]) if nrow > 0 else []
+            gt, panel_col_to_gtable, panel_row_to_gtable = _seam_axes(
+                gt, top_axes, "top", "axis-t", z=3,
+                panel_col_to_gtable=panel_col_to_gtable,
+                panel_row_to_gtable=panel_row_to_gtable,
+            )
+            gt, panel_col_to_gtable, panel_row_to_gtable = _seam_axes(
+                gt, bottom_axes, "bottom", "axis-b", z=3,
+                panel_col_to_gtable=panel_col_to_gtable,
+                panel_row_to_gtable=panel_row_to_gtable,
+            )
+
+        if draw_axes.get("y"):
+            gt, panel_col_to_gtable, panel_row_to_gtable = self._weave_axes_y(
+                gt, nrow, ncol, left_grid, right_grid,
+                panel_col_to_gtable, panel_row_to_gtable,
+            )
+        else:
+            left_axes   = [left_grid[r][0] for r in range(nrow)]
+            right_axes  = [right_grid[r][ncol - 1] for r in range(nrow)]
+            gt, panel_col_to_gtable, panel_row_to_gtable = _seam_axes(
+                gt, left_axes, "left", "axis-l", z=3,
+                panel_col_to_gtable=panel_col_to_gtable,
+                panel_row_to_gtable=panel_row_to_gtable,
+            )
+            gt, panel_col_to_gtable, panel_row_to_gtable = _seam_axes(
+                gt, right_axes, "right", "axis-r", z=3,
+                panel_col_to_gtable=panel_col_to_gtable,
+                panel_row_to_gtable=panel_row_to_gtable,
+            )
         return gt, panel_col_to_gtable, panel_row_to_gtable
 
     def compute_layout(
@@ -1657,14 +2079,38 @@ class FacetGrid(Facet):
         drop = params.get("drop", True)
         free = params.get("free", {"x": False, "y": False})
 
+        # R facet-grid-.R:250-256: a variable cannot be in rows AND cols.
+        dups = [v for v in row_vars if v in col_vars]
+        if dups:
+            cli_abort(
+                "Faceting variables can only appear in rows or cols, not "
+                f"both. Duplicated variables: {dups!r}"
+            )
+
         base_rows = _combine_vars(data, row_vars, drop=drop) if row_vars else pd.DataFrame()
         base_cols = _combine_vars(data, col_vars, drop=drop) if col_vars else pd.DataFrame()
 
-        # Cross-product
+        # R facet-grid-.R:259-262: as.table=FALSE reverses row order by
+        # giving each row variable reversed levels.
+        if not params.get("as_table", True):
+            for v in base_rows.columns:
+                levels = _ulevels(base_rows[v])
+                levels = [lv for lv in levels
+                          if not (isinstance(lv, float) and np.isnan(lv))]
+                base_rows[v] = pd.Categorical(
+                    base_rows[v], categories=list(reversed(levels)),
+                )
+
+        # Cross-product (R df.grid)
         if len(base_rows) > 0 and len(base_cols) > 0:
-            base_rows["_key_"] = 1
-            base_cols["_key_"] = 1
-            base = base_rows.merge(base_cols, on="_key_").drop("_key_", axis=1)
+            nr, nc = len(base_rows), len(base_cols)
+            base = pd.concat(
+                [
+                    base_rows.iloc[np.tile(np.arange(nr), nc)].reset_index(drop=True),
+                    base_cols.iloc[np.repeat(np.arange(nc), nr)].reset_index(drop=True),
+                ],
+                axis=1,
+            )
         elif len(base_rows) > 0:
             base = base_rows.copy()
         elif len(base_cols) > 0:
@@ -1675,36 +2121,35 @@ class FacetGrid(Facet):
         if len(base) == 0:
             return _layout_null()
 
-        base = base.drop_duplicates().reset_index(drop=True)
-
-        # Assign PANEL
-        n = len(base)
-        base["PANEL"] = pd.Categorical(range(1, n + 1))
-
-        # ROW / COL identifiers
-        if row_vars and any(v in base.columns for v in row_vars):
-            present_rows = [v for v in row_vars if v in base.columns]
-            row_ids = base[present_rows].apply(
-                lambda r: "|".join(str(v) for v in r), axis=1
+        # R facet-grid-.R:277-278: add margins
+        margins = params.get("margins", False)
+        if margins is not False and margins is not None and len(base.columns):
+            base = _reshape_add_margins(
+                base,
+                [[v for v in row_vars if v in base.columns],
+                 [v for v in col_vars if v in base.columns]],
+                margins,
             )
-            base["ROW"] = pd.Categorical(row_ids).codes + 1
-        else:
-            base["ROW"] = 1
+            base = base.drop_duplicates().reset_index(drop=True)
 
-        if col_vars and any(v in base.columns for v in col_vars):
-            present_cols = [v for v in col_vars if v in base.columns]
-            col_ids = base[present_cols].apply(
-                lambda r: "|".join(str(v) for v in r), axis=1
-            )
-            base["COL"] = pd.Categorical(col_ids).codes + 1
-        else:
-            base["COL"] = 1
+        # R facet-grid-.R:281-292 — PANEL/ROW/COL from id() over the
+        # combined values (value/level order, NOT string order).
+        panel = _facet_id(base, drop=True)
+        present_rows = [v for v in row_vars if v in base.columns]
+        present_cols = [v for v in col_vars if v in base.columns]
+        rows_id = _facet_id(base[present_rows], drop=True) if present_rows else np.ones(len(base), dtype=int)
+        cols_id = _facet_id(base[present_cols], drop=True) if present_cols else np.ones(len(base), dtype=int)
+
+        base = base.copy()
+        base["PANEL"] = panel
+        base["ROW"] = rows_id
+        base["COL"] = cols_id
+        base = base.sort_values("PANEL", kind="stable").reset_index(drop=True)
+        base["PANEL"] = pd.Categorical(base["PANEL"])
 
         # Scale identifiers
         base["SCALE_X"] = base["COL"] if free.get("x", False) else 1
         base["SCALE_Y"] = base["ROW"] if free.get("y", False) else 1
-
-        base = base.sort_values("PANEL").reset_index(drop=True)
         return base
 
     def map_data(
@@ -1762,96 +2207,14 @@ class FacetWrap(Facet):
         axis grob is blank — blanked entries become ``null_grob`` of zero
         size so layout-name coverage stays stable for downstream consumers.
         """
-        from grid_py import Unit as unit, null_grob
-        from gtable_py import gtable_add_grob, gtable_add_rows, gtable_add_cols
-
-        def _blank(grob: Any) -> bool:
-            return grob is None or _is_null_grob(grob)
-
-        def _emit(g: Any) -> Any:
-            return g if not _blank(g) else null_grob()
-
-        # LEFT axes
-        for panel_c0 in reversed(range(ncol)):
-            panel_c = panel_c0 + 1
-            widths_cm = [
-                _axis_width_cm(left_grid[r][panel_c0])
-                for r in range(nrow) if not _blank(left_grid[r][panel_c0])
-            ]
-            w = max(widths_cm) if widths_cm else 0
-            cur = panel_col_to_gtable[panel_c]
-            gt = gtable_add_cols(gt, unit([w], "cm"), pos=cur - 1)
-            ax_col = cur
-            for cc in range(panel_c, ncol + 1):
-                panel_col_to_gtable[cc] += 1
-            for r in range(nrow):
-                gt = gtable_add_grob(
-                    gt, _emit(left_grid[r][panel_c0]),
-                    t=panel_row_to_gtable[r + 1], l=ax_col,
-                    clip="off", name=f"axis-l-{r + 1}-{panel_c}",
-                )
-
-        # RIGHT axes
-        for panel_c0 in reversed(range(ncol)):
-            panel_c = panel_c0 + 1
-            widths_cm = [
-                _axis_width_cm(right_grid[r][panel_c0])
-                for r in range(nrow) if not _blank(right_grid[r][panel_c0])
-            ]
-            w = max(widths_cm) if widths_cm else 0
-            cur = panel_col_to_gtable[panel_c]
-            gt = gtable_add_cols(gt, unit([w], "cm"), pos=cur)
-            ax_col = cur + 1
-            for cc in range(panel_c + 1, ncol + 1):
-                panel_col_to_gtable[cc] += 1
-            for r in range(nrow):
-                gt = gtable_add_grob(
-                    gt, _emit(right_grid[r][panel_c0]),
-                    t=panel_row_to_gtable[r + 1], l=ax_col,
-                    clip="off", name=f"axis-r-{r + 1}-{panel_c}",
-                )
-
-        # BOTTOM axes
-        for panel_r0 in reversed(range(nrow)):
-            panel_r = panel_r0 + 1
-            heights_cm = [
-                _axis_height_cm(bottom_grid[panel_r0][c])
-                for c in range(ncol) if not _blank(bottom_grid[panel_r0][c])
-            ]
-            h = max(heights_cm) if heights_cm else 0
-            cur = panel_row_to_gtable[panel_r]
-            gt = gtable_add_rows(gt, unit([h], "cm"), pos=cur)
-            ax_row = cur + 1
-            for rr in range(panel_r + 1, nrow + 1):
-                panel_row_to_gtable[rr] += 1
-            for c in range(ncol):
-                gt = gtable_add_grob(
-                    gt, _emit(bottom_grid[panel_r0][c]),
-                    t=ax_row, l=panel_col_to_gtable[c + 1],
-                    clip="off", name=f"axis-b-{panel_r}-{c + 1}",
-                )
-
-        # TOP axes
-        for panel_r0 in reversed(range(nrow)):
-            panel_r = panel_r0 + 1
-            heights_cm = [
-                _axis_height_cm(top_grid[panel_r0][c])
-                for c in range(ncol) if not _blank(top_grid[panel_r0][c])
-            ]
-            h = max(heights_cm) if heights_cm else 0
-            cur = panel_row_to_gtable[panel_r]
-            gt = gtable_add_rows(gt, unit([h], "cm"), pos=cur - 1)
-            ax_row = cur
-            for rr in range(panel_r, nrow + 1):
-                panel_row_to_gtable[rr] += 1
-            for c in range(ncol):
-                gt = gtable_add_grob(
-                    gt, _emit(top_grid[panel_r0][c]),
-                    t=ax_row, l=panel_col_to_gtable[c + 1],
-                    clip="off", name=f"axis-t-{panel_r}-{c + 1}",
-                )
-
-        return gt, panel_col_to_gtable, panel_row_to_gtable
+        gt, panel_col_to_gtable, panel_row_to_gtable = self._weave_axes_y(
+            gt, nrow, ncol, left_grid, right_grid,
+            panel_col_to_gtable, panel_row_to_gtable,
+        )
+        return self._weave_axes_x(
+            gt, nrow, ncol, top_grid, bottom_grid,
+            panel_col_to_gtable, panel_row_to_gtable,
+        )
 
     def compute_layout(
         self,

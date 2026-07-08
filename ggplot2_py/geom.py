@@ -1822,18 +1822,20 @@ class GeomText(Geom):
         size_unit: str = "mm",
         **params: Any,
     ) -> Any:
-        """Draw text labels."""
+        """Draw text labels (R geom-text.R draw_panel)."""
         coords = _coord_transform(coord, data, panel_params)
+        size_mul = _resolve_text_unit(size_unit)
 
-        size_mul = PT  # default mm
-        if size_unit == "pt":
-            size_mul = 1
-        elif size_unit == "cm":
-            size_mul = PT * 10
-        elif size_unit == "in":
-            size_mul = 72.27
-        elif size_unit == "pc":
-            size_mul = 12
+        angles = coords["angle"].to_numpy() if "angle" in coords.columns else np.zeros(len(coords))
+        # R geom-text.R: compute_just resolves inward/outward keywords.
+        vjusts = _compute_just(
+            coords["vjust"] if "vjust" in coords.columns else np.full(len(coords), 0.5),
+            coords["y"], coords["x"], angles,
+        )
+        hjusts = _compute_just(
+            coords["hjust"] if "hjust" in coords.columns else np.full(len(coords), 0.5),
+            coords["x"], coords["y"], angles,
+        )
 
         # R's textGrob handles vectorised parameters natively.
         # Our text_grob expects scalars, so we create one per row.
@@ -1853,17 +1855,155 @@ class GeomText(Geom):
                 x=float(row["x"]),
                 y=float(row["y"]),
                 default_units="native",
-                hjust=float(row.get("hjust", 0.5)),
-                vjust=float(row.get("vjust", 0.5)),
-                rot=float(row.get("angle", 0)),
+                hjust=float(hjusts[i]),
+                vjust=float(vjusts[i]),
+                rot=float(angles[i]),
                 gp=Gpar(
                     col=col_i,
                     fontsize=float(row.get("size", 11 / PT)) * size_mul,
+                    fontfamily=row.get("family", ""),
+                    fontface=row.get("fontface", 1),
+                    lineheight=float(row.get("lineheight", 1.2)),
                 ),
                 name=f"text.{i}",
             ))
 
         return _ggname("geom_text", grob_tree(*children))
+
+
+def _resolve_text_unit(size_unit: str) -> float:
+    """Multiplier from a text size unit to points (R ``resolve_text_unit``)."""
+    table = {"mm": PT, "pt": 1.0, "cm": PT * 10, "in": 72.27, "pc": 12.0}
+    if size_unit not in table:
+        cli_abort(f"size.unit must be one of {sorted(table)}, not {size_unit!r}")
+    return table[size_unit]
+
+
+def _just_dir(x: np.ndarray, tol: float = 0.001) -> np.ndarray:
+    """R ``just_dir`` (geom-text.R:242-247): 1=low, 2=mid, 3=high."""
+    out = np.full(len(x), 2, dtype=int)
+    out[x < 0.5 - tol] = 1
+    out[x > 0.5 + tol] = 3
+    return out
+
+
+def _compute_just(just: Any, a: Any, b: Any = None, angle: Any = 0) -> np.ndarray:
+    """Resolve hjust/vjust keywords to numbers (R geom-text.R:209-240).
+
+    ``inward``/``outward`` justify towards/away from the panel centre,
+    swapping axes when the text is rotated past 45 degrees.
+    """
+    just = np.asarray(just, dtype=object)
+    a = np.asarray(a, dtype=float)
+    b = a if b is None else np.asarray(b, dtype=float)
+    angle = np.broadcast_to(np.asarray(angle, dtype=float), just.shape).copy()
+
+    is_str = np.array([isinstance(v, str) for v in just])
+    if not is_str.any():
+        return just.astype(float)
+
+    dyn = np.array([isinstance(v, str) and ("inward" in v or "outward" in v)
+                    for v in just])
+    if dyn.any():
+        angle = angle % 360
+        angle = np.where(angle > 180, angle - 360, angle)
+        angle = np.where(angle < -180, angle + 360, angle)
+        rotated_forward = dyn & (angle > 45) & (angle < 135)
+        rotated_backwards = dyn & (angle < -45) & (angle > -135)
+        ab = np.where(rotated_forward | rotated_backwards, b, a)
+        just_swap = rotated_backwards | (np.abs(angle) > 135)
+        just_str = np.array([str(v) for v in just], dtype=object)
+        inward = ((just_str == "inward") & ~just_swap) | ((just_str == "outward") & just_swap)
+        outward = ((just_str == "outward") & ~just_swap) | ((just_str == "inward") & just_swap)
+        if inward.any():
+            names = np.array(["left", "middle", "right"], dtype=object)
+            just[inward] = names[_just_dir(ab[inward]) - 1]
+        if outward.any():
+            names = np.array(["right", "middle", "left"], dtype=object)
+            just[outward] = names[_just_dir(ab[outward]) - 1]
+
+    lookup = {"left": 0.0, "center": 0.5, "centre": 0.5, "right": 1.0,
+              "bottom": 0.0, "middle": 0.5, "top": 1.0}
+    return np.array([
+        lookup[v] if isinstance(v, str) else float(v) for v in just
+    ], dtype=float)
+
+
+def _label_grob(
+    label: str,
+    x: float,
+    y: Any,
+    hjust: float,
+    vjust: float,
+    padding_pt: List[float],
+    r_pt: float,
+    angle: float,
+    text_gp: Gpar,
+    rect_gp: Gpar,
+    name: Optional[str] = None,
+    units: str = "native",
+) -> Any:
+    """Text with a fitted rounded-rect background (R ``labelGrob``,
+    geom-label.R:135-187).
+
+    Box size = measured text + padding; top padding absorbs at least
+    the font descent, bottom sheds it, so labels balance optically.
+    ``y`` may be a float (in *units*) or a pre-built compound
+    :class:`Unit` — R's ``unit(vjust,"npc") + descent`` anchor (used
+    by ``draw_key_label``).
+    """
+    from grid_py._size import calc_string_metric
+
+    m = calc_string_metric(str(label), text_gp)
+    text_w = m["width"] * 72.27
+    text_h = (m["ascent"] + m["descent"]) * 72.27
+    descent = m["descent"] * 72.27
+
+    pad_top = max(padding_pt[0], descent)
+    pad_right = padding_pt[1]
+    pad_bottom = max(padding_pt[2] - descent, 0.0)
+    pad_left = padding_pt[3]
+
+    box_w = text_w + pad_left + pad_right
+    box_h = text_h + pad_top + pad_bottom
+
+    y_anchor = y if isinstance(y, Unit) else Unit(float(y), units)
+
+    if angle:
+        vp = Viewport(
+            angle=float(angle),
+            x=Unit(float(x), units), y=y_anchor,
+            width=Unit(0, "cm"), height=Unit(0, "cm"),
+        )
+        x_u = Unit(0.5, "npc")
+        y_u = Unit(0.5, "npc")
+    else:
+        vp = None
+        x_u = Unit(float(x), units)
+        y_u = y_anchor
+
+    box = roundrect_grob(
+        x=x_u,
+        y=y_u + Unit((0.5 - vjust) * box_h, "pt"),
+        width=Unit(box_w, "pt"),
+        height=Unit(box_h, "pt"),
+        just=(hjust, 0.5),
+        r=Unit(r_pt, "pt"),
+        gp=rect_gp,
+        name="box",
+    )
+    text = text_grob(
+        label=str(label),
+        x=x_u,
+        y=y_u + Unit((1 - vjust) * descent, "pt"),
+        hjust=float(hjust),
+        vjust=float(vjust),
+        # grid_py viewport angles rotate positions but not glyph
+        # direction, so the text carries the rotation itself.
+        rot=float(angle) if angle else 0.0,
+        gp=text_gp,
+    )
+    return GTree(children=GList(box, text), name=name, vp=vp)
 
 
 class GeomLabel(Geom):
@@ -1902,44 +2042,73 @@ class GeomLabel(Geom):
         coord: Any,
         parse: bool = False,
         na_rm: bool = False,
-        label_padding: Any = None,
-        label_r: Any = None,
+        label_padding: float = 0.25,
+        label_r: float = 0.15,
+        border_colour: Any = None,
+        text_colour: Any = None,
         size_unit: str = "mm",
         **params: Any,
     ) -> Any:
-        """Draw labelled text."""
+        """Draw labelled text (R geom-label.R:75-130).
+
+        ``label_padding`` / ``label_r`` are in lines (R defaults
+        ``unit(0.25, "lines")`` / ``unit(0.15, "lines")``); one line is
+        ``fontsize * lineheight``.
+        """
         coords = _coord_transform(coord, data, panel_params)
-        size_mul = PT
+        size_mul = _resolve_text_unit(size_unit)
+
+        angles = coords["angle"].to_numpy() if "angle" in coords.columns else np.zeros(len(coords))
+        vjusts = _compute_just(
+            coords["vjust"] if "vjust" in coords.columns else np.full(len(coords), 0.5),
+            coords["y"], coords["x"], angles,
+        )
+        hjusts = _compute_just(
+            coords["hjust"] if "hjust" in coords.columns else np.full(len(coords), 0.5),
+            coords["x"], coords["y"], angles,
+        )
 
         grobs = []
         for i in range(len(coords)):
             row = coords.iloc[i]
-            label = str(row["label"])
-            x_val = row["x"]
-            y_val = row["y"]
+            colour = row.get("colour", "black")
+            linewidth = float(row.get("linewidth", 0.25))
+            # R: text/border colours default to `colour`; alpha only
+            # enters the fill; linewidth 0 removes the border.
+            text_col = text_colour if text_colour is not None else colour
+            border_col = border_colour if border_colour is not None else colour
+            if linewidth == 0:
+                border_col = None
+            fontsize_pt = float(row.get("size", 11 / PT)) * size_mul
+            lineheight = float(row.get("lineheight", 1.2))
+            line_pt = fontsize_pt * lineheight
 
-            bg_grob = roundrect_grob(
-                x=x_val,
-                y=y_val,
-                gp=Gpar(
-                    col=row.get("colour", "black"),
-                    fill=_fill_alpha(row.get("fill", "white"), row.get("alpha")),
-                    lwd=row.get("linewidth", 0.25) * PT,
-                    lty=row.get("linetype", 1),
-                ),
-            )
-            txt_grob = text_grob(
-                label=label,
-                x=x_val,
-                y=y_val,
-                gp=Gpar(
-                    col=scales_alpha(row.get("colour", "black"), row.get("alpha")),
-                    fontsize=row.get("size", 11 / PT) * size_mul,
+            grobs.append(_label_grob(
+                label=str(row["label"]),
+                x=float(row["x"]),
+                y=float(row["y"]),
+                hjust=float(hjusts[i]),
+                vjust=float(vjusts[i]),
+                padding_pt=[label_padding * line_pt] * 4,
+                r_pt=label_r * line_pt,
+                angle=float(angles[i]),
+                text_gp=Gpar(
+                    col=_r_col_to_mpl(text_col),
+                    fontsize=fontsize_pt,
                     fontfamily=row.get("family", ""),
                     fontface=row.get("fontface", 1),
+                    lineheight=lineheight,
                 ),
-            )
-            grobs.extend([bg_grob, txt_grob])
+                rect_gp=Gpar(
+                    col=(_r_col_to_mpl(border_col)
+                         if border_col is not None else None),
+                    fill=_fill_alpha(row.get("fill", "white"), row.get("alpha")),
+                    # R: gg_par(lwd = linewidth) → gpar lwd = linewidth * .pt
+                    lwd=linewidth * PT,
+                    lty=row.get("linetype", 1),
+                ),
+                name=f"label.{i}",
+            ))
 
         return _ggname("geom_label", grob_tree(*grobs) if grobs else null_grob())
 
@@ -2076,42 +2245,13 @@ class GeomPolygon(Geom):
         if len(data) <= 1:
             return null_grob()
 
+        # R geom-polygon.R:15 munches unconditionally (no Cartesian
+        # fast path) — the vectorised gpar / subgroup handling below
+        # applies to Cartesian plots too.
         if _coord_is_linear(coord):
-            # ---- Cartesian fast path (unchanged) --------------------
-            coords = _coord_transform(coord, data, panel_params)
-            # R does NOT sort by group here — group is only used as
-            # polygon sub-id.  Sorting would scramble vertex order.
-            group_id = coords["group"].values if "group" in coords.columns else None
-
-            # Take first value per group for gpar
-            return _ggname(
-                "geom_polygon",
-                polygon_grob(
-                    x=coords["x"].values,
-                    y=coords["y"].values,
-                    id=group_id,
-                    default_units="native",
-                    gp=Gpar(
-                        col=coords["colour"].iloc[0] if "colour" in coords.columns else None,
-                        fill=_fill_alpha(
-                            coords["fill"].iloc[0] if "fill" in coords.columns else "grey35",
-                            coords["alpha"].iloc[0] if "alpha" in coords.columns else None,
-                        ),
-                        lwd=(
-                            coords["linewidth"].iloc[0] * PT
-                            if "linewidth" in coords.columns
-                            else 0.5 * PT
-                        ),
-                        lty=coords["linetype"].iloc[0] if "linetype" in coords.columns else 1,
-                        lineend=lineend,
-                        linejoin=linejoin,
-                        linemitre=linemitre,
-                    ),
-                ),
-            )
-
-        # ---- Non-linear path (R geom-polygon.R:15-71) ---------------
-        munched = _coord_munch(coord, data, panel_params, is_closed=True)
+            munched = _coord_transform(coord, data, panel_params)
+        else:
+            munched = _coord_munch(coord, data, panel_params, is_closed=True)
         if "group" not in munched.columns:
             munched = munched.copy()
             munched["group"] = 0
@@ -4684,15 +4824,37 @@ def geom_label(
     show_legend: Any = None,
     inherit_aes: bool = True,
     parse: bool = False,
+    label_padding: float = 0.25,
+    label_r: float = 0.15,
+    label_size: Any = None,
+    border_colour: Any = None,
+    border_color: Any = None,
+    text_colour: Any = None,
+    text_color: Any = None,
     size_unit: str = "mm",
     **kwargs: Any,
 ) -> Any:
-    """Create a label layer (text with background box)."""
+    """Create a label layer (R geom-label.R:13-54 signature).
+
+    ``label_padding`` / ``label_r`` are in lines (R defaults 0.25 / 0.15).
+    """
     layer = _layer_import()
+    if label_size is not None:
+        # R: deprecated in favour of the linewidth aesthetic (3.5.0)
+        cli_warn(
+            "geom_label(label_size) is deprecated; use geom_label(linewidth)."
+        )
+        kwargs.setdefault("linewidth", label_size)
     return layer(
         geom=GeomLabel, stat=stat, data=data, mapping=mapping,
         position=position, show_legend=show_legend, inherit_aes=inherit_aes,
-        params={"na_rm": na_rm, "parse": parse, "size_unit": size_unit, **kwargs},
+        params={
+            "na_rm": na_rm, "parse": parse,
+            "label_padding": label_padding, "label_r": label_r,
+            "border_colour": border_color if border_color is not None else border_colour,
+            "text_colour": text_color if text_color is not None else text_colour,
+            "size_unit": size_unit, **kwargs,
+        },
     )
 
 

@@ -12,6 +12,7 @@ implementations.
 from __future__ import annotations
 
 import inspect
+import math
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -1188,35 +1189,47 @@ def _contour_breaks(
     -------
     np.ndarray
     """
-    if breaks is not None:
-        if callable(breaks):
-            breaks = breaks(z_range)
-        return np.asarray(breaks, dtype=float)
-
     z_range = np.asarray(z_range, dtype=float)
 
-    if bins is None and binwidth is None:
-        if np.any(np.isnan(z_range)):
-            return np.asarray([np.nan])
-        if z_range[0] == z_range[1]:
-            return np.asarray([z_range[0]])
-        from scales import breaks_extended
-        return np.asarray(breaks_extended(n=10)(z_range), dtype=float)
+    # R stat-contour.R:138-140: numeric breaks pass through
+    if breaks is not None and not callable(breaks):
+        return np.asarray(breaks, dtype=float)
+
+    from scales import fullseq
+    from scales.breaks import _pretty
+
+    breaks_fun = fullseq
+    if callable(breaks):
+        breaks_fun = breaks
+    elif bins is None and binwidth is None:
+        # R stat-contour.R:147: pretty(), unlike breaks_extended, always
+        # covers the range — the density peak must sit in the top band.
+        return _pretty(z_range[0], z_range[1], n=10)
 
     if bins is not None:
+        # R stat-contour.R:152-173: round range outward to a nice
+        # accuracy so the bins span the data
+        accuracy = _signif(float(z_range[1] - z_range[0]), 1) / 10
+        z0 = math.floor(z_range[0] / accuracy) * accuracy
+        z1 = math.ceil(z_range[1] / accuracy) * accuracy
         if bins == 1:
-            return z_range.copy()
-        bw = (z_range[1] - z_range[0]) / (bins - 1)
-        result = np.arange(z_range[0], z_range[1] + bw, bw)
+            return np.asarray([z0, z1])
+        binwidth = (z1 - z0) / (bins - 1)
+        result = np.asarray(breaks_fun((z0, z1), binwidth), dtype=float)
+        # Sometimes the above sequence yields one bin too few
         if len(result) < bins + 1:
-            bw = (z_range[1] - z_range[0]) / bins
-            result = np.arange(z_range[0], z_range[1] + bw, bw)
+            binwidth = (z1 - z0) / bins
+            result = np.asarray(breaks_fun((z0, z1), binwidth), dtype=float)
         return result
 
-    if binwidth is not None:
-        return np.arange(z_range[0], z_range[1] + binwidth, binwidth)
+    return np.asarray(breaks_fun(z_range, binwidth), dtype=float)
 
-    return np.linspace(z_range[0], z_range[1], 11)
+
+def _signif(x: float, digits: int) -> float:
+    """R ``signif`` — round to *digits* significant digits."""
+    if x == 0 or not np.isfinite(x):
+        return x
+    return round(x, -int(math.floor(math.log10(abs(x)))) + (digits - 1))
 
 
 # ---------------------------------------------------------------------------
@@ -1421,7 +1434,9 @@ def _contourpy_isobands(
                 rows_high.extend([float(hi)] * n_pts)
 
     df = pd.DataFrame({
-        "level": rows_level,
+        # R stat-contour.R:75: level is an ORDERED factor — this routes
+        # the default fill scale to viridis instead of hue.
+        "level": pd.Categorical(rows_level, categories=level_labels, ordered=True),
         "x": rows_x,
         "y": rows_y,
         "piece": rows_piece,
@@ -1444,25 +1459,43 @@ def _pretty_isoband_levels(
     """
     lows = np.asarray(lows, dtype=float)
     highs = np.asarray(highs, dtype=float)
-    breaks = np.unique(np.concatenate([lows, highs]))
 
     def _format_vec(vals: np.ndarray, dig: int) -> List[str]:
-        # R's format() with digits uses significant digits; Python's %g matches
-        # closely (both strip trailing zeros and pick exponential vs fixed
-        # automatically).
-        return [f"{v:.{dig}g}" for v in vals]
+        # R format(x, digits=, trim=TRUE) uses a COMMON decimal count
+        # for the whole vector, e.g. format(c(0,.02,.2), digits=3) ->
+        # "0.00" "0.02" "0.20".
+        decs = []
+        for v in vals:
+            if v == 0 or not np.isfinite(v):
+                decs.append(0)
+                continue
+            exp10 = math.floor(math.log10(abs(v)))
+            d_sig = max(0, dig - 1 - exp10)
+            s = f"{v:.{d_sig}f}"
+            if "." in s:
+                s = s.rstrip("0")
+                decs.append(len(s.split(".")[1]) if not s.endswith(".") else 0)
+            else:
+                decs.append(0)
+        d = max(decs) if decs else 0
+        return [f"{v:.{d}f}" for v in vals]
 
+    # R format() picks the decimals over the whole break set (lows and
+    # highs share boundaries, so format them together).
+    breaks = np.concatenate([lows, highs])
     dig = dig_lab
     while True:
         labels = _format_vec(breaks, dig)
-        if len(set(labels)) == len(labels):
+        uniq = _format_vec(np.unique(breaks), dig)
+        if len(set(uniq)) == len(uniq):
             break
         dig += 1
         if dig > 22:
             break
 
-    label_low = _format_vec(lows, dig)
-    label_high = _format_vec(highs, dig)
+    n = len(lows)
+    label_low = labels[:n]
+    label_high = labels[n:]
     return [f"({lo}, {hi}]" for lo, hi in zip(label_low, label_high)]
 
 
@@ -5096,6 +5129,11 @@ class StatContourFilled(Stat):
     """
 
     required_aes: List[str] = ["x", "y", "z"]
+    # R stat-contour.R:50: aes(order = after_stat(level), fill = after_stat(level))
+    default_aes: Dict[str, Any] = {
+        "order": AfterStat("level"),
+        "fill": AfterStat("level"),
+    }
     dropped_aes: List[str] = ["z", "weight"]
 
     def setup_params(self, data: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -5424,7 +5462,8 @@ class StatDensity2dFilled(StatDensity2d):
         ``"bands"``
     """
 
-    default_aes: Dict[str, Any] = {"colour": None, "fill": None}
+    # R stat-density-2d.R:96: aes(colour = NA, fill = after_stat(level))
+    default_aes: Dict[str, Any] = {"colour": None, "fill": AfterStat("level")}
     contour_type: str = "bands"
 
 

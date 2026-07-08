@@ -23,6 +23,17 @@ from ggplot2_py.coord import (
 )
 
 
+def _find_rect_children(grob):
+    """Recursively collect ``rect``-class grobs under *grob* (test helper)."""
+    out = []
+    cls = getattr(grob, "_grid_class", None)
+    if cls == "rect":
+        out.append(grob)
+    for child in (getattr(grob, "get_children", None) or (lambda: []))():
+        out.extend(_find_rect_children(child))
+    return out
+
+
 # ===========================================================================
 # Base Coord abstract methods (lines 352, 371, 385, 399)
 # ===========================================================================
@@ -76,6 +87,29 @@ class TestCoordCartesian:
         result = c.render_fg(pp, None)
         assert result is not None
 
+    def test_render_fg_draws_panel_border_when_visible(self):
+        # R Coord$render_fg (coord-.R:532-534): element_render(theme,
+        # "panel.border", fill = NA) — theme_bw()'s border must be a
+        # real (non-null) grob, and its fill must be transparent (NA),
+        # not the element's own opaque fill (which would paint over
+        # every data point drawn under it). Regression test for a bug
+        # where `fill=None` collided with "argument omitted" in
+        # _grob_from_rect and fell through to element.fill='white'.
+        import ggplot2_py as gg
+        c = CoordCartesian()
+        theme = gg.theme_bw()
+        border = c.render_fg({}, theme)
+        assert getattr(border, "_grid_class", None) != "null"
+        assert border.gp.get("fill") in (None, [None])
+
+    def test_render_fg_blank_for_default_theme(self):
+        # theme_grey()'s panel.border is element_blank() — must stay a
+        # null grob (no visual change for the default theme).
+        import ggplot2_py as gg
+        c = CoordCartesian()
+        border = c.render_fg({}, gg.theme_grey())
+        assert getattr(border, "_grid_class", None) == "null"
+
     def test_render_axis_h(self):
         c = CoordCartesian()
         pp = {"x_range": [0, 10], "y_range": [0, 10], "x.range": [0, 10], "y.range": [0, 10]}
@@ -94,6 +128,22 @@ class TestCoordCartesian:
 # ===========================================================================
 
 class TestCoordPolar:
+    def test_render_fg_border_is_transparent_not_opaque(self):
+        # Regression: CoordPolar$render_fg's panel.border draw used
+        # fill=None, which _grob_from_rect treats as "argument
+        # omitted" and falls through to the element's own (opaque
+        # white) fill under theme_bw() -- hiding every wedge/bar drawn
+        # underneath. Must be fill=NA (transparent), matching R's
+        # element_render(theme, "panel.border", fill = NA).
+        import ggplot2_py as gg
+        c = CoordPolar()
+        pp = {"theta.range": [0, 1], "r.range": [0, 1]}
+        fg = c.render_fg(pp, gg.theme_bw())
+        found = _find_rect_children(fg)
+        assert found, "expected a panel.border rect grob in render_fg output"
+        for rect in found:
+            assert rect.gp.get("fill") in (None, [None])
+
     def test_transform(self):
         c = CoordPolar()
         pp = {"theta.range": [0, 1], "r.range": [0, 1], "arc": (0, 2 * math.pi),

@@ -698,3 +698,51 @@ class TestLayerParamSplitting:
         )
         assert geom_params["binaxis"] == "y" and stat_params["binaxis"] == "y"
         assert geom_params["binwidth"] == 1.5 and stat_params["binwidth"] == 1.5
+
+
+class TestGeomLabelParity:
+    """R geom-label.R / geom-text.R semantics."""
+
+    def test_compute_just_keywords(self):
+        from ggplot2_py.geom import _compute_just
+        import numpy as np
+        # inward: justify towards the panel centre (R geom-text.R:209-240)
+        out = _compute_just(np.array(["inward"] * 3, dtype=object),
+                            np.array([0.1, 0.5, 0.9]))
+        assert list(out) == [0.0, 0.5, 1.0]
+        out = _compute_just(np.array(["outward"] * 3, dtype=object),
+                            np.array([0.1, 0.5, 0.9]))
+        assert list(out) == [1.0, 0.5, 0.0]
+        # rotated past 45 degrees: axes swap
+        out = _compute_just(np.array(["inward"], dtype=object),
+                            np.array([0.1]), np.array([0.9]), np.array([90.0]))
+        assert list(out) == [1.0]
+
+    def test_label_grob_box_fits_text(self):
+        from ggplot2_py.geom import _label_grob
+        from grid_py import Gpar
+        g = _label_grob(
+            "hello", x=0.5, y=0.5, hjust=0.5, vjust=0.5,
+            padding_pt=[3.0] * 4, r_pt=1.5, angle=0,
+            text_gp=Gpar(fontsize=11), rect_gp=Gpar(col="black", fill="white"),
+        )
+        box = g.get_children()[0]
+        w_pt = float(box.width.values[0])
+        h_pt = float(box.height.values[0])
+        # box must fit the text plus padding: wider than tall, both > 2*pad
+        assert w_pt > h_pt > 6.0
+
+    def test_linewidth_zero_removes_border(self):
+        import numpy as np
+        data = pd.DataFrame({
+            "x": [1.0], "y": [1.0], "label": ["a"],
+            "colour": ["black"], "fill": ["white"], "alpha": [np.nan],
+            "size": [3.88], "angle": [0.0], "hjust": [0.5], "vjust": [0.5],
+            "family": [""], "fontface": [1], "lineheight": [1.2],
+            "linewidth": [0.0], "linetype": [1],
+        })
+        grob = GeomLabel().draw_panel(data, _PP, _COORD)
+        label_tree = grob.get_children()[0]
+        box = label_tree.get_children()[0]
+        # R: border.colour[linewidth == 0] <- NA → transparent stroke
+        assert box.gp.get("col") == [None]

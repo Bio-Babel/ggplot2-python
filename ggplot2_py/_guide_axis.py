@@ -221,7 +221,11 @@ def draw_axis(
     if len(breaks) == 0:
         return null_grob()
 
-    if len(break_labels) != len(breaks):
+    # break_labels=None means a labelless axis — ticks only (R
+    # censor_labels / draw_labels=FALSE, facet-.R:1414-1439).
+    if break_labels is None:
+        break_labels = []
+    elif len(break_labels) != len(breaks):
         break_labels = [str(round(b, 2)) for b in breaks]
 
     # --- Setup params (R: GuideAxis$setup_params, lines 275-306) ----------
@@ -384,8 +388,9 @@ def draw_axis(
     # N-dodge: split labels across groups (R: guide-axis.R:359-371)
     label_grobs = []
     dodge_groups = [[] for _ in range(n_dodge)]
-    for i in range(len(breaks)):
-        dodge_groups[i % n_dodge].append(i)
+    if break_labels:  # labelless axis (censored): no label grobs at all
+        for i in range(len(breaks)):
+            dodge_groups[i % n_dodge].append(i)
 
     el_name = f"axis.text.{aes}.{axis_position}"
     for dodge_idx, indices in enumerate(dodge_groups):
@@ -434,11 +439,12 @@ def draw_axis(
         # R grobHeight for text = ascent + descent (whole glyph box)
         max_label_h_in = max(max_label_h_in, m["ascent"] + m["descent"])
 
-    # Font descent for titleGrob height adjustment (R: margins.R:115-132)
-    descent_in = 0.0
-    for lbl in break_labels:
-        m = calc_string_metric(str(lbl), label_gp)
-        descent_in = max(descent_in, m["descent"])
+    # R font_descent() probes grobDescent(textGrob("gjpqyQ")) — the
+    # font's descent, not each label's own ink descent (margins.R:280).
+    descent_in = (
+        calc_string_metric("gjpqyQ", label_gp)["descent"]
+        if break_labels else 0.0
+    )
 
     # Account for rotation (R: margins.R:126-132)
     rad = math.radians(abs(rot) % 360) if rot != 0 else 0.0

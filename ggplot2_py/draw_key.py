@@ -265,29 +265,60 @@ def draw_key_label(
     params: Dict[str, Any],
     size: Any = None,
 ) -> Any:
-    """Draw a legend key for label geoms (text with background)."""
-    label = _get(data, "label", "a")
-    lwd = _get(data, "linewidth", 0.25)
-    return grob_tree(
-        roundrect_grob(
-            gp=Gpar(
-                col=_get(data, "colour", "black") if lwd > 0 else None,
-                fill=_fill_alpha(_get(data, "fill", "white"), _get(data, "alpha")),
-                lwd=lwd * _PT,
-                lty=_get(data, "linetype", 1),
-            ),
+    """Draw a legend key for label geoms (R legend-draw.R:331-363)."""
+    from grid_py._size import calc_string_metric
+    from ggplot2_py.geom import _label_grob, _compute_just
+    from ggplot2_py.theme_elements import _rotate_just
+
+    label = str(_get(data, "label", "a"))
+    lwd = float(_get(data, "linewidth", 0.25))
+    angle = float(_get(data, "angle", 0) or 0)
+    fontsize_pt = float(_get(data, "size", 3.88)) * _PT
+    lineheight = float(_get(data, "lineheight", 1.2))
+    line_pt = fontsize_pt * lineheight
+    padding = float((params or {}).get("label_padding", 0.25)) * line_pt
+    label_r = float((params or {}).get("label_r", 0.15)) * line_pt
+    border_col = (params or {}).get("border_colour")
+    text_col = (params or {}).get("text_colour")
+
+    text_gp = Gpar(
+        col=text_col if text_col is not None else _get(data, "colour", "black"),
+        fontsize=fontsize_pt,
+        fontfamily=_get(data, "family", ""),
+        fontface=_get(data, "fontface", 1),
+    )
+
+    # R: rotate_just(angle, hjust, vjust) gives the ANCHOR position so
+    # the label stays inside the key box when rotated; `just` passed to
+    # labelGrob below stays the un-rotated pair (the text's own
+    # alignment within its frame).
+    hjust = float(_compute_just([_get(data, "hjust", 0.5)], [0.5])[0])
+    vjust = float(_compute_just([_get(data, "vjust", 0.5)], [0.5])[0])
+    anchor_hjust, anchor_vjust = _rotate_just(angle, hjust, vjust)
+
+    # R: y = unit(vjust, "npc") + font_descent(...) — a key-box-only
+    # buffer (geom_label's draw_panel has no such pre-shift) so
+    # descenders aren't clipped at the bottom of the tiny key box.
+    descent_pt = calc_string_metric("gjpqyQ", text_gp)["descent"] * 72.27
+
+    return _label_grob(
+        label=label,
+        x=anchor_hjust, y=Unit(anchor_vjust, "npc") + Unit(descent_pt, "pt"),
+        hjust=hjust, vjust=vjust,
+        padding_pt=[padding] * 4,
+        r_pt=label_r,
+        angle=angle,
+        text_gp=text_gp,
+        rect_gp=Gpar(
+            # R: col = NA when lwd == 0, else border/data colour
+            col=(None if lwd == 0
+                 else (border_col if border_col is not None
+                       else _get(data, "colour", "black"))),
+            fill=_fill_alpha(_get(data, "fill", "white"), _get(data, "alpha")),
+            lwd=lwd * _PT,
+            lty=_get(data, "linetype", 1),
         ),
-        text_grob(
-            label=label,
-            x=0.5,
-            y=0.5,
-            gp=Gpar(
-                col=_alpha(_get(data, "colour", "black"), _get(data, "alpha")),
-                fontsize=(_get(data, "size", 3.88)) * _PT,
-                fontfamily=_get(data, "family", ""),
-                fontface=_get(data, "fontface", 1),
-            ),
-        ),
+        units="npc",
     )
 
 
