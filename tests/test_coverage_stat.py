@@ -116,10 +116,16 @@ class TestHasFlippedAes:
         df = pd.DataFrame({"x": [1], "y": [2]})
         assert _has_flipped_aes(df, {"orientation": "x"}) is False
 
-    def test_explicit_flipped_aes(self):
+    def test_flipped_aes_encoded_in_data(self):
+        # R has_flipped_aes reads the data's flipped_aes column (not a
+        # params entry): utilities.R:503-509.
+        df = pd.DataFrame({"x": [1], "flipped_aes": [True]})
+        assert _has_flipped_aes(df, {}) is True
+        df = pd.DataFrame({"x": [1], "flipped_aes": [False]})
+        assert _has_flipped_aes(df, {}) is False
+        # a params flipped_aes entry is NOT consulted (R parity)
         df = pd.DataFrame({"x": [1]})
-        assert _has_flipped_aes(df, {"flipped_aes": True}) is True
-        assert _has_flipped_aes(df, {"flipped_aes": False}) is False
+        assert _has_flipped_aes(df, {"flipped_aes": True}) is False
 
     def test_main_is_orthogonal_x_only(self):
         df = pd.DataFrame({"x": [1]})
@@ -129,13 +135,16 @@ class TestHasFlippedAes:
         df = pd.DataFrame({"y": [1]})
         assert _has_flipped_aes(df, {}, main_is_orthogonal=True) is False
 
-    def test_main_is_continuous_x_only(self):
-        df = pd.DataFrame({"x": [1]})
+    def test_main_is_continuous_discrete_axis(self):
+        # R: main_is_continuous only interprets the single-discrete-axis
+        # test (utilities.R:545-549); a lone continuous y gives FALSE.
+        df = pd.DataFrame({"y": [1.0]})
         assert _has_flipped_aes(df, {}, main_is_continuous=True) is False
-
-    def test_main_is_continuous_y_only(self):
-        df = pd.DataFrame({"y": [1]})
-        assert _has_flipped_aes(df, {}, main_is_continuous=True) is True
+        # discrete y + continuous x: flipped iff main axis is not the
+        # continuous one
+        df = pd.DataFrame({"x": [1.0, 2.0], "y": ["a", "b"]})
+        assert _has_flipped_aes(df, {}, main_is_continuous=False) is True
+        assert _has_flipped_aes(df, {}, main_is_continuous=True) is False
 
     def test_default(self):
         df = pd.DataFrame({"x": [1], "y": [2]})
@@ -808,8 +817,10 @@ class TestStatBinExtended:
         assert result["count"].sum() == pytest.approx(20)
 
     def test_compute_group_flipped(self):
+        # flipped_aes=True means the data carries y (R flip_data renames
+        # y -> x internally, then back)
         sb = StatBin()
-        df = pd.DataFrame({"x": np.arange(10, dtype=float)})
+        df = pd.DataFrame({"y": np.arange(10, dtype=float)})
         result = sb.compute_group(df, None, bins=5, flipped_aes=True)
         assert "y" in result.columns or "x" in result.columns
 
@@ -862,7 +873,7 @@ class TestStatCountExtended:
 
     def test_flipped(self):
         sc = StatCount()
-        df = pd.DataFrame({"x": ["a", "b", "a"]})
+        df = pd.DataFrame({"y": ["a", "b", "a"]})
         result = sc.compute_group(df, None, flipped_aes=True)
         assert isinstance(result, pd.DataFrame)
 
@@ -912,7 +923,7 @@ class TestStatDensityExtended:
 
     def test_flipped(self):
         sd = StatDensity()
-        df = pd.DataFrame({"x": np.random.normal(0, 1, 100)})
+        df = pd.DataFrame({"y": np.random.normal(0, 1, 100)})
         result = sd.compute_group(df, None, flipped_aes=True)
         assert len(result) > 0
 
@@ -1280,7 +1291,7 @@ class TestStatEcdf:
 
     def test_flipped(self):
         se = StatEcdf()
-        df = pd.DataFrame({"x": np.arange(10, dtype=float)})
+        df = pd.DataFrame({"y": np.arange(10, dtype=float)})
         result = se.compute_group(df, None, flipped_aes=True)
         assert isinstance(result, pd.DataFrame)
 

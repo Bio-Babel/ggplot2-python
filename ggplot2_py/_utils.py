@@ -120,40 +120,72 @@ def remove_missing(
 def resolution(x: Any, zero: bool = True, discrete: bool = False) -> float:
     """Compute the resolution of a numeric vector.
 
-    The resolution is the smallest non-zero difference between adjacent
-    unique sorted values.  This is useful for choosing default bin widths.
+    Faithful port of R ``resolution`` (utilities-resolution.R:23-45):
+    the smallest difference (above float tolerance) between adjacent
+    unique sorted values.
 
     Parameters
     ----------
     x : array-like
         Numeric values.
     zero : bool, optional
-        If ``True`` (default), include zero in the set of differences so
-        that the result is at most 1 when there is only one unique value.
+        If ``True`` (default), 0 is added to the value set before
+        differencing (R: ``unique0(c(0, x))``) — the gap between 0 and
+        the smallest magnitude value then also counts.
+    discrete : bool, optional
+        If ``True`` and *x* carries a discrete marker (Categorical /
+        object / bool dtype), the resolution is 1 (R:
+        ``is_mapped_discrete``).
 
     Returns
     -------
     float
         The resolution.
     """
-    if discrete:
-        return 1.0
-    x = np.asarray(x, dtype=float)
-    x = x[np.isfinite(x)]
-    if len(x) == 0:
+    # R also short-circuits `is.integer(x)` → 1.  That rule does NOT
+    # translate: R's integer class is an explicit marker (1L, seq_len),
+    # while pandas eagerly infers int64 for any whole-number data that
+    # R would store as double — porting it would give resolution 1 for
+    # ordinary numeric columns like [2, 10, 20, 50].
+    if discrete and _values_are_discrete(x):
         return 1.0
 
-    x = np.sort(np.unique(x))
-    if len(x) == 1:
-        return 1.0 if zero else 0.0
+    arr_raw = x.to_numpy() if isinstance(x, pd.Series) else np.asarray(x)
+    arr = np.asarray(arr_raw, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if len(arr) == 0:
+        return 1.0
+    # R: zero_range(range(x)) → 1
+    if np.min(arr) == np.max(arr):
+        return 1.0
 
-    diffs = np.diff(x)
+    vals = np.unique(arr)
     if zero:
-        diffs = np.concatenate([[0.0], diffs])
-    diffs = diffs[diffs > 0]
-    if len(diffs) == 0:
+        vals = np.unique(np.concatenate([[0.0], vals]))
+    d = np.diff(np.sort(vals))
+    tolerance = np.sqrt(np.finfo(float).eps)
+    if np.all(d < tolerance):
         return 1.0
-    return float(np.min(diffs))
+    return float(np.min(d[d > tolerance]))
+
+
+def _values_are_discrete(x: Any) -> bool:
+    """Whether *x* looks like a mapped-discrete column.
+
+    Stand-in for R's ``is_mapped_discrete`` class check: the port
+    stores mapped positions as plain floats, so discreteness is
+    detected from the container dtype instead.
+    """
+    if isinstance(x, pd.Categorical):
+        return True
+    if isinstance(x, pd.Series):
+        return (
+            isinstance(x.dtype, pd.CategoricalDtype)
+            or pd.api.types.is_object_dtype(x)
+            or pd.api.types.is_bool_dtype(x)
+        )
+    arr = np.asarray(x)
+    return arr.dtype.kind in ("O", "b", "U", "S")
 
 
 # ---------------------------------------------------------------------------

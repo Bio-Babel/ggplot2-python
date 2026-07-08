@@ -249,10 +249,13 @@ def test_geomsegment_polar_munches_each_segment():
     })
     grob = GeomSegment.draw_panel(GeomSegment(), df, PP, POLAR)
     lines = _find_grobs(grob, classes=("polyline", "lines"))
-    # Two segments → two munched polylines, each more than 2 points.
-    assert len(lines) == 2
-    for ln in lines:
-        assert len(_unit_values(ln.x)) > 2
+    # R GeomPath$draw_panel emits ONE polylineGrob whose `id` separates
+    # the two munched segments, each subdivided to more than 2 points.
+    assert len(lines) == 1
+    ids = np.asarray(lines[0].id)
+    assert len(np.unique(ids)) == 2
+    for uid in np.unique(ids):
+        assert int((ids == uid).sum()) > 2
 
 
 def test_geomsegment_cartesian_stays_segments():

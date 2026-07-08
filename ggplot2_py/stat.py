@@ -157,99 +157,123 @@ _R_QTYPE_TO_NUMPY_METHOD = {
 }
 
 
-def _flip_data(data: pd.DataFrame, flipped_aes: bool) -> pd.DataFrame:
-    """Swap x/y columns when orientation is flipped.
+# R ggplot-global.R:50-54 — paired x/y aesthetic name vectors used by
+# switch_orientation / flip_data.  Positions must stay aligned.
+_X_AES = ("x", "xmin", "xmax", "xend", "xintercept",
+          "xmin_final", "xmax_final", "xlower", "xmiddle", "xupper", "x0")
+_Y_AES = ("y", "ymin", "ymax", "yend", "yintercept",
+          "ymin_final", "ymax_final", "lower", "middle", "upper", "y0")
+_ORIENTATION_SWAP = {**dict(zip(_X_AES, _Y_AES)), **dict(zip(_Y_AES, _X_AES))}
 
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Input data.
-    flipped_aes : bool
-        Whether aesthetics are flipped.
 
-    Returns
-    -------
-    pd.DataFrame
-        Data with x/y columns swapped if *flipped_aes* is truthy.
+def _switch_orientation(aesthetics: List[str]) -> List[str]:
+    """Swap x-family aesthetic names with their y-family counterparts.
+
+    Port of R ``switch_orientation`` (utilities.R:400-414).
     """
+    return [_ORIENTATION_SWAP.get(a, a) for a in aesthetics]
+
+
+def _flip_data(data: pd.DataFrame, flipped_aes: Optional[bool] = None) -> pd.DataFrame:
+    """Rename columns so flipped data looks like x-oriented data.
+
+    Port of R ``flip_data`` (utilities.R:574-581): the columns are
+    *renamed* (x ↔ y, xmin ↔ ymin, ...), not copied — after flipping,
+    a y-only frame has no stale ``x`` twin left behind.
+    """
+    if flipped_aes is None:
+        flipped_aes = (
+            bool(data["flipped_aes"].any())
+            if "flipped_aes" in data.columns else False
+        )
     if not flipped_aes:
         return data
-    data = data.copy()
-    swap_pairs = [
-        ("x", "y"),
-        ("xmin", "ymin"),
-        ("xmax", "ymax"),
-        ("xend", "yend"),
-        ("xlower", "lower"),
-        ("xupper", "upper"),
-        ("xmiddle", "middle"),
-    ]
-    for a, b in swap_pairs:
-        a_val = data.get(a)
-        b_val = data.get(b)
-        if a_val is not None and a in data.columns:
-            data[b] = a_val
-        if b_val is not None and b in data.columns:
-            data[a] = b_val
-    return data
+    return data.rename(columns=_ORIENTATION_SWAP)
 
 
 def _has_flipped_aes(
     data: pd.DataFrame,
-    params: Dict[str, Any],
+    params: Optional[Dict[str, Any]] = None,
     *,
-    main_is_orthogonal: bool = False,
-    range_is_orthogonal: bool = False,
+    main_is_orthogonal: Optional[bool] = None,
+    range_is_orthogonal: Optional[bool] = None,
     group_has_equal: bool = False,
     ambiguous: bool = False,
     main_is_optional: bool = False,
     main_is_continuous: bool = False,
     default: bool = False,
 ) -> bool:
-    """Determine if the aesthetic orientation is flipped.
+    """Sniff the orientation of a bidirectional layer from its data.
 
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Layer data.
-    params : dict
-        Layer params.
-
-    Returns
-    -------
-    bool
+    Faithful port of R ``has_flipped_aes`` (utilities.R:498-572); the
+    numbered checks below run in R's order.  ``None`` for
+    *main_is_orthogonal* / *range_is_orthogonal* is R's ``NA`` (skip
+    that check).
     """
-    # Explicit orientation parameter takes precedence
+    params = params or {}
+
+    # 1. Is orientation already encoded in the data?
+    if "flipped_aes" in data.columns:
+        encoded = data["flipped_aes"]
+        non_na = encoded[encoded.notna()]
+        if len(non_na) > 0:
+            return bool(non_na.iloc[0])
+
+    # 2. Is orientation requested in the params?
     orientation = params.get("orientation", None)
-    if orientation is not None and orientation is not np.nan:
-        if isinstance(orientation, str):
-            if orientation.lower() == "y":
-                return True
-            elif orientation.lower() == "x":
+    if orientation is not None and not (
+        isinstance(orientation, float) and np.isnan(orientation)
+    ):
+        return orientation == "y"
+
+    def _aes(name: str) -> Any:
+        if name in data.columns:
+            return data[name]
+        return params.get(name)
+
+    x = _aes("x")
+    y = _aes("y")
+    xmin, ymin = _aes("xmin"), _aes("ymin")
+    xmax, ymax = _aes("xmax"), _aes("ymax")
+
+    # 3. Does a single x or y aesthetic correspond to an orientation?
+    if main_is_orthogonal is not None and ((x is None) != (y is None)):
+        return (y is None) == main_is_orthogonal
+
+    has_x = x is not None
+    has_y = y is not None
+
+    # 4. Does a provided range indicate an orientation?
+    if range_is_orthogonal is not None:
+        if ymin is not None or ymax is not None:
+            return not range_is_orthogonal
+        if xmin is not None or xmax is not None:
+            return range_is_orthogonal
+
+    # 5. Ambiguous layers only take a hint from params$orientation.
+    if ambiguous:
+        return False
+
+    # 6. Is there a single discrete positional axis?
+    y_is_discrete = _is_mapped_discrete(y)
+    x_is_discrete = _is_mapped_discrete(x)
+    if y_is_discrete != x_is_discrete:
+        return y_is_discrete != main_is_continuous
+
+    # 7. Does each group have a single x or y value?
+    if group_has_equal and "group" in data.columns:
+        if has_x:
+            if not hasattr(x, "__len__") or len(pd.unique(np.asarray(x))) == 1:
                 return False
+            if data.groupby("group")["x"].nunique(dropna=False).eq(1).all():
+                return False
+        if has_y:
+            if not hasattr(y, "__len__") or len(pd.unique(np.asarray(y))) == 1:
+                return True
+            if data.groupby("group")["y"].nunique(dropna=False).eq(1).all():
+                return True
 
-    # Check for explicit flipped_aes parameter
-    if "flipped_aes" in params:
-        fa = params["flipped_aes"]
-        if isinstance(fa, bool):
-            return fa
-
-    has_x = "x" in data.columns or "x" in params
-    has_y = "y" in data.columns or "y" in params
-
-    if main_is_orthogonal:
-        if has_x and not has_y:
-            return True
-        if has_y and not has_x:
-            return False
-
-    if main_is_continuous:
-        if has_x and not has_y:
-            return False
-        if has_y and not has_x:
-            return True
-
-    return default
+    return bool(default)
 
 
 def _is_mapped_discrete(x: Any) -> bool:
@@ -1908,7 +1932,8 @@ def _densitybin(
     if binwidth is None:
         binwidth = (range_[1] - range_[0]) / 30
 
-    order = np.argsort(x)
+    # R sorts weight by order(x) (stable) then x itself
+    order = np.argsort(x, kind="stable")
     x_sorted = x[order]
     w_sorted = weight[order]
 
@@ -2105,7 +2130,8 @@ class Stat(GGProto):
             data["group"] = 1
 
         results = []
-        for group_val, group_data in data.groupby("group", sort=False):
+        # R stat-.R:256 splits by group in ascending order
+        for group_val, group_data in data.groupby("group", sort=True):
             try:
                 new = self.compute_group(group_data, scales, **params)
             except Exception as e:
@@ -6073,41 +6099,83 @@ def stat_ydensity(
 # ============================================================================
 
 class StatBindot(Stat):
-    """Dot-density binning for dot plots.
-
-    Attributes
-    ----------
-    required_aes : list
-        ``["x"]``
-    non_missing_aes : list
-        ``["weight"]``
-    dropped_aes : list
-        ``["weight", "bin", "bincenter"]``
-    """
+    """Dot-density binning for dot plots (R stat-bindot.R)."""
 
     required_aes: List[str] = ["x"]
     non_missing_aes: List[str] = ["weight"]
-    default_aes: Dict[str, Any] = {}
+    # R stat-bindot.R:8: aes(y = after_stat(count)) — y is a stat
+    # product, which is why geom_dotplot works from aes(x) alone.
+    default_aes: Dict[str, Any] = {"y": AfterStat("count")}
     dropped_aes: List[str] = ["weight", "bin", "bincenter"]
 
     def setup_params(self, data: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate parameters.
-
-        Parameters
-        ----------
-        data : pd.DataFrame
-        params : dict
-
-        Returns
-        -------
-        dict
-        """
         if params.get("binwidth") is None:
             cli_inform(
                 "Bin width defaults to 1/30 of the range of the data. "
                 "Pick better value with binwidth."
             )
         return params
+
+    def compute_layer(self, data: pd.DataFrame, params: Dict[str, Any], layout: Any) -> pd.DataFrame:
+        # R stat-bindot.R:20-23: remove missing values across ALL
+        # columns before the panel split (the base class only checks
+        # required + non-missing aes).
+        data = remove_missing(
+            data,
+            na_rm=params.get("na_rm", params.get("na.rm", False)),
+            name=snake_class(self),
+        )
+        return super().compute_layer(data, params, layout)
+
+    def compute_panel(
+        self,
+        data: pd.DataFrame,
+        scales: Any,
+        binwidth: Optional[float] = None,
+        binaxis: str = "x",
+        method: str = "dotdensity",
+        binpositions: str = "bygroup",
+        origin: Optional[float] = None,
+        width: float = 0.9,
+        drop: bool = False,
+        right: bool = True,
+        **params: Any,
+    ) -> pd.DataFrame:
+        """Panel-level pre-binning (R stat-bindot.R:25-60).
+
+        With ``method="dotdensity"`` and ``binpositions="all"`` the bin
+        centers are computed over the whole panel before the group
+        split, so dot stacks align across groups.
+        """
+        # R checks weights inside compute_group (stop_input_type); the
+        # port checks here because the base compute_panel downgrades
+        # compute_group exceptions to warnings — the R behaviour is a
+        # hard error.
+        if "weight" in data.columns:
+            w = data["weight"].to_numpy(dtype=float)
+            w = w[~np.isnan(w)]
+            if not (np.all(w >= 0) and np.all(w == np.floor(w))):
+                cli_abort("weight must be nonnegative integers.")
+
+        if method == "dotdensity" and binpositions == "all":
+            axis = "x" if binaxis == "x" else "y"
+            weight = data["weight"].to_numpy() if "weight" in data.columns else None
+            newdata = _densitybin(
+                data[axis].to_numpy(), weight=weight, binwidth=binwidth,
+            )
+            data = data.sort_values(axis, kind="stable").reset_index(drop=True)
+            newdata = newdata.sort_values("x", kind="stable").reset_index(drop=True)
+
+            data["bin"] = newdata["bin"]
+            data["binwidth"] = newdata["binwidth"]
+            data["weight"] = newdata["weight"]
+            data["bincenter"] = newdata["bincenter"]
+
+        return super().compute_panel(
+            data, scales, binwidth=binwidth, binaxis=binaxis, method=method,
+            binpositions=binpositions, origin=origin, width=width, drop=drop,
+            right=right,
+        )
 
     def compute_group(
         self,
@@ -6123,77 +6191,67 @@ class StatBindot(Stat):
         right: bool = True,
         **kwargs: Any,
     ) -> pd.DataFrame:
-        """Compute dot-density bins.
-
-        Parameters
-        ----------
-        data : pd.DataFrame
-        scales : dict-like
-        binwidth : float, optional
-        binaxis : str
-        method : str
-        binpositions : str
-        origin : float, optional
-        width : float
-        drop : bool
-        right : bool
-
-        Returns
-        -------
-        pd.DataFrame
-        """
+        """Bin one group's values (R stat-bindot.R:62-127)."""
+        midline: Optional[float] = None
         if binaxis == "x":
-            values = data["x"].values
+            values = data["x"].to_numpy()
             scale = scales.get("x") if isinstance(scales, dict) else getattr(scales, "x", None)
         else:
-            values = data["y"].values if "y" in data.columns else data["x"].values
+            values = data["y"].to_numpy()
             scale = scales.get("y") if isinstance(scales, dict) else getattr(scales, "y", None)
+            # The middle of each group, on the stack axis
+            midline = float((data["x"].min() + data["x"].max()) / 2)
 
-        weight = data["weight"].values if "weight" in data.columns else None
+        weight = data["weight"].to_numpy() if "weight" in data.columns else None
 
         if scale is not None and hasattr(scale, "dimension"):
             range_ = tuple(scale.dimension())
         else:
+            # Direct compute_group calls in tests supply no scales.
             range_ = (np.nanmin(values), np.nanmax(values))
 
         if method == "histodot":
             bins_obj = _compute_bins(
                 values, scale,
-                binwidth=binwidth, bins=30, boundary=origin,
-                closed="right" if right else "left",
+                breaks=None, binwidth=binwidth, bins=30, center=None,
+                boundary=origin, closed="right" if right else "left",
             )
             result = _bin_vector(values, bins_obj, weight=weight, pad=False)
-            result.rename(columns={"width": "binwidth", "x": "bincenter"}, inplace=True)
-        else:
-            # Dot density method
-            result = _densitybin(values, weight=weight, binwidth=binwidth, range_=range_)
+            result = result.rename(columns={"width": "binwidth", "x": "bincenter"})
+        elif method == "dotdensity":
+            # (If binpositions=="all", compute_panel already binned.)
+            if binpositions == "bygroup":
+                result = _densitybin(
+                    values, weight=weight, binwidth=binwidth, range_=range_,
+                )
+            else:
+                result = data
             if result.empty:
                 return pd.DataFrame()
 
-            # Collapse bins
-            collapsed = result.groupby("bincenter").agg(
-                binwidth=("binwidth", "first"),
-                count=("weight", "sum"),
-            ).reset_index()
+            # Collapse each bin and get a count
+            result = (
+                result.groupby("bincenter", sort=True)
+                .agg(binwidth=("binwidth", "first"), count=("weight", "sum"))
+                .reset_index()
+            )
 
-            total = collapsed["count"].sum()
-            if total > 0:
-                collapsed.loc[collapsed["count"].isna(), "count"] = 0
-                collapsed["ncount"] = collapsed["count"] / collapsed["count"].abs().max()
+            if result["count"].sum(skipna=True) != 0:
+                result.loc[result["count"].isna(), "count"] = 0
+                result["ncount"] = result["count"] / result["count"].abs().max()
                 if drop:
-                    collapsed = collapsed[collapsed["count"] > 0]
-            result = collapsed
+                    result = result[result["count"] > 0].reset_index(drop=True)
+        else:
+            cli_abort(f"method must be 'dotdensity' or 'histodot', not {method!r}")
 
         if binaxis == "x":
-            if "bincenter" in result.columns:
-                result.rename(columns={"bincenter": "x"}, inplace=True)
-            result["width"] = result.get("binwidth", binwidth)
+            result = result.rename(columns={"bincenter": "x"})
+            # For x binning, the width of the geoms is same as the width of the bin
+            result["width"] = result["binwidth"]
         else:
-            if "bincenter" in result.columns:
-                result.rename(columns={"bincenter": "y"}, inplace=True)
-            if "x" in data.columns:
-                result["x"] = np.mean([data["x"].min(), data["x"].max()])
-
+            result = result.rename(columns={"bincenter": "y"})
+            # For y binning, set the x midline (needed for continuous x axis)
+            result["x"] = midline
         return result
 
 

@@ -619,21 +619,40 @@ class TestGeomSpoke:
 
 class TestGeomErrorbar:
     def test_required_aes(self):
-        assert "ymin" in GeomErrorbar.required_aes
-        assert "ymax" in GeomErrorbar.required_aes
+        # R geom-errorbar.R:18: c("x|y", "ymin|xmin", "ymax|xmax")
+        assert "ymin|xmin" in GeomErrorbar.required_aes
+        assert "ymax|xmax" in GeomErrorbar.required_aes
 
     def test_setup_params(self):
         g = GeomErrorbar()
-        params = g.setup_params(pd.DataFrame(), {})
-        assert "flipped_aes" in params
+        df = pd.DataFrame({"x": [1.0], "ymin": [0.0], "ymax": [2.0]})
+        params = g.setup_params(df, {})
+        assert params["flipped_aes"] is False
+
+    def test_setup_params_flipped(self):
+        # y/xmin/xmax → orientation sniffed as flipped
+        # (R has_flipped_aes with range_is_orthogonal = TRUE).
+        g = GeomErrorbar()
+        df = pd.DataFrame({"y": [1.0], "xmin": [0.0], "xmax": [2.0]})
+        params = g.setup_params(df, {})
+        assert params["flipped_aes"] is True
+
+    def test_setup_params_missing_aes_aborts(self):
+        # R GeomLinerange$setup_params aborts when neither
+        # (x, ymin, ymax) nor (y, xmin, xmax) is supplied.
+        g = GeomErrorbar()
+        with pytest.raises(ValueError):
+            g.setup_params(pd.DataFrame(), {})
 
     def test_setup_data(self):
         g = GeomErrorbar()
         df = pd.DataFrame({"x": [1.0], "ymin": [0.0], "ymax": [2.0]})
-        result = g.setup_data(df, {})
-        assert "xmin" in result.columns
-        assert "xmax" in result.columns
-        assert "width" in result.columns
+        result = g.setup_data(df, {"width": 0.4})
+        assert result["xmin"].iloc[0] == pytest.approx(0.8)
+        assert result["xmax"].iloc[0] == pytest.approx(1.2)
+        # R: transform(..., width = NULL) — width is dropped so
+        # use_defaults later re-broadcasts the geom default.
+        assert "width" not in result.columns
 
 
 class TestGeomErrorbarh:
@@ -642,8 +661,9 @@ class TestGeomErrorbarh:
 
     def test_deprecation_warning(self):
         g = GeomErrorbarh()
+        df = pd.DataFrame({"y": [1.0], "xmin": [0.0], "xmax": [2.0]})
         with pytest.warns(FutureWarning):
-            g.setup_params(pd.DataFrame(), {})
+            g.setup_params(df, {})
 
 
 class TestGeomCrossbar:

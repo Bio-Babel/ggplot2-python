@@ -245,7 +245,7 @@ def draw_key_dotplot(
     params: Dict[str, Any],
     size: Any = None,
 ) -> Any:
-    """Draw a legend key for dotplot geoms."""
+    """Draw a legend key for dotplot geoms (R legend-draw.R:250-260)."""
     return points_grob(
         x=0.5,
         y=0.5,
@@ -255,6 +255,7 @@ def draw_key_dotplot(
             col=_alpha(_get(data, "colour", "black"), _get(data, "alpha")),
             fill=_fill_alpha(_get(data, "fill", "black"), _get(data, "alpha")),
             lty=_get(data, "linetype", 1),
+            lineend=(params or {}).get("lineend", "butt"),
         ),
     )
 

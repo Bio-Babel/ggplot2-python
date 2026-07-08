@@ -223,19 +223,27 @@ def _split_params(
     # layer() entry point; ``layer()`` already did so before passing
     # ``params`` here, so just normalise the dict type.
     params = dict(params)
+    # R layer.R:76-78 intersects each bucket INDEPENDENTLY — a name can
+    # land in several buckets (e.g. geom_dotplot's binaxis reaches both
+    # the stat and the geom; width is an aes param AND a stat param).
     aes_params: Dict[str, Any] = {}
     geom_params: Dict[str, Any] = {}
     stat_params: Dict[str, Any] = {}
 
     for k, v in params.items():
+        known = False
         if k in all_aes:
             aes_params[k] = v
-        elif k in geom_param_names:
+            known = True
+        if k in geom_param_names:
             geom_params[k] = v
-        elif k in stat_param_names:
+            known = True
+        if k in stat_param_names:
             stat_params[k] = v
-        else:
-            # Unknown params go to geom_params by default
+            known = True
+        if not known:
+            # The port keeps R's "warn and ignore" as "pass to geom" —
+            # geoms accept **params, so unknown keys surface downstream.
             geom_params[k] = v
 
     return geom_params, stat_params, aes_params

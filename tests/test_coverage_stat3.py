@@ -873,3 +873,49 @@ class TestSummaryHelpers:
         y = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         result = median_hilow(y)
         assert isinstance(result, pd.DataFrame)
+
+
+class TestStatBindotParity:
+    """R stat-bindot.R semantics validated against gold-standard runs."""
+
+    def test_default_aes_y_is_count(self):
+        # R stat-bindot.R:8 aes(y = after_stat(count)) — geom_dotplot
+        # works from aes(x) alone.
+        from ggplot2_py.aes import AfterStat
+        assert isinstance(StatBindot.default_aes.get("y"), AfterStat)
+
+    def test_weight_must_be_whole_nonnegative(self):
+        df = pd.DataFrame({"x": [1.0, 2.0], "weight": [0.5, 1.0], "group": [1, 1]})
+        with pytest.raises(ValueError):
+            StatBindot().compute_panel(df, {}, binwidth=1.0)
+        df2 = pd.DataFrame({"x": [1.0, 2.0], "weight": [-1, 1], "group": [1, 1]})
+        with pytest.raises(ValueError):
+            StatBindot().compute_panel(df2, {}, binwidth=1.0)
+
+    def test_binaxis_y_sets_midline(self):
+        df = pd.DataFrame({"x": [1.0, 3.0, 1.0], "y": [1.0, 2.0, 5.0]})
+        result = StatBindot().compute_group(df, {}, binaxis="y", binwidth=1.0)
+        # R: data$x <- midline = mean(range(data$x)) = 2
+        assert (result["x"] == 2.0).all()
+        assert "y" in result.columns
+
+    def test_binpositions_all_aligns_bins(self):
+        # bins computed over the whole panel: both groups share centers
+        df = pd.DataFrame({
+            "x": [0.0, 0.0, 0.0, 0.0], "y": [1.0, 1.2, 1.1, 1.3],
+            "group": [1, 1, 2, 2],
+        })
+        result = StatBindot().compute_panel(
+            df, {}, binaxis="y", method="dotdensity",
+            binpositions="all", binwidth=0.5,
+        )
+        centers = sorted(result["y"].unique())
+        assert len(centers) == 1  # all four values fall in one shared bin
+
+    def test_dotdensity_counts(self):
+        # Wilkinson binning: [1, 1.2] bin, [2.5] bin with binwidth 0.5
+        df = pd.DataFrame({"x": [1.0, 1.2, 2.5]})
+        result = StatBindot().compute_group(df, {}, binwidth=0.5)
+        assert list(result["count"]) == [2, 1]
+        assert list(result["x"]) == [1.1, 2.5]
+        assert (result["binwidth"] == 0.5).all()

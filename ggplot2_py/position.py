@@ -102,30 +102,11 @@ def _check_required_aesthetics(
 def _resolution(x: np.ndarray, zero: bool = True) -> float:
     """Compute the resolution of a numeric vector.
 
-    Parameters
-    ----------
-    x : array-like
-    zero : bool
-
-    Returns
-    -------
-    float
+    Thin wrapper over :func:`ggplot2_py._utils.resolution` (the
+    R-faithful implementation) kept for backwards compatibility.
     """
-    x = np.asarray(x, dtype=float)
-    x = x[np.isfinite(x)]
-    if len(x) < 2:
-        return 1.0
-    unique_vals = np.unique(x)
-    if len(unique_vals) < 2:
-        return 1.0
-    diffs = np.diff(np.sort(unique_vals))
-    diffs = diffs[diffs > 0]
-    if len(diffs) == 0:
-        return 1.0
-    res = float(np.min(diffs))
-    if zero:
-        res = min(res, abs(float(unique_vals[0]))) if unique_vals[0] != 0 else res
-    return res
+    from ggplot2_py._utils import resolution
+    return resolution(x, zero=zero)
 
 
 def _collide(

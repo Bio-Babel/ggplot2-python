@@ -519,7 +519,8 @@ class TestGeomErrorbarhDeprecation:
     def test_setup_params_warns(self):
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            GeomErrorbarh().setup_params(_base_df(), {})
+            GeomErrorbarh().setup_params(
+                _base_df(ymin=[0.5, 1.5, 2.5], ymax=[1.5, 2.5, 3.5]), {})
             assert any(issubclass(x.category, FutureWarning) for x in w)
 
 
@@ -584,7 +585,8 @@ class TestGeomLinerangeDraw:
 
 class TestGeomPointrangeDraw:
     def test_setup_params(self):
-        params = GeomPointrange().setup_params(_base_df(), {})
+        params = GeomPointrange().setup_params(
+            _base_df(ymin=[0.5, 1.5, 2.5], ymax=[1.5, 2.5, 3.5]), {})
         assert "fatten" in params
 
     def test_setup_data(self):
@@ -741,7 +743,9 @@ class TestGeomViolinDraw:
 
 class TestGeomDotplotDraw:
     def test_draw_group(self):
-        df = _base_df()
+        # draw_group consumes stat/setup_data products: binwidth + stackpos
+        # (R geom-dotplot.R:294 tdata$binwidth[1], :303 tdata$stackpos)
+        df = _base_df(binwidth=[0.5, 0.5, 0.5], stackpos=[0.5, 0.5, 0.5])
         result = GeomDotplot().draw_group(df, _PP, _COORD)
         assert result is not None
 

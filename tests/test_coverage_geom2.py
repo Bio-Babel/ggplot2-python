@@ -299,14 +299,16 @@ class TestGeomErrorbarDraw:
         assert GeomErrorbar().draw_panel(data, _PP, _COORD) is not None
 
     def test_setup_params(self):
-        assert "flipped_aes" in GeomErrorbar().setup_params(pd.DataFrame(), {})
+        data = pd.DataFrame({"x": [1.0], "ymin": [0.5], "ymax": [1.5]})
+        assert "flipped_aes" in GeomErrorbar().setup_params(data, {})
 
 
 class TestGeomErrorbarhDraw:
     def test_deprecation(self):
+        data = pd.DataFrame({"y": [1.0], "xmin": [0.5], "xmax": [1.5]})
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            assert "flipped_aes" in GeomErrorbarh().setup_params(pd.DataFrame(), {})
+            assert "flipped_aes" in GeomErrorbarh().setup_params(data, {})
 
 
 class TestGeomCrossbarDraw:
@@ -332,7 +334,8 @@ class TestGeomLinerangeDraw:
         assert GeomLinerange().draw_panel(data, _PP, _COORD) is not None
 
     def test_setup_params(self):
-        assert "flipped_aes" in GeomLinerange().setup_params(pd.DataFrame(), {})
+        data = pd.DataFrame({"x": [1.0], "ymin": [0.0], "ymax": [2.0]})
+        assert "flipped_aes" in GeomLinerange().setup_params(data, {})
 
     def test_setup_data(self):
         data = pd.DataFrame({"x": [1.0], "ymin": [0.0], "ymax": [2.0]})
@@ -347,7 +350,8 @@ class TestGeomPointrangeDraw:
         assert GeomPointrange().draw_panel(data, _PP, _COORD) is not None
 
     def test_setup_params(self):
-        assert "fatten" in GeomPointrange().setup_params(pd.DataFrame(), {})
+        data = pd.DataFrame({"x": [1.0], "ymin": [0.0], "ymax": [2.0]})
+        assert "fatten" in GeomPointrange().setup_params(data, {})
 
 
 class TestGeomBoxplotDraw:
@@ -409,9 +413,24 @@ class TestGeomViolinDraw:
 
 class TestGeomDotplotDraw:
     def test_draw(self):
-        data = pd.DataFrame({"x": [1.0, 2.0], "y": [1.0, 1.0],
+        # draw_group consumes stat/setup_data products: binwidth + stackpos
+        # (R geom-dotplot.R:294 tdata$binwidth[1], :303 tdata$stackpos)
+        data = pd.DataFrame({"x": [1.0, 2.0], "y": [0.0, 0.0],
+            "binwidth": [0.5]*2, "stackpos": [0.5, 0.5],
             "colour": ["black"]*2, "fill": ["black"]*2, "alpha": [1.0]*2})
         assert GeomDotplot().draw_group(data, _PP, _COORD) is not None
+
+    def test_setup_data_expands_counts(self):
+        data = pd.DataFrame({
+            "x": [1.0, 2.0], "y": [2.0, 3.0], "count": [2, 3],
+            "binwidth": [0.5]*2, "PANEL": [1]*2, "group": [1]*2,
+        })
+        out = GeomDotplot().setup_data(data, {"binaxis": "x"})
+        assert len(out) == 5
+        # up-stacking: countidx-0.5 within each x
+        assert list(out[out["x"] == 1.0]["stackpos"]) == [0.5, 1.5]
+        assert list(out[out["x"] == 2.0]["stackpos"]) == [0.5, 1.5, 2.5]
+        assert (out["ymin"] == 0).all() and (out["ymax"] == 1).all()
 
 
 class TestGeomAblineDraw:
@@ -622,3 +641,60 @@ class TestGeomConstructors:
 
     def test_qq_line(self):
         assert geom_qq_line() is not None
+
+
+class TestGeomDotplotSetupDataParity:
+    """R geom-dotplot.R:200-276 setup_data semantics."""
+
+    def _stat_out(self):
+        return pd.DataFrame({
+            "x": [1.0, 2.0], "y": [0.0, 0.0], "count": [3, 1],
+            "binwidth": [0.5]*2, "PANEL": [1]*2, "group": [1]*2,
+        })
+
+    def test_stackdir_center(self):
+        out = GeomDotplot().setup_data(self._stat_out(), {"stackdir": "center"})
+        # R: a - 1 - max(a - 1)/2 → for 3 dots: -1, 0, 1
+        assert list(out[out["x"] == 1.0]["stackpos"]) == [-1.0, 0.0, 1.0]
+        assert (out["ymin"] == -0.5).all() and (out["ymax"] == 0.5).all()
+
+    def test_stackdir_down(self):
+        out = GeomDotplot().setup_data(self._stat_out(), {"stackdir": "down"})
+        assert list(out[out["x"] == 1.0]["stackpos"]) == [-0.5, -1.5, -2.5]
+        assert (out["ymin"] == -1).all() and (out["ymax"] == 0).all()
+
+    def test_invalid_stackdir_aborts(self):
+        with pytest.raises(ValueError):
+            GeomDotplot().setup_data(self._stat_out(), {"stackdir": "sideways"})
+
+    def test_binaxis_y_bounding_box(self):
+        data = pd.DataFrame({
+            "x": [1.0, 1.0], "y": [2.0, 3.0], "count": [1, 1],
+            "binwidth": [0.5]*2, "width": [0.9]*2, "PANEL": [1]*2, "group": [1]*2,
+        })
+        out = GeomDotplot().setup_data(data, {"binaxis": "y", "stackdir": "center"})
+        # R: ymin=min(y)-bw/2, ymax=max(y)+bw/2, xmin/xmax = x + width*(∓0.5)
+        assert (out["ymin"] == 1.75).all() and (out["ymax"] == 3.25).all()
+        assert (out["xmin"] == 0.55).all() and (out["xmax"] == 1.45).all()
+
+    def test_stackgroups_stacks_across_groups(self):
+        data = pd.DataFrame({
+            "x": [1.0, 1.0], "y": [0.0, 0.0], "count": [1, 1],
+            "binwidth": [0.5]*2, "PANEL": [1]*2, "group": [1, 2],
+        })
+        out = GeomDotplot().setup_data(data, {"stackgroups": True})
+        # one shared stack: countidx runs 1..2 across groups
+        assert sorted(out["countidx"]) == [1.0, 2.0]
+
+
+class TestLayerParamSplitting:
+    def test_shared_param_reaches_both_stat_and_geom(self):
+        # R layer.R:76-78: independent intersects — binaxis goes to BOTH
+        from ggplot2_py.layer import _split_params
+        from ggplot2_py.stat import StatBindot
+        geom_params, stat_params, aes_params = _split_params(
+            {"binaxis": "y", "binwidth": 1.5, "stackdir": "up"},
+            GeomDotplot(), StatBindot(), None,
+        )
+        assert geom_params["binaxis"] == "y" and stat_params["binaxis"] == "y"
+        assert geom_params["binwidth"] == 1.5 and stat_params["binwidth"] == 1.5

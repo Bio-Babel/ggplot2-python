@@ -285,13 +285,17 @@ class TestResolution:
         assert resolution([5]) == 1.0
 
     def test_single_value_without_zero(self):
-        assert resolution([5], zero=False) == 0.0
+        # R: zero_range(range(5)) → 1 regardless of `zero`
+        assert resolution([5], zero=False) == 1.0
 
     def test_empty(self):
         assert resolution([]) == 1.0
 
     def test_with_nan(self):
-        assert resolution([1, np.nan, 3]) == 2.0
+        # R: resolution(c(1, NA, 3)) = 1 — zero=TRUE adds 0 to the
+        # value set, so the smallest gap is 0→1
+        assert resolution([1, np.nan, 3]) == 1.0
+        assert resolution([1, np.nan, 3], zero=False) == 2.0
 
     def test_discrete(self):
         assert resolution([1, 2, 3], discrete=True) == 1.0

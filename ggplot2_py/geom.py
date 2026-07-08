@@ -874,6 +874,84 @@ def _coord_munch(
     return coord_munch(coord, data, panel_params, is_closed=is_closed)
 
 
+def _keep_mid_true(x: np.ndarray) -> np.ndarray:
+    """Keep values from the first ``True`` to the last ``True``.
+
+    Port of R ``keep_mid_true`` (geom-path.R:277-289): used by
+    ``GeomPath$handle_na`` so that NA rows *inside* a line survive (they
+    become breaks) while leading/trailing NA rows are dropped.
+    """
+    w = np.nonzero(x)[0]
+    out = np.zeros(len(x), dtype=bool)
+    if len(w) == 0:
+        return out
+    out[w[0]:w[-1] + 1] = True
+    return out
+
+
+def _fix_linewidth(data: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Backfill ``linewidth`` from a legacy ``size`` column.
+
+    Port of R ``fix_linewidth`` (utilities.R): draw code reads
+    ``linewidth``; a frame carrying only ``size`` (pre-3.4.0 style or a
+    direct ``draw_panel`` call) gets it translated with a deprecation
+    warning.
+    """
+    if "linewidth" not in data.columns and "size" in data.columns:
+        data = data.copy()
+        data["linewidth"] = data["size"]
+        cli_warn(
+            f"Using the `size` aesthetic with {name} was deprecated; "
+            "please use the `linewidth` aesthetic instead."
+        )
+    return data
+
+
+def compute_data_size(
+    data: pd.DataFrame,
+    size: Any,
+    default: float = 0.9,
+    target: str = "width",
+    panels: str = "across",
+    zero: bool = True,
+    discrete: bool = False,
+) -> pd.DataFrame:
+    """Fill ``data[target]`` with an explicit or resolution-based size.
+
+    Port of R ``compute_data_size`` (utilities.R:890-918).  Priority:
+    an existing ``data[target]`` column (aes mapping / upstream stat),
+    then the *size* parameter, then ``resolution(x) * default`` where
+    the resolution is the minimum across panels (``panels="across"``).
+    """
+    if target in data.columns:
+        return data
+    data = data.copy()
+    if size is not None:
+        data[target] = size
+        return data
+
+    var = "y" if target == "height" else "x"
+    if panels not in ("across", "by", "ignore"):
+        cli_abort(f"panels must be one of 'across', 'by', 'ignore', not {panels!r}")
+
+    if panels == "across" and "PANEL" in data.columns:
+        res = min(
+            resolution(vals, zero=zero, discrete=discrete)
+            for _, vals in data.groupby("PANEL", observed=True)[var]
+            if len(vals) > 0
+        )
+        data[target] = res * (default if default is not None else 0.9)
+    elif panels == "by" and "PANEL" in data.columns:
+        res_by = data.groupby("PANEL", observed=True)[var].transform(
+            lambda v: resolution(v, zero=zero, discrete=discrete)
+        )
+        data[target] = res_by * (default if default is not None else 0.9)
+    else:
+        res = resolution(data[var], zero=zero, discrete=discrete)
+        data[target] = res * (default if default is not None else 0.9)
+    return data
+
+
 def _rect_to_polygon(data: pd.DataFrame) -> pd.DataFrame:
     """Expand each rectangle row into a 4-corner polygon row group.
 
@@ -1004,12 +1082,44 @@ class GeomPath(Geom):
     draw_key = draw_key_path
     rename_size: bool = True
 
+    def handle_na(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
+        """Drop leading/trailing NA per line but keep mid-line NA (breaks).
+
+        Port of R ``GeomPath$handle_na`` (geom-path.R:17-33); removal is
+        warned unless ``na.rm``.
+        """
+        aesthetics = list(self.required_aes) + list(self.non_missing_aes)
+        check_cols = [c for c in aesthetics if c in data.columns]
+        if not check_cols or data.empty:
+            return data
+        complete = data[check_cols].notna().all(axis=1).to_numpy()
+
+        group_keys = [c for c in ("group", "PANEL") if c in data.columns]
+        kept = np.zeros(len(data), dtype=bool)
+        if group_keys:
+            for _, pos in data.groupby(group_keys, sort=False, observed=True).indices.items():
+                kept[pos] = _keep_mid_true(complete[pos])
+        else:
+            kept = _keep_mid_true(complete)
+
+        if not kept.all():
+            data = data.loc[kept].reset_index(drop=True)
+            na_rm = params.get("na_rm", params.get("na.rm", False))
+            if not na_rm:
+                cli_warn(
+                    f"Removed {int((~kept).sum())} rows containing missing "
+                    f"values or values outside the scale range "
+                    f"({snake_class(self)})."
+                )
+        return data
+
     def draw_panel(
         self,
         data: pd.DataFrame,
         panel_params: Any,
         coord: Any,
         arrow: Any = None,
+        arrow_fill: Any = None,
         lineend: str = "butt",
         linejoin: str = "round",
         linemitre: float = 10,
@@ -1018,75 +1128,152 @@ class GeomPath(Geom):
     ) -> Any:
         """Draw connected paths.
 
-        R splits data by group and draws one polyline per group so
-        that each group can have its own colour/linetype/linewidth.
-
-        Under a non-linear coord (R geom-path.R:48 ``coord_munch``) each
-        group's straight edges are subdivided so they bend into arcs in
-        plot space; the Cartesian path (plain ``coord$transform``) is
-        unchanged.
+        Faithful port of R ``GeomPath$draw_panel`` (geom-path.R:35-111):
+        constant per-group aesthetics emit one ``polylineGrob`` with
+        per-line ``id`` (NA coords break the line); aesthetics that vary
+        within a group emit ``segmentsGrob`` with per-segment gp; varying
+        aesthetics with a non-solid linetype abort.  Under a non-linear
+        coord (R geom-path.R:48) each edge is ``coord_munch``-ed into an
+        arc; the Cartesian path uses ``coord$transform`` unchanged.
         """
         if data is None or len(data) < 2:
             return null_grob()
 
+        data = _fix_linewidth(data, snake_class(self))
+        if "group" not in data.columns:
+            data = data.copy()
+            data["group"] = 0
+
+        # R: inform when no group has more than one observation.
+        if not data["group"].duplicated().any():
+            cli_inform(
+                f"{snake_class(self)}: Each group consists of only one "
+                "observation. Do you need to adjust the group aesthetic?"
+            )
+
+        # must be sorted on group
+        data = data.sort_values("group", kind="stable")
+
         if _coord_is_linear(coord):
-            coords = _coord_transform(coord, data, panel_params)
+            munched = _coord_transform(coord, data, panel_params)
         else:
-            # R sorts on group, then coord_munch (which subdivides each
-            # within-group edge — group boundaries are NA-broken, so we
-            # munch per group and concatenate to avoid cross-group arcs).
-            work = data.copy()
-            if "group" not in work.columns:
-                work["group"] = 0
+            # R munches the whole frame at once; group boundaries are
+            # NA-broken there, so munching per group and concatenating
+            # is equivalent and avoids cross-group arcs.
             parts = []
-            for _, gdata in work.groupby("group", sort=True, observed=True):
+            for _, gdata in data.groupby("group", sort=True, observed=True):
                 if len(gdata) < 2:
                     continue
                 parts.append(_coord_munch(coord, gdata, panel_params, is_closed=False))
             if not parts:
                 return null_grob()
-            coords = pd.concat(parts, ignore_index=True)
+            munched = pd.concat(parts, ignore_index=True)
 
-        if coords.empty or len(coords) < 2:
+        if munched.empty:
             return null_grob()
 
-        # R semantics: split by group, draw each separately
-        # so per-group colour/lwd/lty are respected.
-        if "group" not in coords.columns:
-            coords["group"] = 0
+        # Silently drop lines with less than two points, preserving order
+        munched = munched[munched.groupby("group", observed=True)["group"].transform("size") >= 2]
+        if len(munched) < 2:
+            return null_grob()
+        munched = munched.reset_index(drop=True)
 
-        children = []
-        for gid, gdata in coords.groupby("group", sort=True, observed=True):
-            if len(gdata) < 2:
-                continue
-            # Take first-row aesthetics for the whole group
-            row0 = gdata.iloc[0]
-            col_val = row0.get("colour", "black")
-            alpha_val = row0.get("alpha", None)
-            lwd_val = float(row0.get("linewidth", 0.5)) * PT
-            lty_val = row0.get("linetype", 1)
+        # Aesthetic columns, defaulted for minimal direct draw_panel calls.
+        n = len(munched)
+        colour = (
+            munched["colour"].to_numpy()
+            if "colour" in munched.columns else np.repeat("black", n)
+        )
+        alpha_col = (
+            munched["alpha"].to_numpy()
+            if "alpha" in munched.columns else np.full(n, np.nan)
+        )
+        linewidth = (
+            pd.to_numeric(munched["linewidth"], errors="coerce").to_numpy()
+            if "linewidth" in munched.columns else np.full(n, 0.5)
+        )
+        linetype = (
+            munched["linetype"].to_numpy()
+            if "linetype" in munched.columns else np.repeat(1, n)
+        )
 
-            col_str = scales_alpha(col_val, alpha_val)
+        # Work out whether we should use lines or segments: per group,
+        # is the linetype solid, and are the line aesthetics constant?
+        def _lty_is_solid(v: Any) -> bool:
+            return v == "solid" or v == 1
 
-            children.append(polyline_grob(
-                x=gdata["x"].values,
-                y=gdata["y"].values,
+        solid_lines = True
+        constant = True
+        aes_frame = pd.DataFrame({
+            "colour": colour, "alpha": alpha_col,
+            "linewidth": linewidth, "linetype": linetype,
+            "group": munched["group"].to_numpy(),
+        })
+        for _, gdf in aes_frame.groupby("group", sort=False, observed=True):
+            ltys = gdf["linetype"].drop_duplicates()
+            if not (len(ltys) == 1 and _lty_is_solid(ltys.iloc[0])):
+                solid_lines = False
+            if len(gdf.drop(columns="group").drop_duplicates()) != 1:
+                constant = False
+        if not solid_lines and not constant:
+            cli_abort(
+                f"{snake_class(self)} can't have varying colour, linewidth, "
+                "and/or alpha along the line when linetype isn't solid."
+            )
+
+        # Work out grouping variables for grobs
+        group_arr = munched["group"].to_numpy()
+        group_diff = group_arr[1:] != group_arr[:-1]
+        start = np.concatenate([[True], group_diff])
+        end = np.concatenate([group_diff, [True]])
+
+        col_rgba = scales_alpha(colour, alpha_col)
+        col_rgba = np.atleast_1d(np.asarray(col_rgba, dtype=object))
+        if len(col_rgba) < n:
+            col_rgba = np.repeat(col_rgba, n)
+        fill_rgba = (
+            np.repeat(np.asarray(arrow_fill, dtype=object), n)
+            if arrow_fill is not None else col_rgba
+        )
+
+        x = munched["x"].to_numpy()
+        y = munched["y"].to_numpy()
+
+        if not constant:
+            # R: segmentsGrob(x[!end] → x[!start]) with per-segment gp.
+            grob = segments_grob(
+                x0=x[~end], y0=y[~end], x1=x[~start], y1=y[~start],
                 default_units="native",
+                arrow=arrow,
                 gp=Gpar(
-                    col=col_str,
-                    lwd=lwd_val,
-                    lty=lty_val,
+                    col=col_rgba[~end],
+                    fill=fill_rgba[~end],
+                    lwd=linewidth[~end] * PT,
+                    lty=linetype[~end],
                     lineend=lineend,
                     linejoin=linejoin,
                     linemitre=linemitre,
                 ),
+            )
+        else:
+            # R: id <- match(group, unique0(group)) — first-appearance
+            # numbering on the group-sorted frame.
+            id_arr = pd.factorize(munched["group"])[0] + 1
+            grob = polyline_grob(
+                x=x, y=y, id=id_arr,
+                default_units="native",
                 arrow=arrow,
-                name=f"path.{gid}",
-            ))
-
-        if not children:
-            return null_grob()
-        return _ggname("geom_path", grob_tree(*children))
+                gp=Gpar(
+                    col=col_rgba[start],
+                    fill=fill_rgba[start],
+                    lwd=linewidth[start] * PT,
+                    lty=linetype[start],
+                    lineend=lineend,
+                    linejoin=linejoin,
+                    linemitre=linemitre,
+                ),
+            )
+        return _ggname("geom_path", grob)
 
 
 class GeomLine(GeomPath):
@@ -1095,18 +1282,22 @@ class GeomLine(GeomPath):
     extra_params: Tuple[str, ...] = ("na_rm", "orientation")
 
     def setup_params(self, data: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
-        params["flipped_aes"] = params.get("flipped_aes", False)
+        from ggplot2_py.stat import _has_flipped_aes
+        params["flipped_aes"] = _has_flipped_aes(data, params, ambiguous=True)
         return params
 
     def setup_data(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
+        # R geom-path.R:132-137: tag flipped_aes, flip, sort on
+        # PANEL/group/x, flip back.
+        from ggplot2_py.stat import _flip_data
         data = data.copy()
         flipped = params.get("flipped_aes", False)
-        sort_col = "y" if flipped else "x"
-        group_cols = ["PANEL", "group"] if "group" in data.columns else ["PANEL"]
-        group_cols = [c for c in group_cols if c in data.columns]
-        if sort_col in data.columns:
-            data = data.sort_values(group_cols + [sort_col])
-        return data
+        data["flipped_aes"] = flipped
+        data = _flip_data(data, flipped)
+        sort_cols = [c for c in ("PANEL", "group", "x") if c in data.columns]
+        if sort_cols:
+            data = data.sort_values(sort_cols, kind="stable")
+        return _flip_data(data, flipped)
 
 
 class GeomStep(GeomPath):
@@ -1115,7 +1306,8 @@ class GeomStep(GeomPath):
     extra_params: Tuple[str, ...] = ("na_rm", "orientation")
 
     def setup_params(self, data: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
-        params["flipped_aes"] = params.get("flipped_aes", False)
+        from ggplot2_py.stat import _has_flipped_aes
+        params["flipped_aes"] = _has_flipped_aes(data, params, ambiguous=True)
         return params
 
     def draw_panel(
@@ -1128,56 +1320,80 @@ class GeomStep(GeomPath):
         linejoin: str = "round",
         linemitre: float = 10,
         arrow: Any = None,
+        arrow_fill: Any = None,
         flipped_aes: bool = False,
         **params: Any,
     ) -> Any:
-        """Draw step connections."""
-        data = data.copy()
-        data = _stairstep(data, direction=direction)
+        """Draw step connections.
+
+        R geom-path.R:152-167: flip the data, mirror the step direction
+        under a flipped orientation, stairstep *per group*, flip back
+        and delegate to ``GeomPath$draw_panel``.
+        """
+        from ggplot2_py.stat import _flip_data
+        data = _flip_data(data.copy(), flipped_aes)
+        if flipped_aes:
+            direction = {"hv": "vh", "vh": "hv"}.get(direction, direction)
+        if "group" in data.columns:
+            parts = [
+                _stairstep(gdata, direction=direction)
+                for _, gdata in data.groupby("group", sort=False, observed=True)
+            ]
+            data = pd.concat(parts, ignore_index=True)
+        else:
+            data = _stairstep(data, direction=direction)
+        data = _flip_data(data, flipped_aes)
         return GeomPath.draw_panel(
             self, data, panel_params, coord,
             lineend=lineend, linejoin=linejoin, linemitre=linemitre,
-            arrow=arrow,
+            arrow=arrow, arrow_fill=arrow_fill,
         )
 
 
 def _stairstep(data: pd.DataFrame, direction: str = "hv") -> pd.DataFrame:
-    """Calculate stairstep coordinates for :class:`GeomStep`."""
+    """Calculate stairstep coordinates for :class:`GeomStep`.
+
+    Port of R ``stairstep`` (geom-path.R:295-329).  Non-position
+    columns follow the x-index of each emitted vertex (R:
+    ``data[xs, setdiff(names(data), c("x","y"))]``), so per-point
+    aesthetics survive the expansion.
+    """
     if direction not in ("hv", "vh", "mid"):
         cli_abort(f"direction must be 'hv', 'vh', or 'mid', not {direction!r}")
-    data = data.sort_values("x").reset_index(drop=True)
+    data = data.sort_values("x", kind="stable").reset_index(drop=True)
     n = len(data)
     if n <= 1:
         return data.iloc[:0]
 
-    x = data["x"].values
-    y = data["y"].values
+    x = data["x"].to_numpy()
+    y = data["y"].to_numpy()
+    other_cols = [c for c in data.columns if c not in ("x", "y")]
 
-    if direction == "hv":
-        xs = np.repeat(x, 2)[1:]
-        ys = np.repeat(y, 2)[:-1]
-    elif direction == "vh":
-        xs = np.repeat(x, 2)[:-1]
-        ys = np.repeat(y, 2)[1:]
+    if direction == "vh":
+        xs = np.repeat(np.arange(n), 2)[:-1]
+        ys = np.concatenate([[0], np.repeat(np.arange(1, n), 2)])
+    elif direction == "hv":
+        ys = np.repeat(np.arange(n), 2)[:-1]
+        xs = np.concatenate([[0], np.repeat(np.arange(1, n), 2)])
     else:  # mid
+        xs = np.repeat(np.arange(n - 1), 2)
+        ys = np.repeat(np.arange(n), 2)
+
+    if direction == "mid":
         gaps = np.diff(x)
         mid_x = x[:-1] + gaps / 2
-        xs_idx = np.repeat(np.arange(n - 1), 2)
-        ys_idx = np.repeat(np.arange(n), 2)
-        xs_arr = np.concatenate([[x[0]], mid_x[xs_idx], [x[-1]]])
-        ys_arr = y[ys_idx]
-        result = data.iloc[[0]].copy()
-        result = pd.DataFrame({"x": xs_arr, "y": ys_arr})
-        # carry forward other columns
-        for col in data.columns:
-            if col not in ("x", "y"):
-                result[col] = data[col].iloc[0]
-        return result
+        out_x = np.concatenate([[x[0]], mid_x[xs], [x[-1]]])
+        out_y = y[ys]
+        attr_idx = np.concatenate([[0], xs, [n - 1]])
+    else:
+        out_x = x[xs]
+        out_y = y[ys]
+        attr_idx = xs
 
-    result = pd.DataFrame({"x": xs, "y": ys})
-    for col in data.columns:
-        if col not in ("x", "y"):
-            result[col] = data[col].iloc[0]
+    result = pd.DataFrame({"x": out_x, "y": out_y})
+    attrs = data.iloc[attr_idx][other_cols].reset_index(drop=True)
+    for col in other_cols:
+        result[col] = attrs[col]
     return result
 
 
@@ -2377,7 +2593,8 @@ class GeomSpoke(GeomSegment):
 class GeomErrorbar(Geom):
     """Errorbar geom -- T-shaped error bars."""
 
-    required_aes: Tuple[str, ...] = ("x", "ymin", "ymax")
+    # R geom-errorbar.R:18: c("x|y", "ymin|xmin", "ymax|xmax")
+    required_aes: Tuple[str, ...] = ("x|y", "ymin|xmin", "ymax|xmax")
     default_aes: Mapping = Mapping(
         colour=FromTheme("colour", fallback="ink"),
         linewidth=FromTheme("linewidth"),
@@ -2385,23 +2602,41 @@ class GeomErrorbar(Geom):
         width=0.9,
         alpha=None,
     )
-    extra_params: Tuple[str, ...] = ("na_rm", "orientation")
+    extra_params: Tuple[str, ...] = ("na_rm", "orientation", "height")
     draw_key = draw_key_path
     rename_size: bool = True
 
     def setup_params(self, data: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
-        params["flipped_aes"] = params.get("flipped_aes", False)
+        # R geom-errorbar.R:20-31: delegate to GeomLinerange, then
+        # translate `height` to `width` for flipped errorbars.
+        params = GeomLinerange.setup_params(GeomLinerange(), data, params)
+        if (
+            params.get("flipped_aes", False)
+            and "height" in params
+            and "width" not in params
+        ):
+            params["width"] = params.pop("height")
+            cli_inform("`height` was translated to `width`.")
         return params
 
     def setup_data(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
+        # R geom-errorbar.R:35-47.
+        from ggplot2_py.stat import _flip_data
         data = data.copy()
-        width = params.get("width") or (data["width"].values if "width" in data.columns else 0.9)
-        if isinstance(width, (int, float)):
-            data["width"] = width
+        flipped_aes = params.get("flipped_aes", False)
+        data["flipped_aes"] = flipped_aes
+        data = _flip_data(data, flipped_aes)
+        data = compute_data_size(
+            data, params.get("width"),
+            default=float(self.default_aes["width"]),
+            zero=False, discrete=True,
+        )
         data["xmin"] = data["x"] - data["width"] / 2
         data["xmax"] = data["x"] + data["width"] / 2
-        return data
+        data = data.drop(columns=["width"])
+        return _flip_data(data, flipped_aes)
 
+    # Note: `width` is vestigial
     def draw_panel(
         self,
         data: pd.DataFrame,
@@ -2412,45 +2647,65 @@ class GeomErrorbar(Geom):
         flipped_aes: bool = False,
         **params: Any,
     ) -> Any:
-        """Draw error bars as T-shapes."""
+        """Draw error bars as T-shapes (R geom-errorbar.R:50-68).
+
+        Each bar becomes an 8-point path — top cap, NA break, vertical
+        bar, NA break, bottom cap — with ``group`` = bar index, handed
+        to ``GeomPath$draw_panel`` (the NA points break the polyline).
+        """
+        from ggplot2_py.stat import _flip_data
+        data = _fix_linewidth(data, snake_class(self))
+        data = _flip_data(data, flipped_aes)
         n = len(data)
-        # Build the three segments per bar:
-        # top cap, vertical, bottom cap
-        x_vals = np.concatenate([
-            np.column_stack([data["xmin"].values, data["xmax"].values, np.full(n, np.nan),
-                             data["x"].values, data["x"].values, np.full(n, np.nan),
-                             data["xmin"].values, data["xmax"].values]).ravel()
-        ])
-        y_vals = np.concatenate([
-            np.column_stack([data["ymax"].values, data["ymax"].values, np.full(n, np.nan),
-                             data["ymax"].values, data["ymin"].values, np.full(n, np.nan),
-                             data["ymin"].values, data["ymin"].values]).ravel()
-        ])
+        na = np.full(n, np.nan)
+        # R: vec_interleave(xmin, xmax, NA, x,    x,    NA, xmin, xmax)
+        #    vec_interleave(ymax, ymax, NA, ymax, ymin, NA, ymin, ymin)
+        x = np.column_stack([
+            data["xmin"].values, data["xmax"].values, na,
+            data["x"].values, data["x"].values, na,
+            data["xmin"].values, data["xmax"].values,
+        ]).ravel()
+        y = np.column_stack([
+            data["ymax"].values, data["ymax"].values, na,
+            data["ymax"].values, data["ymin"].values, na,
+            data["ymin"].values, data["ymin"].values,
+        ]).ravel()
 
-        # Create a path-like data frame
         path_data = pd.DataFrame({
-            "x": x_vals,
-            "y": y_vals,
-            "colour": np.repeat(data["colour"].values if "colour" in data.columns else "black", 8),
-            "alpha": np.repeat(data["alpha"].values if "alpha" in data.columns else np.nan, 8),
-            "linewidth": np.repeat(data["linewidth"].values if "linewidth" in data.columns else 0.5, 8),
-            "linetype": np.repeat(data["linetype"].values if "linetype" in data.columns else 1, 8),
-            "group": np.repeat(np.arange(n), 8),
+            "x": x,
+            "y": y,
+            "colour": np.repeat(
+                data["colour"].values if "colour" in data.columns
+                else np.repeat("black", n), 8),
+            "alpha": np.repeat(
+                data["alpha"].values if "alpha" in data.columns
+                else np.full(n, np.nan), 8),
+            "linewidth": np.repeat(
+                data["linewidth"].values if "linewidth" in data.columns
+                else np.full(n, 0.5), 8),
+            "linetype": np.repeat(
+                data["linetype"].values if "linetype" in data.columns
+                else np.repeat(1, n), 8),
+            "group": np.repeat(np.arange(1, n + 1), 8),
         })
-
-        return GeomPath.draw_panel(GeomPath(), path_data, panel_params, coord, lineend=lineend)
+        path_data = _flip_data(path_data, flipped_aes)
+        return GeomPath.draw_panel(
+            GeomPath(), path_data, panel_params, coord, lineend=lineend,
+        )
 
 
 class GeomErrorbarh(GeomErrorbar):
     """Horizontal errorbar geom (deprecated -- use ``geom_errorbar(orientation='y')``)."""
 
     def setup_params(self, data: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
+        # R geom-errorbar.R:79-85: deprecation + GeomLinerange params
+        # (no height→width translation).
         warnings.warn(
             "geom_errorbarh() is deprecated. Use geom_errorbar(orientation='y').",
             FutureWarning,
             stacklevel=2,
         )
-        return super().setup_params(data, params)
+        return GeomLinerange.setup_params(GeomLinerange(), data, params)
 
 
 # ===========================================================================
@@ -2569,7 +2824,19 @@ class GeomLinerange(Geom):
     rename_size: bool = True
 
     def setup_params(self, data: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
-        params["flipped_aes"] = params.get("flipped_aes", False)
+        # R geom-linerange.R:14-21.
+        from ggplot2_py.stat import _has_flipped_aes
+        params["flipped_aes"] = _has_flipped_aes(
+            data, params, range_is_orthogonal=True,
+        )
+        # if flipped_aes == TRUE then y, xmin, xmax is present
+        if not params["flipped_aes"]:
+            present = set(data.columns) | set(params.keys())
+            if not {"x", "ymin", "ymax"} <= present:
+                cli_abort(
+                    "Either, x, ymin, and ymax or y, xmin, and xmax "
+                    "must be supplied."
+                )
         return params
 
     def setup_data(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
@@ -2586,15 +2853,19 @@ class GeomLinerange(Geom):
         flipped_aes: bool = False,
         na_rm: bool = False,
         arrow: Any = None,
+        arrow_fill: Any = None,
         **params: Any,
     ) -> Any:
-        """Draw line ranges."""
-        seg_data = data.copy()
-        seg_data["xend"] = seg_data["x"]
-        seg_data["yend"] = seg_data["ymax"]
-        seg_data["y"] = seg_data["ymin"]
+        """Draw line ranges (R geom-linerange.R:30-42)."""
+        from ggplot2_py.stat import _flip_data
+        data = _flip_data(data, flipped_aes)
+        data = data.copy()
+        data["xend"] = data["x"]
+        data["yend"] = data["ymax"]
+        data["y"] = data["ymin"]
+        data = _flip_data(data, flipped_aes)
         grob = GeomSegment.draw_panel(
-            GeomSegment(), seg_data, panel_params, coord,
+            GeomSegment(), data, panel_params, coord,
             lineend=lineend, na_rm=na_rm, arrow=arrow,
         )
         return _ggname("geom_linerange", grob)
@@ -2893,6 +3164,95 @@ class GeomViolin(Geom):
 # GeomDotplot
 # ===========================================================================
 
+def _dotstack_grob(
+    x: np.ndarray,
+    y: np.ndarray,
+    stackaxis: str = "y",
+    dotdia: float = 1.0,
+    stackposition: Any = 0,
+    stackdir: str = "up",
+    stackratio: float = 1,
+    name: Optional[str] = None,
+    gp: Optional[Gpar] = None,
+) -> Any:
+    """Create a dotstack grob (port of R ggplot2 ``dotstackGrob``).
+
+    ``dotdia`` is the dot diameter in npc of the *non-stack* axis; the
+    stack offsets are resolved at draw time (R grob-dotstack.R
+    ``makeContext``), because they need the panel's physical size.
+    """
+    from grid_py import Grob
+    return Grob(
+        x=Unit(np.asarray(x, dtype=float), "npc"),
+        y=Unit(np.asarray(y, dtype=float), "npc"),
+        stackaxis=stackaxis,
+        dotdia=float(dotdia),
+        stackposition=np.atleast_1d(np.asarray(stackposition, dtype=float)),
+        stackdir=stackdir,
+        stackratio=float(stackratio),
+        name=name,
+        gp=gp,
+        _grid_class="dotstack",
+    )
+
+
+def _render_dotstack(grob: Any, renderer: Any, gp: Optional[Gpar]) -> None:
+    """Draw-time layout of a dotstack (port of R ``makeContext.dotstackGrob``).
+
+    R converts to mm because the dot diameter is defined on the
+    non-stack axis while circle radii resolve against the smaller axis;
+    device units play the same role here.  One circle per dot, with
+    vectorised gp applied per circle (R circleGrob semantics).
+    """
+    from grid_py._draw import _subset_gpar, _gpar_is_vectorised
+
+    x_dev, y_dev = renderer.resolve_loc_array(grob.x, grob.y, gp=gp)
+    stackpos = np.atleast_1d(np.asarray(grob.stackposition, dtype=float))
+    n = len(x_dev)
+    if len(stackpos) < n:
+        stackpos = np.resize(stackpos, n)
+    stackratio = float(grob.stackratio)
+    stackdir = getattr(grob, "stackdir", None)
+
+    # Stackratio != 1 shifts the first dot off the stack origin; the
+    # offset re-aligns it (R grob-dotstack.R:31-44).
+    if stackdir is None or stackdir == "up":
+        stackoffset = (1 - stackratio) / 2
+    elif stackdir == "down":
+        stackoffset = -(1 - stackratio) / 2
+    else:
+        stackoffset = 0.0
+
+    shift = stackpos * stackratio + stackoffset
+    if grob.stackaxis == "x":
+        # dot diameter defined on the non-stack (y) axis
+        dotdia_dev = renderer.resolve_h(Unit(grob.dotdia, "npc"))
+        xpos = x_dev + dotdia_dev * shift
+        ypos = y_dev
+    else:
+        dotdia_dev = renderer.resolve_w(Unit(grob.dotdia, "npc"))
+        xpos = x_dev
+        # device y grows downward; R's mm frame grows upward
+        ypos = y_dev - dotdia_dev * shift
+
+    r = dotdia_dev / 2
+    vectorised = _gpar_is_vectorised(gp)
+    for i in range(n):
+        gp_i = _subset_gpar(gp, i) if vectorised else gp
+        renderer.draw_circle(x=xpos[i], y=ypos[i], r=r, gp=gp_i)
+
+
+_register_dotstack_renderer_done = False
+
+
+def _ensure_dotstack_renderer() -> None:
+    global _register_dotstack_renderer_done
+    if not _register_dotstack_renderer_done:
+        from grid_py._draw import register_grob_renderer
+        register_grob_renderer("dotstack", _render_dotstack)
+        _register_dotstack_renderer_done = True
+
+
 class GeomDotplot(Geom):
     """Dotplot geom."""
 
@@ -2906,16 +3266,102 @@ class GeomDotplot(Geom):
         "stackdir", "stackratio", "dotsize", "stackgroups", "origin",
         "right", "width", "drop",
     )
+    # R geom-dotplot.R:190-198
     default_aes: Mapping = Mapping(
         colour=FromTheme("colour", fallback="ink"),
-        fill="black",
+        fill=FromTheme("fill", fallback="ink"),
         alpha=None,
-        stroke=1.0,
+        stroke=FromTheme(lambda g: g.borderwidth * 2),
         linetype=FromTheme("linetype"),
         weight=1,
         width=0.9,
     )
     draw_key = draw_key_dotplot
+
+    def setup_data(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
+        """Expand counts into dots and position each stack.
+
+        Port of R ``GeomDotplot$setup_data`` (geom-dotplot.R:200-276).
+        """
+        from ggplot2_py.stat import _is_mapped_discrete
+
+        data = compute_data_size(
+            data, params.get("width"),
+            default=float(self.default_aes["width"]),
+            zero=False, discrete=True,
+        )
+
+        # Set up the stacking function and range
+        stackdir = params.get("stackdir") or "up"
+        if stackdir == "up":
+            def stackdots(a: np.ndarray) -> np.ndarray:
+                return a - 0.5
+            stackaxismin, stackaxismax = 0.0, 1.0
+        elif stackdir == "down":
+            def stackdots(a: np.ndarray) -> np.ndarray:
+                return -a + 0.5
+            stackaxismin, stackaxismax = -1.0, 0.0
+        elif stackdir == "center":
+            def stackdots(a: np.ndarray) -> np.ndarray:
+                return a - 1 - np.max(a - 1) / 2
+            stackaxismin, stackaxismax = -0.5, 0.5
+        elif stackdir == "centerwhole":
+            def stackdots(a: np.ndarray) -> np.ndarray:
+                return a - 1 - np.floor(np.max(a - 1) / 2)
+            stackaxismin, stackaxismax = -0.5, 0.5
+        else:
+            cli_abort(
+                f"stackdir must be one of 'up', 'down', 'center', "
+                f"'centerwhole', not {stackdir!r}"
+            )
+
+        # Fill the bins: at a given x (or y), if count=3, make 3 entries
+        data = data.loc[data.index.repeat(data["count"].astype(int))]
+
+        # Next part will set the position of each dot within each stack.
+        # If stackgroups=TRUE, split only on x (or y) and panel; if not
+        # stacking, also split by group.
+        binaxis = params.get("binaxis") or "x"
+        stackaxis = "y" if binaxis == "x" else "x"
+        plyvars = [binaxis, "PANEL"]
+        if not params.get("stackgroups"):
+            plyvars.append("group")
+        if stackaxis == "x":
+            plyvars.append("x")
+        plyvars = [c for c in plyvars if c in data.columns]
+
+        # Within each x (or x+group), set countidx=1,2,3... and stackpos
+        # (R dapply reorders rows group-block-wise; mirrored here).
+        parts = []
+        for _, gdf in data.groupby(plyvars, sort=False, observed=True):
+            gdf = gdf.copy()
+            countidx = np.arange(1, len(gdf) + 1, dtype=float)
+            gdf["countidx"] = countidx
+            gdf["stackpos"] = stackdots(countidx)
+            parts.append(gdf)
+        data = pd.concat(parts, ignore_index=True)
+
+        # Set the bounding boxes for the dots. The stack position isn't
+        # real, so the box covers the whole stack (R geom-dotplot.R:249-274).
+        if binaxis == "x":
+            yoffset = (
+                data["y"].to_numpy()
+                if _is_mapped_discrete(data["y"]) else 0.0
+            )
+            data["xmin"] = data["x"] - data["binwidth"] / 2
+            data["xmax"] = data["x"] + data["binwidth"] / 2
+            data["ymin"] = stackaxismin + yoffset
+            data["ymax"] = stackaxismax + yoffset
+            data["y"] = yoffset
+        else:
+            grouped = data.groupby(["group", "PANEL"], sort=False, observed=True)
+            bw_first = grouped["binwidth"].transform("first")
+            data["ymin"] = grouped["y"].transform("min") - bw_first / 2
+            data["ymax"] = grouped["y"].transform("max") + bw_first / 2
+            data["xmin"] = data["x"] + data["width"] * stackaxismin
+            data["xmax"] = data["x"] + data["width"] * stackaxismax
+            # Unlike above, don't change x — it would break dodging
+        return data
 
     def draw_group(
         self,
@@ -2931,23 +3377,63 @@ class GeomDotplot(Geom):
         stackgroups: bool = False,
         **params: Any,
     ) -> Any:
-        """Draw dotplot."""
-        coords = _coord_transform(coord, data, panel_params)
+        """Draw one dot stack group (R geom-dotplot.R:279-310)."""
+        from ggplot2_py.coord import CoordFlip
+
+        if not _coord_is_linear(coord):
+            cli_warn("geom_dotplot does not work properly with non-linear coordinates.")
+
+        tdata = _coord_transform(coord, data, panel_params)
+
+        # Swap axes if using coord_flip
+        if isinstance(coord, CoordFlip):
+            binaxis = "y" if binaxis == "x" else "x"
+
+        def _range(axis: str) -> Tuple[float, float]:
+            ax = getattr(panel_params, axis, None)
+            if ax is not None and hasattr(ax, "range"):
+                return tuple(ax.range)
+            if isinstance(panel_params, dict):
+                rng = panel_params.get(f"{axis}_range") or panel_params.get(f"{axis}.range")
+                if rng is not None:
+                    return tuple(rng)
+            return (0.0, 1.0)
+
+        if binaxis == "x":
+            stackaxis = "y"
+            rng = _range("x")
+        else:
+            stackaxis = "x"
+            rng = _range("y")
+        dotdianpc = dotsize * float(tdata["binwidth"].iloc[0]) / (max(rng) - min(rng))
+
+        _ensure_dotstack_renderer()
         return _ggname(
             "geom_dotplot",
-            points_grob(
-                x=coords["x"].values,
-                y=coords["y"].values,
-                pch=21,
+            _dotstack_grob(
+                x=tdata["x"].to_numpy(),
+                y=tdata["y"].to_numpy(),
+                stackaxis=stackaxis,
+                dotdia=dotdianpc,
+                stackposition=tdata["stackpos"].to_numpy(),
+                stackdir=stackdir,
+                stackratio=stackratio,
                 gp=Gpar(
                     col=scales_alpha(
-                        coords["colour"].values if "colour" in coords.columns else "black",
-                        coords["alpha"].values if "alpha" in coords.columns else None,
+                        tdata["colour"].values if "colour" in tdata.columns else "black",
+                        tdata["alpha"].values if "alpha" in tdata.columns else None,
                     ),
                     fill=_fill_alpha(
-                        coords["fill"].values if "fill" in coords.columns else "black",
-                        coords["alpha"].values if "alpha" in coords.columns else None,
+                        tdata["fill"].values if "fill" in tdata.columns else "black",
+                        tdata["alpha"].values if "alpha" in tdata.columns else None,
                     ),
+                    # R: gg_par(lwd = stroke / .pt) → gpar lwd = stroke
+                    lwd=(
+                        pd.to_numeric(tdata["stroke"], errors="coerce").to_numpy()
+                        if "stroke" in tdata.columns else 1.0
+                    ),
+                    lty=tdata["linetype"].values if "linetype" in tdata.columns else 1,
+                    lineend=lineend,
                 ),
             ),
         )
@@ -4344,6 +4830,22 @@ def geom_dotplot(
 ) -> Any:
     """Create a dotplot layer (R geom-dotplot.R:122-139 signature)."""
     layer = _layer_import()
+    # R geom-dotplot.R:140-153
+    if position == "stack" or type(position).__name__ == "PositionStack":
+        cli_inform(
+            'position = "stack" does not work properly with geom_dotplot. '
+            "Use stackgroups = True instead."
+        )
+    if stackgroups and method == "dotdensity" and binpositions == "bygroup":
+        cli_inform(
+            'geom_dotplot called with stackgroups = True and method = '
+            '"dotdensity". Do you want binpositions = "all" instead?'
+        )
+    if stackdir not in ("up", "down", "center", "centerwhole"):
+        cli_abort(
+            f"stackdir must be one of 'up', 'down', 'center', "
+            f"'centerwhole', not {stackdir!r}"
+        )
     kwargs.update({
         "binwidth": binwidth,
         "binaxis": binaxis,
